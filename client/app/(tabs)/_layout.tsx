@@ -33,6 +33,14 @@ export default function TabsLayout() {
           tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>➕</Text>,
         }}
       />
+      <Tabs.Screen
+        name="connections"
+        options={{
+          title: 'Groups',
+          headerShown: false,
+          tabBarIcon: ({ color }) => <Text style={{ fontSize: 20, color }}>👥</Text>,
+        }}
+      />
     </Tabs>
   );
 }

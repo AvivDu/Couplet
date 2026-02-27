@@ -15,7 +15,7 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  if (db.findUserByEmail(email)) {
+  if (await db.findUserByEmail(email)) {
     res.status(409).json({ error: 'Email already registered' });
     return;
   }
@@ -23,7 +23,7 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
   const passwordHash = await bcrypt.hash(password, 10);
   const userId = uuidv4();
 
-  db.insertUser({
+  await db.insertUser({
     user_id: userId,
     email,
     username,
@@ -43,7 +43,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const user = db.findUserByEmail(email);
+  const user = await db.findUserByEmail(email);
   if (!user) {
     res.status(401).json({ error: 'Invalid email or password' });
     return;

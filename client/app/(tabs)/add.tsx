@@ -29,7 +29,7 @@ const CATEGORIES: { label: string; color: string }[] = [
   { label: 'Other', color: '#B8C4CC' },
 ];
 
-const YEARS = Array.from({ length: 12 }, (_, i) => String(2025 + i));
+const YEARS = Array.from({ length: 12 }, (_, i) => String(new Date().getFullYear() + i));
 
 const MONTHS = [
   { label: 'January', value: '01' },

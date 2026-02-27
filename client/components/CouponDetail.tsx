@@ -13,8 +13,8 @@ import {
   FlatList,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import type { CouponMeta } from '../services/api';
-import { updateCoupon } from '../services/api';
+import type { CouponMeta, GroupMeta } from '../services/api';
+import { updateCoupon, getGroups, shareToGroup } from '../services/api';
 import { saveCouponCode, saveCouponImage, getCouponImage } from '../storage/couponStorage';
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -28,7 +28,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   Other: '#B8C4CC',
 };
 
-const YEARS = Array.from({ length: 12 }, (_, i) => String(2025 + i));
+const YEARS = Array.from({ length: 12 }, (_, i) => String(new Date().getFullYear() + i));
 
 const MONTHS = [
   { label: 'January', value: '01' },
@@ -72,6 +72,11 @@ export default function CouponDetail({ coupon, visible, onClose, onDelete, onMar
   const [datePickerField, setDatePickerField] = useState<DateField | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Share to group
+  const [groupPickerVisible, setGroupPickerVisible] = useState(false);
+  const [groups, setGroups] = useState<GroupMeta[]>([]);
+  const [sharingGroupId, setSharingGroupId] = useState<string | null>(null);
+
   useEffect(() => {
     if (coupon?.coupon_id) {
       getCouponImage(coupon.coupon_id).then(setImageUri);
@@ -83,10 +88,10 @@ export default function CouponDetail({ coupon, visible, onClose, onDelete, onMar
     setEditName(coupon.store_name);
     setEditCode(coupon.code ?? '');
     if (coupon.expiration_date) {
-      const d = new Date(coupon.expiration_date);
-      setEditYear(String(d.getFullYear()));
-      setEditMonth(String(d.getMonth() + 1).padStart(2, '0'));
-      setEditDay(String(d.getDate()).padStart(2, '0'));
+      const [year, month, day] = coupon.expiration_date.split('-');
+      setEditYear(year);
+      setEditMonth(month);
+      setEditDay(day);
     } else {
       setEditYear('');
       setEditMonth('');
@@ -94,6 +99,34 @@ export default function CouponDetail({ coupon, visible, onClose, onDelete, onMar
     }
     setEditBalance(coupon.balance != null ? String(coupon.balance) : '');
     setEditMode(true);
+  }
+
+  async function handleShareToGroup() {
+    try {
+      const { data } = await getGroups();
+      if (data.length === 0) {
+        Alert.alert('No groups', 'You have no groups yet. Create one in the Groups tab.');
+        return;
+      }
+      setGroups(data);
+      setGroupPickerVisible(true);
+    } catch {
+      Alert.alert('Error', 'Could not load groups.');
+    }
+  }
+
+  async function handleShareToGroupConfirm(group: GroupMeta) {
+    if (!coupon) return;
+    setSharingGroupId(group.group_id);
+    try {
+      await shareToGroup(group.group_id, coupon.coupon_id);
+      setGroupPickerVisible(false);
+      Alert.alert('Shared!', `Coupon shared to "${group.name}".`);
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.error ?? 'Could not share coupon.');
+    } finally {
+      setSharingGroupId(null);
+    }
   }
 
   async function pickImage() {
@@ -192,7 +225,7 @@ export default function CouponDetail({ coupon, visible, onClose, onDelete, onMar
 
   const color = CATEGORY_COLORS[coupon.category] ?? CATEGORY_COLORS.Other;
   const expiry = coupon.expiration_date
-    ? new Date(coupon.expiration_date).toLocaleDateString()
+    ? new Date(coupon.expiration_date + 'T00:00:00').toLocaleDateString()
     : 'No expiry';
   const balance = coupon.balance != null ? `₪${coupon.balance.toFixed(2)}` : '—';
 
@@ -284,6 +317,11 @@ export default function CouponDetail({ coupon, visible, onClose, onDelete, onMar
               <Text style={styles.editBtnText}>Edit Coupon</Text>
             </TouchableOpacity>
 
+            {/* Share to Group button */}
+            <TouchableOpacity style={styles.shareBtn} onPress={handleShareToGroup}>
+              <Text style={styles.shareBtnText}>Share to Group</Text>
+            </TouchableOpacity>
+
             {/* Delete button */}
             <TouchableOpacity
               style={styles.deleteBtn}
@@ -371,6 +409,43 @@ export default function CouponDetail({ coupon, visible, onClose, onDelete, onMar
           </ScrollView>
         )}
       </View>
+
+      {/* Share to Group bottom sheet */}
+      <Modal
+        visible={groupPickerVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setGroupPickerVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.pickerOverlay}
+          activeOpacity={1}
+          onPress={() => setGroupPickerVisible(false)}
+        >
+          <View style={styles.pickerSheet}>
+            <View style={styles.pickerHandle} />
+            <Text style={styles.pickerTitle}>Share to Group</Text>
+            <FlatList
+              data={groups}
+              keyExtractor={g => g.group_id}
+              style={styles.pickerList}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.pickerItem}
+                  onPress={() => handleShareToGroupConfirm(item)}
+                  disabled={sharingGroupId === item.group_id}
+                >
+                  {sharingGroupId === item.group_id ? (
+                    <ActivityIndicator color="#E8604C" />
+                  ) : (
+                    <Text style={styles.pickerItemText}>👥  {item.name}</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Date picker bottom sheet (for edit mode) */}
       <Modal
@@ -565,6 +640,17 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   editBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+
+  // Share to Group button
+  shareBtn: {
+    borderRadius: 30,
+    paddingVertical: 15,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E8604C',
+    marginBottom: 12,
+  },
+  shareBtnText: { color: '#E8604C', fontSize: 15, fontWeight: '700' },
 
   // Delete button
   deleteBtn: {
