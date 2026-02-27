@@ -1,0 +1,21 @@
+# Node modules
+node_modules/
+
+# OS files
+.DS_Store
+*.DS_Store
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Large generated images (not source assets)
+Gemini_Generated_Image_*.png
+
+# Claude workspace
+.claude/
