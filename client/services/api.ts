@@ -1,10 +1,32 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
-// Set EXPO_PUBLIC_API_URL in your .env file.
-// For local dev: http://localhost:3000 (simulator) or http://<your-ip>:3000 (real device)
-// For production: your deployed server URL (e.g. https://cuplet.onrender.com)
-export const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+function resolveBaseUrl() {
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+
+  const hostUri =
+    Constants.expoConfig?.hostUri ??
+    (Constants as any).manifest?.debuggerHost ??
+    (Constants as any).manifest2?.extra?.expoGo?.debuggerHost;
+
+  const host = typeof hostUri === 'string' ? hostUri.split(':')[0] : null;
+
+  if (host) {
+    return `http://${host}:3000`;
+  }
+
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:3000';
+  }
+
+  return 'http://localhost:3000';
+}
+
+export const BASE_URL = resolveBaseUrl();
 
 const api = axios.create({ baseURL: BASE_URL });
 
