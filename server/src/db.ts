@@ -1,5 +1,3 @@
-import mongoose from 'mongoose';
-
 // ── Interfaces ────────────────────────────────────────────────────────────
 
 export interface User {
@@ -30,134 +28,108 @@ export interface Group {
   created_at: string;
 }
 
-// ── Schemas ───────────────────────────────────────────────────────────────
+// ── In-memory store ───────────────────────────────────────────────────────
 
-const userSchema = new mongoose.Schema<User>({
-  user_id:       { type: String, required: true, unique: true },
-  email:         { type: String, required: true, unique: true },
-  username:      { type: String, required: true },
-  password_hash: { type: String, required: true },
-  created_at:    { type: String, required: true },
-});
-
-const couponSchema = new mongoose.Schema<Coupon>({
-  coupon_id:       { type: String, required: true, unique: true },
-  owner_id:        { type: String, required: true },
-  category:        { type: String, required: true },
-  store_name:      { type: String, required: true },
-  expiration_date: { type: String, default: null },
-  balance:         { type: Number, default: null },
-  status:          { type: String, required: true, default: 'active' },
-  created_at:      { type: String, required: true },
-});
-
-const groupSchema = new mongoose.Schema<Group>({
-  group_id:       { type: String, required: true, unique: true },
-  name:           { type: String, required: true },
-  admin_user_id:  { type: String, required: true },
-  user_id_list:   { type: [String], default: [] },
-  coupon_id_list: { type: [String], default: [] },
-  created_at:     { type: String, required: true },
-});
-
-const UserModel   = mongoose.model<User>('User', userSchema);
-const CouponModel = mongoose.model<Coupon>('Coupon', couponSchema);
-const GroupModel  = mongoose.model<Group>('Group', groupSchema);
+const users   = new Map<string, User>();
+const coupons = new Map<string, Coupon>();
+const groups  = new Map<string, Group>();
 
 // ── DB functions ──────────────────────────────────────────────────────────
 
 export const db = {
   // Users
   async findUserByEmail(email: string): Promise<User | null> {
-    return UserModel.findOne({ email }).lean<User>();
+    for (const u of users.values()) {
+      if (u.email === email) return u;
+    }
+    return null;
   },
   async findUserById(id: string): Promise<User | null> {
-    return UserModel.findOne({ user_id: id }).lean<User>();
+    return users.get(id) ?? null;
   },
   async insertUser(user: User): Promise<void> {
-    await UserModel.create(user);
+    users.set(user.user_id, user);
   },
   async findUsersByQuery(query: string): Promise<User[]> {
-    const regex = new RegExp(query, 'i');
-    return UserModel.find({ $or: [{ email: regex }, { username: regex }] })
-      .limit(10)
-      .lean<User[]>();
+    const q = query.toLowerCase();
+    const results: User[] = [];
+    for (const u of users.values()) {
+      if (u.email.toLowerCase().includes(q) || u.username.toLowerCase().includes(q)) {
+        results.push(u);
+        if (results.length >= 10) break;
+      }
+    }
+    return results;
   },
 
   // Coupons
   async getCouponsByOwner(ownerId: string): Promise<Coupon[]> {
-    return CouponModel.find({ owner_id: ownerId })
-      .sort({ created_at: -1 })
-      .lean<Coupon[]>();
+    return [...coupons.values()]
+      .filter(c => c.owner_id === ownerId)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
   },
   async getCouponById(id: string): Promise<Coupon | null> {
-    return CouponModel.findOne({ coupon_id: id }).lean<Coupon>();
+    return coupons.get(id) ?? null;
   },
   async insertCoupon(coupon: Coupon): Promise<void> {
-    await CouponModel.create(coupon);
+    coupons.set(coupon.coupon_id, coupon);
   },
   async updateCoupon(id: string, ownerId: string, fields: Partial<Coupon>): Promise<Coupon | null> {
-    return CouponModel.findOneAndUpdate(
-      { coupon_id: id, owner_id: ownerId },
-      { $set: fields },
-      { new: true }
-    ).lean<Coupon>();
+    const coupon = coupons.get(id);
+    if (!coupon || coupon.owner_id !== ownerId) return null;
+    const updated = { ...coupon, ...fields };
+    coupons.set(id, updated);
+    return updated;
   },
   async deleteCoupon(id: string, ownerId: string): Promise<boolean> {
-    const result = await CouponModel.deleteOne({ coupon_id: id, owner_id: ownerId });
-    return result.deletedCount > 0;
+    const coupon = coupons.get(id);
+    if (!coupon || coupon.owner_id !== ownerId) return false;
+    coupons.delete(id);
+    return true;
   },
 
   // Groups
   async createGroup(group: Group): Promise<void> {
-    await GroupModel.create(group);
+    groups.set(group.group_id, group);
   },
   async getGroupsByUser(userId: string): Promise<Group[]> {
-    return GroupModel.find({ user_id_list: userId })
-      .sort({ created_at: -1 })
-      .lean<Group[]>();
+    return [...groups.values()]
+      .filter(g => g.user_id_list.includes(userId))
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
   },
   async getGroupById(id: string): Promise<Group | null> {
-    return GroupModel.findOne({ group_id: id }).lean<Group>();
+    return groups.get(id) ?? null;
   },
   async addMemberToGroup(groupId: string, userId: string): Promise<Group | null> {
-    return GroupModel.findOneAndUpdate(
-      { group_id: groupId },
-      { $addToSet: { user_id_list: userId } },
-      { new: true }
-    ).lean<Group>();
+    const group = groups.get(groupId);
+    if (!group) return null;
+    if (!group.user_id_list.includes(userId)) group.user_id_list.push(userId);
+    return group;
   },
   async removeMemberFromGroup(groupId: string, userId: string, adminId: string): Promise<Group | null> {
-    return GroupModel.findOneAndUpdate(
-      { group_id: groupId, admin_user_id: adminId },
-      { $pull: { user_id_list: userId } },
-      { new: true }
-    ).lean<Group>();
+    const group = groups.get(groupId);
+    if (!group || group.admin_user_id !== adminId) return null;
+    group.user_id_list = group.user_id_list.filter(id => id !== userId);
+    return group;
   },
   async addCouponToGroup(groupId: string, couponId: string): Promise<Group | null> {
-    return GroupModel.findOneAndUpdate(
-      { group_id: groupId },
-      { $addToSet: { coupon_id_list: couponId } },
-      { new: true }
-    ).lean<Group>();
+    const group = groups.get(groupId);
+    if (!group) return null;
+    if (!group.coupon_id_list.includes(couponId)) group.coupon_id_list.push(couponId);
+    return group;
   },
   async removeCouponFromGroup(groupId: string, couponId: string): Promise<Group | null> {
-    return GroupModel.findOneAndUpdate(
-      { group_id: groupId },
-      { $pull: { coupon_id_list: couponId } },
-      { new: true }
-    ).lean<Group>();
+    const group = groups.get(groupId);
+    if (!group) return null;
+    group.coupon_id_list = group.coupon_id_list.filter(id => id !== couponId);
+    return group;
   },
   async removeCouponsByOwnerFromGroup(groupId: string, ownerId: string): Promise<void> {
-    const group = await GroupModel.findOne({ group_id: groupId }).lean<Group>();
+    const group = groups.get(groupId);
     if (!group) return;
-    const toRemove = await CouponModel.find({
-      coupon_id: { $in: group.coupon_id_list },
-      owner_id: ownerId,
-    }).lean<Coupon[]>();
-    const ids = toRemove.map(c => c.coupon_id);
-    if (ids.length > 0) {
-      await GroupModel.updateOne({ group_id: groupId }, { $pull: { coupon_id_list: { $in: ids } } });
-    }
+    group.coupon_id_list = group.coupon_id_list.filter(cid => {
+      const c = coupons.get(cid);
+      return !c || c.owner_id !== ownerId;
+    });
   },
 };
