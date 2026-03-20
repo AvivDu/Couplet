@@ -7,9 +7,14 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  FlatList,
+  Modal,
+  ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { getCouponImage, saveCouponImage } from '../../storage/couponStorage';
+import { getGroups, shareToGroup } from '../../services/api';
+import type { GroupMeta } from '../../services/api';
 import { CATEGORY_COLORS } from './constants';
 import type { CouponWithCode } from './types';
 
@@ -23,10 +28,40 @@ interface CouponDisplayProps {
 
 export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, onClose }: CouponDisplayProps) {
   const [imageUri, setImageUri] = React.useState<string | null>(null);
+  const [groupPickerVisible, setGroupPickerVisible] = React.useState(false);
+  const [groups, setGroups] = React.useState<GroupMeta[]>([]);
+  const [sharingGroupId, setSharingGroupId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     getCouponImage(coupon.coupon_id).then(setImageUri);
   }, [coupon.coupon_id]);
+
+  async function handleShareToGroup() {
+    try {
+      const { data } = await getGroups();
+      if (data.length === 0) {
+        Alert.alert('No groups', 'You have no groups yet. Create one in the Groups tab.');
+        return;
+      }
+      setGroups(data);
+      setGroupPickerVisible(true);
+    } catch {
+      Alert.alert('Error', 'Could not load groups.');
+    }
+  }
+
+  async function handleShareToGroupConfirm(group: GroupMeta) {
+    setSharingGroupId(group.group_id);
+    try {
+      await shareToGroup(group.group_id, coupon.coupon_id);
+      setGroupPickerVisible(false);
+      Alert.alert('Shared!', `Coupon shared to "${group.name}".`);
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.error ?? 'Could not share coupon.');
+    } finally {
+      setSharingGroupId(null);
+    }
+  }
 
   async function pickImage() {
     Alert.alert('Upload Coupon Image', 'Choose a source', [
@@ -73,6 +108,7 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
   const balance = coupon.balance != null ? `₪${coupon.balance.toFixed(2)}` : '—';
 
   return (
+    <>
     <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
       <View style={[styles.couponCard, { backgroundColor: color }]}>
         <Text style={styles.couponStore}>{coupon.store_name}</Text>
@@ -134,6 +170,10 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
         <Text style={styles.editBtnText}>Edit Coupon</Text>
       </TouchableOpacity>
 
+      <TouchableOpacity style={styles.shareBtn} onPress={handleShareToGroup}>
+        <Text style={styles.shareBtnText}>Share to Group</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity
         style={styles.deleteBtn}
         onPress={() => {
@@ -144,6 +184,43 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
         <Text style={styles.deleteBtnText}>Delete Coupon</Text>
       </TouchableOpacity>
     </ScrollView>
+
+    <Modal
+      visible={groupPickerVisible}
+      animationType="slide"
+      transparent
+      onRequestClose={() => setGroupPickerVisible(false)}
+    >
+      <TouchableOpacity
+        style={styles.pickerOverlay}
+        activeOpacity={1}
+        onPress={() => setGroupPickerVisible(false)}
+      >
+        <View style={styles.pickerSheet}>
+          <View style={styles.pickerHandle} />
+          <Text style={styles.pickerTitle}>Share to Group</Text>
+          <FlatList
+            data={groups}
+            keyExtractor={g => g.group_id}
+            style={styles.pickerList}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.pickerItem}
+                onPress={() => handleShareToGroupConfirm(item)}
+                disabled={sharingGroupId === item.group_id}
+              >
+                {sharingGroupId === item.group_id ? (
+                  <ActivityIndicator color="#E8604C" />
+                ) : (
+                  <Text style={styles.pickerItemText}>👥  {item.name}</Text>
+                )}
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </TouchableOpacity>
+    </Modal>
+    </>
   );
 }
 
@@ -269,4 +346,52 @@ const styles = StyleSheet.create({
     borderColor: '#E8604C',
   },
   deleteBtnText: { color: '#E8604C', fontSize: 15, fontWeight: '600' },
+  shareBtn: {
+    borderRadius: 30,
+    paddingVertical: 15,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E8604C',
+    marginBottom: 12,
+  },
+  shareBtnText: { color: '#E8604C', fontSize: 15, fontWeight: '700' },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(26,35,50,0.5)',
+    justifyContent: 'flex-end',
+  },
+  pickerSheet: {
+    backgroundColor: '#F5F0E6',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 40,
+    maxHeight: '60%',
+  },
+  pickerHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#C4B8A0',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  pickerTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1A2332',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  pickerList: { flexGrow: 0 },
+  pickerItem: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+  },
+  pickerItemText: {
+    fontSize: 16,
+    color: '#1A2332',
+    textAlign: 'center',
+  },
 });
