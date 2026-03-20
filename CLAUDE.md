@@ -45,4 +45,5 @@ Login/Register · Home (coupon list, search, filters) · Coupon Detail (QR/barco
 ## Claude Rules
 - Suggest a commit after each meaningful completed change (new component, new route, bug fix, refactor).
 - When architecture, tech decisions, schema, or features change, update this file immediately.
+- Update `PROJECT_SUMMARY.md` when meaningful progress is made (new feature complete, significant refactor, tech decision finalized).
 - Keep this file directive and token-minimal: no prose explanations, no bash blocks, no rationale. Directives only.
