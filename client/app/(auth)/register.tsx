@@ -30,8 +30,8 @@ export default function RegisterScreen() {
       return;
     }
     if (password !== confirm) return;
-    if (password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
-      Alert.alert('Weak password', 'Password must be at least 8 characters and include uppercase, lowercase, and a number.');
+    if (password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+      Alert.alert('Weak password', 'Password must be at least 8 characters and include uppercase, lowercase, a number, and a symbol.');
       return;
     }
 
@@ -109,7 +109,7 @@ export default function RegisterScreen() {
           </Text>
         )}
 
-        <TouchableOpacity style={styles.btn} onPress={handleRegister} disabled={loading}>
+        <TouchableOpacity style={styles.btn} onPress={handleRegister} disabled={loading || (confirm.length > 0 && password !== confirm)}>
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
