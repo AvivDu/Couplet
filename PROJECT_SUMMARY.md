@@ -1,7 +1,7 @@
 # Couplet — Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-02-27
+**Last updated:** 2026-03-21
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device — the server holds metadata only.
 
@@ -19,10 +19,14 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 ## What's Done & Working
 
 ### Auth
-- [x] Register with email, username, password (bcrypt hashed, JWT returned)
-- [x] Login with email + password → JWT stored in secure device storage (`expo-secure-store`)
+- [x] Register with email, username, password via **AWS Cognito** (client calls Cognito directly)
+- [x] Login with email + password → Cognito access token stored in `expo-secure-store`
+- [x] Server verifies Cognito JWTs via `aws-jwt-verify` (no IAM credentials on server)
+- [x] `POST /auth/sync` — creates user metadata record in DB after registration
+- [x] `GET /auth/me` — returns user metadata on login
 - [x] Auth guard: unauthenticated users redirected to Welcome screen
 - [x] Logout clears token and redirects to auth flow
+- [x] Password strength validation (8+ chars, uppercase, lowercase, number, symbol) with real-time match indicator
 
 ### Coupon Management (Client)
 - [x] Add new coupon — name, code, category, expiration date, balance
@@ -40,7 +44,7 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] "About" modal accessible from the Add screen (app version, team credits)
 
 ### Coupon Management (Server)
-- [x] Coupon metadata synced to MongoDB (category, store_name, expiration_date, balance, status)
+- [x] Coupon metadata synced to **AWS DynamoDB** (category, store_name, expiration_date, balance, status)
 - [x] GET, POST, PATCH, DELETE endpoints for coupons (owner-only, auth-protected)
 - [x] Auth middleware protects all coupon routes
 
@@ -71,8 +75,9 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 
 ### Infrastructure
 - [x] Node.js + Express server
-- [x] MongoDB via Mongoose (User, Coupon, Group schemas)
-- [x] JWT auth (30-day expiry)
+- [x] **AWS DynamoDB** via `@aws-sdk/lib-dynamodb` Document Client (Users, Coupons, Groups tables)
+- [x] **AWS Cognito** for auth (User Pool: `us-east-1_gVgsfA5EG`, PreSignUp Lambda for auto-confirm)
+- ⚠️ **Learner Lab credentials expire every 4 hours.** At the start of each lab session, go to Vocareum → AWS Details → Show, and update `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN` in `server/.env`. Without this the server cannot reach DynamoDB.
 - [x] CORS enabled on server
 - [x] `.env.example` files for both client and server
 - [x] TypeScript on both client and server
@@ -89,7 +94,7 @@ client/
     (auth)/
       welcome.tsx         — splash, logo, CTA
       login.tsx           — underline inputs + coral button
-      register.tsx        — same
+      register.tsx        — same, with password strength hint + match indicator
     (tabs)/
       _layout.tsx         — tab bar config (3 tabs: index, add, connections)
       index.tsx           — My Coupons: list, FAB, category filter, pull-to-refresh
@@ -101,17 +106,20 @@ client/
     GroupCard.tsx         — group summary card (name, member count, admin badge)
     GroupDetail.tsx       — members list + shared coupons + add/remove/revoke
   context/
-    AuthContext.tsx       — JWT storage, user state, login/logout
+    AuthContext.tsx       — token storage, user state, login/logout
   services/
-    api.ts                — all HTTP calls (coupons + groups + user search)
+    api.ts                — all HTTP calls (coupons + groups + user search + auth sync)
+    cognito.ts            — Cognito signUp/signIn via amazon-cognito-identity-js
   storage/
     couponStorage.ts      — AsyncStorage helpers for codes and images
 
 server/src/
   index.ts                — Express app setup, route registration
-  db.ts                   — Mongoose models + db helper functions (User, Coupon, Group)
+  db.ts                   — DynamoDB Document Client + all db helper functions
+  middleware/
+    auth.ts               — Cognito JWT verification via aws-jwt-verify
   routes/
-    auth.ts               — POST /auth/register, POST /auth/login
+    auth.ts               — POST /auth/sync, GET /auth/me
     coupons.ts            — CRUD for coupon metadata (auth-protected)
     groups.ts             — CRUD for groups + members + coupon sharing (auth-protected)
     users.ts              — GET /users/search
@@ -124,7 +132,7 @@ server/src/
 ### Core Features
 
 - [ ] **P2P coupon transfer** — Share the actual coupon code (and image) directly device-to-device via WebRTC. Currently group members only see *metadata* (store name, category, expiry). The secret code never leaves the owner's device. This is needed before sharing is truly useful end-to-end.
-- [ ] **Expiration notifications** — Server should check expiration dates and fire FCM push notifications before coupons expire. No notification logic exists yet (no FCM setup, no cron/scheduler on the server).
+- [ ] **Expiration notifications** — Server should check expiration dates and fire push notifications before coupons expire via **AWS SNS** (Phase 3).
 - [ ] **Coupon code type selector** — When adding a coupon, let users specify: text code / barcode / QR code, so the detail screen can render it appropriately.
 - [ ] **Group admin transfer** — Allow admin to hand off the admin role to another member. Currently admin is fixed at creation.
 - [ ] **Leave group** — Let non-admin members leave a group themselves. Currently only admin can remove members.
@@ -140,10 +148,10 @@ server/src/
 
 ### Security & Polish
 
-- [ ] **Token expiry handling** — JWT is 30 days. Add 401 catch-all in the API client to redirect to login instead of silent failure.
-- [ ] **Rate limiting** — Add `express-rate-limit` to auth endpoints (login/register) to prevent brute-force.
+- [ ] **Token expiry handling** — Cognito access tokens expire in 1 hour. Add 401 catch-all in the API client to redirect to login instead of silent failure.
+- [ ] **Rate limiting** — Add `express-rate-limit` to auth endpoints to prevent brute-force.
 - [ ] **Input validation on server** — Some routes lack validation (balance should be ≥ 0, status should be enum-checked). Add `zod` or `express-validator`.
-- [ ] **Production deploy** — Server needs hosting (Render / Railway / Fly.io), production MongoDB Atlas cluster, and client `EXPO_PUBLIC_API_URL` updated.
+- [ ] **Production deploy** — Server needs hosting, and client `EXPO_PUBLIC_API_URL` updated.
 
 ### Future / Optional
 

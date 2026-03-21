@@ -1,3 +1,13 @@
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import {
+  DynamoDBDocumentClient,
+  GetCommand,
+  PutCommand,
+  UpdateCommand,
+  DeleteCommand,
+  ScanCommand,
+} from '@aws-sdk/lib-dynamodb';
+
 // ── Interfaces ────────────────────────────────────────────────────────────
 
 export interface User {
@@ -28,108 +38,193 @@ export interface Group {
   created_at: string;
 }
 
-// ── In-memory store ───────────────────────────────────────────────────────
+// ── DynamoDB client ───────────────────────────────────────────────────────
 
-const users   = new Map<string, User>();
-const coupons = new Map<string, Coupon>();
-const groups  = new Map<string, Group>();
+const client = new DynamoDBClient({ region: process.env.AWS_REGION ?? 'us-east-1' });
+const ddb = DynamoDBDocumentClient.from(client);
+
+const USERS_TABLE   = process.env.DYNAMODB_USERS_TABLE!;
+const COUPONS_TABLE = process.env.DYNAMODB_COUPONS_TABLE!;
+const GROUPS_TABLE  = process.env.DYNAMODB_GROUPS_TABLE!;
 
 // ── DB functions ──────────────────────────────────────────────────────────
 
 export const db = {
   // Users
   async findUserByEmail(email: string): Promise<User | null> {
-    for (const u of users.values()) {
-      if (u.email === email) return u;
-    }
-    return null;
+    const result = await ddb.send(new ScanCommand({
+      TableName: USERS_TABLE,
+      FilterExpression: 'email = :email',
+      ExpressionAttributeValues: { ':email': email },
+    }));
+    return (result.Items?.[0] as User) ?? null;
   },
+
   async findUserById(id: string): Promise<User | null> {
-    return users.get(id) ?? null;
+    const result = await ddb.send(new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { user_id: id },
+    }));
+    return (result.Item as User) ?? null;
   },
+
   async insertUser(user: User): Promise<void> {
-    users.set(user.user_id, user);
+    await ddb.send(new PutCommand({ TableName: USERS_TABLE, Item: user }));
   },
+
   async findUsersByQuery(query: string): Promise<User[]> {
+    const result = await ddb.send(new ScanCommand({ TableName: USERS_TABLE }));
     const q = query.toLowerCase();
-    const results: User[] = [];
-    for (const u of users.values()) {
-      if (u.email.toLowerCase().includes(q) || u.username.toLowerCase().includes(q)) {
-        results.push(u);
-        if (results.length >= 10) break;
-      }
-    }
-    return results;
+    return (result.Items as User[] ?? [])
+      .filter(u => u.email.toLowerCase().includes(q) || u.username.toLowerCase().includes(q))
+      .slice(0, 10);
   },
 
   // Coupons
   async getCouponsByOwner(ownerId: string): Promise<Coupon[]> {
-    return [...coupons.values()]
-      .filter(c => c.owner_id === ownerId)
+    const result = await ddb.send(new ScanCommand({
+      TableName: COUPONS_TABLE,
+      FilterExpression: 'owner_id = :ownerId',
+      ExpressionAttributeValues: { ':ownerId': ownerId },
+    }));
+    return (result.Items as Coupon[] ?? [])
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
   },
+
   async getCouponById(id: string): Promise<Coupon | null> {
-    return coupons.get(id) ?? null;
+    const result = await ddb.send(new GetCommand({
+      TableName: COUPONS_TABLE,
+      Key: { coupon_id: id },
+    }));
+    return (result.Item as Coupon) ?? null;
   },
+
   async insertCoupon(coupon: Coupon): Promise<void> {
-    coupons.set(coupon.coupon_id, coupon);
+    await ddb.send(new PutCommand({ TableName: COUPONS_TABLE, Item: coupon }));
   },
+
   async updateCoupon(id: string, ownerId: string, fields: Partial<Coupon>): Promise<Coupon | null> {
-    const coupon = coupons.get(id);
-    if (!coupon || coupon.owner_id !== ownerId) return null;
-    const updated = { ...coupon, ...fields };
-    coupons.set(id, updated);
-    return updated;
+    const existing = await db.getCouponById(id);
+    if (!existing || existing.owner_id !== ownerId) return null;
+
+    const entries = Object.entries(fields).filter(([k]) => k !== 'coupon_id');
+    if (entries.length === 0) return existing;
+
+    const updateExpr = 'SET ' + entries.map((_, i) => `#f${i} = :v${i}`).join(', ');
+    const exprNames: Record<string, string> = {};
+    const exprValues: Record<string, unknown> = {};
+    entries.forEach(([k, v], i) => { exprNames[`#f${i}`] = k; exprValues[`:v${i}`] = v; });
+
+    const result = await ddb.send(new UpdateCommand({
+      TableName: COUPONS_TABLE,
+      Key: { coupon_id: id },
+      UpdateExpression: updateExpr,
+      ExpressionAttributeNames: exprNames,
+      ExpressionAttributeValues: exprValues,
+      ReturnValues: 'ALL_NEW',
+    }));
+    return result.Attributes as Coupon;
   },
+
   async deleteCoupon(id: string, ownerId: string): Promise<boolean> {
-    const coupon = coupons.get(id);
-    if (!coupon || coupon.owner_id !== ownerId) return false;
-    coupons.delete(id);
+    const existing = await db.getCouponById(id);
+    if (!existing || existing.owner_id !== ownerId) return false;
+    await ddb.send(new DeleteCommand({ TableName: COUPONS_TABLE, Key: { coupon_id: id } }));
     return true;
   },
 
   // Groups
   async createGroup(group: Group): Promise<void> {
-    groups.set(group.group_id, group);
+    await ddb.send(new PutCommand({ TableName: GROUPS_TABLE, Item: group }));
   },
+
   async getGroupsByUser(userId: string): Promise<Group[]> {
-    return [...groups.values()]
-      .filter(g => g.user_id_list.includes(userId))
+    const result = await ddb.send(new ScanCommand({
+      TableName: GROUPS_TABLE,
+      FilterExpression: 'contains(user_id_list, :userId)',
+      ExpressionAttributeValues: { ':userId': userId },
+    }));
+    return (result.Items as Group[] ?? [])
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
   },
+
   async getGroupById(id: string): Promise<Group | null> {
-    return groups.get(id) ?? null;
+    const result = await ddb.send(new GetCommand({
+      TableName: GROUPS_TABLE,
+      Key: { group_id: id },
+    }));
+    return (result.Item as Group) ?? null;
   },
+
   async addMemberToGroup(groupId: string, userId: string): Promise<Group | null> {
-    const group = groups.get(groupId);
+    const group = await db.getGroupById(groupId);
     if (!group) return null;
-    if (!group.user_id_list.includes(userId)) group.user_id_list.push(userId);
-    return group;
+    if (group.user_id_list.includes(userId)) return group;
+    const result = await ddb.send(new UpdateCommand({
+      TableName: GROUPS_TABLE,
+      Key: { group_id: groupId },
+      UpdateExpression: 'SET user_id_list = list_append(user_id_list, :u)',
+      ExpressionAttributeValues: { ':u': [userId] },
+      ReturnValues: 'ALL_NEW',
+    }));
+    return result.Attributes as Group;
   },
+
   async removeMemberFromGroup(groupId: string, userId: string, adminId: string): Promise<Group | null> {
-    const group = groups.get(groupId);
+    const group = await db.getGroupById(groupId);
     if (!group || group.admin_user_id !== adminId) return null;
-    group.user_id_list = group.user_id_list.filter(id => id !== userId);
-    return group;
+    const newList = group.user_id_list.filter(id => id !== userId);
+    const result = await ddb.send(new UpdateCommand({
+      TableName: GROUPS_TABLE,
+      Key: { group_id: groupId },
+      UpdateExpression: 'SET user_id_list = :list',
+      ExpressionAttributeValues: { ':list': newList },
+      ReturnValues: 'ALL_NEW',
+    }));
+    return result.Attributes as Group;
   },
+
   async addCouponToGroup(groupId: string, couponId: string): Promise<Group | null> {
-    const group = groups.get(groupId);
+    const group = await db.getGroupById(groupId);
     if (!group) return null;
-    if (!group.coupon_id_list.includes(couponId)) group.coupon_id_list.push(couponId);
-    return group;
+    if (group.coupon_id_list.includes(couponId)) return group;
+    const result = await ddb.send(new UpdateCommand({
+      TableName: GROUPS_TABLE,
+      Key: { group_id: groupId },
+      UpdateExpression: 'SET coupon_id_list = list_append(coupon_id_list, :c)',
+      ExpressionAttributeValues: { ':c': [couponId] },
+      ReturnValues: 'ALL_NEW',
+    }));
+    return result.Attributes as Group;
   },
+
   async removeCouponFromGroup(groupId: string, couponId: string): Promise<Group | null> {
-    const group = groups.get(groupId);
+    const group = await db.getGroupById(groupId);
     if (!group) return null;
-    group.coupon_id_list = group.coupon_id_list.filter(id => id !== couponId);
-    return group;
+    const newList = group.coupon_id_list.filter(id => id !== couponId);
+    const result = await ddb.send(new UpdateCommand({
+      TableName: GROUPS_TABLE,
+      Key: { group_id: groupId },
+      UpdateExpression: 'SET coupon_id_list = :list',
+      ExpressionAttributeValues: { ':list': newList },
+      ReturnValues: 'ALL_NEW',
+    }));
+    return result.Attributes as Group;
   },
+
   async removeCouponsByOwnerFromGroup(groupId: string, ownerId: string): Promise<void> {
-    const group = groups.get(groupId);
+    const group = await db.getGroupById(groupId);
     if (!group) return;
-    group.coupon_id_list = group.coupon_id_list.filter(cid => {
-      const c = coupons.get(cid);
+    const couponChecks = await Promise.all(group.coupon_id_list.map(cid => db.getCouponById(cid)));
+    const newList = group.coupon_id_list.filter((_, i) => {
+      const c = couponChecks[i];
       return !c || c.owner_id !== ownerId;
     });
+    await ddb.send(new UpdateCommand({
+      TableName: GROUPS_TABLE,
+      Key: { group_id: groupId },
+      UpdateExpression: 'SET coupon_id_list = :list',
+      ExpressionAttributeValues: { ':list': newList },
+    }));
   },
 };
