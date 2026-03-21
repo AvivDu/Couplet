@@ -1,62 +1,46 @@
-import { Router, Request, Response } from 'express';
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
-import { v4 as uuidv4 } from 'uuid';
+import { Router, Response } from 'express';
 import { db } from '../db';
-import { JWT_SECRET } from '../middleware/auth';
+import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
-router.post('/register', async (req: Request, res: Response): Promise<void> => {
-  const { email, username, password } = req.body;
+// Called by the client immediately after Cognito registration.
+// The client already has a valid Cognito access token at this point.
+// We create the user metadata record in our DB using the verified sub as user_id.
+router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
+  const { email, username } = req.body;
 
-  if (!email || !username || !password) {
-    res.status(400).json({ error: 'email, username, and password are required' });
+  if (!email || !username) {
+    res.status(400).json({ error: 'email and username are required' });
     return;
   }
 
-  if (await db.findUserByEmail(email)) {
-    res.status(409).json({ error: 'Email already registered' });
+  const existing = await db.findUserById(req.userId!);
+  if (existing) {
+    // Already synced (e.g. re-registration attempt) — return existing record
+    res.json({ userId: existing.user_id, username: existing.username, email: existing.email });
     return;
   }
-
-  const passwordHash = await bcrypt.hash(password, 10);
-  const userId = uuidv4();
 
   await db.insertUser({
-    user_id: userId,
+    user_id: req.userId!,
     email,
     username,
-    password_hash: passwordHash,
+    password_hash: '',
     created_at: new Date().toISOString(),
   });
 
-  const token = jwt.sign({ userId }, JWT_SECRET, { expiresIn: '30d' });
-  res.status(201).json({ token, userId, username, email });
+  res.status(201).json({ userId: req.userId!, username, email });
 });
 
-router.post('/login', async (req: Request, res: Response): Promise<void> => {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    res.status(400).json({ error: 'email and password are required' });
-    return;
-  }
-
-  const user = await db.findUserByEmail(email);
+// Called by the client after Cognito login to fetch user metadata from our DB.
+router.get('/me', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
+  const user = await db.findUserById(req.userId!);
   if (!user) {
-    res.status(401).json({ error: 'Invalid email or password' });
+    res.status(404).json({ error: 'User not found' });
     return;
   }
-
-  const valid = await bcrypt.compare(password, user.password_hash);
-  if (!valid) {
-    res.status(401).json({ error: 'Invalid email or password' });
-    return;
-  }
-
-  const token = jwt.sign({ userId: user.user_id }, JWT_SECRET, { expiresIn: '30d' });
-  res.json({ token, userId: user.user_id, username: user.username, email: user.email });
+  res.json({ userId: user.user_id, username: user.username, email: user.email });
 });
 
 export default router;

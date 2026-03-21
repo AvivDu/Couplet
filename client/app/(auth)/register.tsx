@@ -29,12 +29,9 @@ export default function RegisterScreen() {
       Alert.alert('Missing fields', 'Please fill in all fields.');
       return;
     }
-    if (password !== confirm) {
-      Alert.alert('Password mismatch', 'Passwords do not match.');
-      return;
-    }
-    if (password.length < 6) {
-      Alert.alert('Weak password', 'Password must be at least 6 characters.');
+    if (password !== confirm) return;
+    if (password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+      Alert.alert('Weak password', 'Password must be at least 8 characters and include uppercase, lowercase, and a number.');
       return;
     }
 
@@ -48,7 +45,7 @@ export default function RegisterScreen() {
       });
       router.replace('/(tabs)');
     } catch (err: any) {
-      const msg = err?.response?.data?.error ?? 'Something went wrong. Please try again.';
+      const msg = err?.message ?? err?.response?.data?.error ?? 'Something went wrong. Please try again.';
       Alert.alert('Registration failed', msg);
     } finally {
       setLoading(false);
@@ -95,6 +92,7 @@ export default function RegisterScreen() {
             onChangeText={setPassword}
           />
         </View>
+        <Text style={styles.hint}>Min 8 characters · uppercase · lowercase · number· symbol</Text>
         <View style={styles.inputWrap}>
           <TextInput
             style={styles.input}
@@ -105,6 +103,11 @@ export default function RegisterScreen() {
             onChangeText={setConfirm}
           />
         </View>
+        {confirm.length > 0 && (
+          <Text style={[styles.hint, { color: password === confirm ? '#4CAF50' : '#E8604C' }]}>
+            {password === confirm ? 'Passwords match' : 'Passwords do not match'}
+          </Text>
+        )}
 
         <TouchableOpacity style={styles.btn} onPress={handleRegister} disabled={loading}>
           {loading ? (
@@ -164,4 +167,5 @@ const styles = StyleSheet.create({
   linkBtn: { alignItems: 'center' },
   linkText: { color: '#1A2332', fontSize: 14, opacity: 0.6 },
   linkBold: { color: '#E8604C', fontWeight: '700', opacity: 1 },
+  hint: { fontSize: 12, color: '#A8997A', marginBottom: 16, marginTop: -16 },
 });

@@ -31,6 +31,7 @@ export default function HomeScreen() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const load = useCallback(async () => {
+    if (!user) return;
     try {
       const { data } = await getCoupons();
       setCoupons(data);

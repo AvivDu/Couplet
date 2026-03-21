@@ -2,6 +2,7 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { cognitoSignUp, cognitoSignIn } from './cognito';
 
 function resolveBaseUrl() {
   if (process.env.EXPO_PUBLIC_API_URL) {
@@ -39,11 +40,24 @@ api.interceptors.request.use(async config => {
 });
 
 // Auth
-export const register = (email: string, username: string, password: string) =>
-  api.post('/auth/register', { email, username, password });
+// Tells the server to create the user metadata record after Cognito registration.
+// Must be called with a valid Cognito access token already in SecureStore.
+const syncUser = (email: string, username: string) =>
+  api.post<{ userId: string; username: string; email: string }>('/auth/sync', { email, username });
 
-export const login = (email: string, password: string) =>
-  api.post('/auth/login', { email, password });
+export async function register(email: string, username: string, password: string) {
+  const token = await cognitoSignUp(email, password, username);
+  await SecureStore.setItemAsync('authToken', token);
+  const { data } = await syncUser(email, username);
+  return { data: { token, ...data } };
+}
+
+export async function login(email: string, password: string) {
+  const token = await cognitoSignIn(email, password);
+  await SecureStore.setItemAsync('authToken', token);
+  const { data } = await api.get<{ userId: string; username: string; email: string }>('/auth/me');
+  return { data: { token, ...data } };
+}
 
 // Coupons (metadata only)
 export interface CouponMeta {
