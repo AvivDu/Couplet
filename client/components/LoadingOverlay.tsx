@@ -20,7 +20,7 @@ export default function LoadingOverlay({ visible }: { visible: boolean }) {
     setPhraseIndex(Math.floor(Math.random() * PHRASES.length));
     const interval = setInterval(() => {
       setPhraseIndex(i => (i + 1) % PHRASES.length);
-    }, 2000);
+    }, 600);
     return () => clearInterval(interval);
   }, [visible]);
 

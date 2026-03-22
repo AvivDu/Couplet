@@ -39,6 +39,16 @@ export function cognitoSignIn(email: string, password: string): Promise<string> 
     const user = new CognitoUser({ Username: email, Pool: userPool });
     const authDetails = new AuthenticationDetails({ Username: email, Password: password });
 
+    // CURRENT: SRP (Secure Remote Password) — more secure.
+    // The password never leaves the device; only a mathematical proof is sent to Cognito.
+    // Downside: heavy BigInt computation (~9-11s on device) blocks the JS thread.
+    //
+    // TO SWITCH TO FASTER (USER_PASSWORD_AUTH):
+    //   1. AWS Cognito Console → User Pool → App Client → enable ALLOW_USER_PASSWORD_AUTH
+    //   2. Uncomment the line below:
+    //      user.setAuthenticationFlowType('USER_PASSWORD_AUTH');
+    //   Trade-off: password is sent in plaintext to Cognito (still protected by TLS, but
+    //   strictly less secure than SRP). Login drops from ~12s to ~1-2s.
     user.authenticateUser(authDetails, {
       onSuccess: (session) => resolve(session.getAccessToken().getJwtToken()),
       onFailure: reject,
