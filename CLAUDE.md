@@ -14,7 +14,7 @@ Server coordinates P2P sessions but never relays coupon data.
 | Auth | AWS Cognito (issues JWTs for all API calls) |
 | Notifications | AWS SNS |
 | P2P | WebRTC (TBD) |
-| Database | AWS DynamoDB (TBD) |
+| Database | AWS DynamoDB |
 
 ## Data Model
 **Server — Users:** `user_id, email, user_name, password_hash, created_at, coupon_id_list`
