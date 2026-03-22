@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { setTokenCache } from '../services/api';
 
 interface AuthUser {
   userId: string;
@@ -25,9 +26,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const storedToken = await SecureStore.getItemAsync('authToken');
-        const storedUser = await SecureStore.getItemAsync('authUser');
+        const [storedToken, storedUser] = await Promise.all([
+          SecureStore.getItemAsync('authToken'),
+          SecureStore.getItemAsync('authUser'),
+        ]);
         if (storedToken && storedUser) {
+          setTokenCache(storedToken);
           setToken(storedToken);
           setUser(JSON.parse(storedUser) as AuthUser);
         }
@@ -38,15 +42,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   async function signIn(newToken: string, newUser: AuthUser) {
-    await SecureStore.setItemAsync('authToken', newToken);
-    await SecureStore.setItemAsync('authUser', JSON.stringify(newUser));
+    await Promise.all([
+      SecureStore.setItemAsync('authToken', newToken),
+      SecureStore.setItemAsync('authUser', JSON.stringify(newUser)),
+    ]);
     setToken(newToken);
     setUser(newUser);
   }
 
   async function signOut() {
-    await SecureStore.deleteItemAsync('authToken');
-    await SecureStore.deleteItemAsync('authUser');
+    setTokenCache(null);
+    await Promise.all([
+      SecureStore.deleteItemAsync('authToken'),
+      SecureStore.deleteItemAsync('authUser'),
+    ]);
     setToken(null);
     setUser(null);
   }
