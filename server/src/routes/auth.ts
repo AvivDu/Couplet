@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { db } from '../db';
+import { findUserById, insertUser } from '../repositories/users';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -15,14 +15,14 @@ router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response): Pr
     return;
   }
 
-  const existing = await db.findUserById(req.userId!);
+  const existing = await findUserById(req.userId!);
   if (existing) {
     // Already synced (e.g. re-registration attempt) — return existing record
     res.json({ userId: existing.user_id, username: existing.username, email: existing.email });
     return;
   }
 
-  await db.insertUser({
+  await insertUser({
     user_id: req.userId!,
     email,
     username,
@@ -35,7 +35,7 @@ router.post('/sync', authMiddleware, async (req: AuthRequest, res: Response): Pr
 
 // Called by the client after Cognito login to fetch user metadata from our DB.
 router.get('/me', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
-  const user = await db.findUserById(req.userId!);
+  const user = await findUserById(req.userId!);
   if (!user) {
     res.status(404).json({ error: 'User not found' });
     return;

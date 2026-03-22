@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { db } from '../db';
+import { findUsersByQuery } from '../repositories/users';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -14,7 +14,7 @@ router.get('/search', async (req: AuthRequest, res: Response): Promise<void> => 
     return;
   }
 
-  const users = await db.findUsersByQuery(q);
+  const users = await findUsersByQuery(q);
   const results = users
     .filter(u => u.user_id !== req.userId!)
     .map(u => ({ user_id: u.user_id, username: u.username, email: u.email }));

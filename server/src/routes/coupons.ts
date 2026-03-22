@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { db } from '../db';
+import { getCouponsByOwner, getCouponById, insertCoupon, updateCoupon, deleteCoupon } from '../repositories/coupons';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -8,7 +8,7 @@ const router = Router();
 router.use(authMiddleware);
 
 router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
-  const coupons = await db.getCouponsByOwner(req.userId!);
+  const coupons = await getCouponsByOwner(req.userId!);
   res.json(coupons);
 });
 
@@ -31,7 +31,7 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
     created_at: new Date().toISOString(),
   };
 
-  await db.insertCoupon(coupon);
+  await insertCoupon(coupon);
   res.status(201).json(coupon);
 });
 
@@ -52,7 +52,7 @@ router.patch('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   if (balance !== undefined) fields.balance = balance;
   if (status !== undefined) fields.status = status;
 
-  const updated = await db.updateCoupon(req.params.id, req.userId!, fields);
+  const updated = await updateCoupon(req.params.id, req.userId!, fields);
   if (!updated) {
     res.status(404).json({ error: 'Coupon not found' });
     return;
@@ -62,7 +62,7 @@ router.patch('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
 });
 
 router.delete('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
-  const deleted = await db.deleteCoupon(req.params.id, req.userId!);
+  const deleted = await deleteCoupon(req.params.id, req.userId!);
   if (!deleted) {
     res.status(404).json({ error: 'Coupon not found' });
     return;
