@@ -6,9 +6,13 @@ const PHRASES = [
   'Clipping your savings...',
   'Unlocking your coupons...',
   'Checking the price tags...',
+  'Roni = Candy',
+  'Doron = Strech',
+  'Aviv = King',
   'Securing your wallet...',
   'Finding your discounts...',
   'Loading your rewards...',
+  'More awesome features coming soon!',
   'Almost there...',
 ];
 
@@ -20,7 +24,7 @@ export default function LoadingOverlay({ visible }: { visible: boolean }) {
     setPhraseIndex(Math.floor(Math.random() * PHRASES.length));
     const interval = setInterval(() => {
       setPhraseIndex(i => (i + 1) % PHRASES.length);
-    }, 600);
+    }, 500);
     return () => clearInterval(interval);
   }, [visible]);
 
