@@ -31,22 +31,26 @@ export const BASE_URL = resolveBaseUrl();
 
 const api = axios.create({ baseURL: BASE_URL });
 
+// In-memory token cache — avoids a SecureStore disk read on every API call.
+// Populated on first interceptor miss, explicitly set on login/register, cleared on signOut.
+let tokenCache: string | null = null;
+export function setTokenCache(token: string | null) { tokenCache = token; }
+
 api.interceptors.request.use(async config => {
-  const token = await SecureStore.getItemAsync('authToken');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (tokenCache === null) {
+    tokenCache = await SecureStore.getItemAsync('authToken');
   }
+  if (tokenCache) config.headers.Authorization = `Bearer ${tokenCache}`;
   return config;
 });
 
 // Auth
-// Tells the server to create the user metadata record after Cognito registration.
-// Must be called with a valid Cognito access token already in SecureStore.
 const syncUser = (email: string, username: string) =>
   api.post<{ userId: string; username: string; email: string }>('/auth/sync', { email, username });
 
 export async function register(email: string, username: string, password: string) {
   const token = await cognitoSignUp(email, password, username);
+  setTokenCache(token);
   await SecureStore.setItemAsync('authToken', token);
   const { data } = await syncUser(email, username);
   return { data: { token, ...data } };
@@ -54,8 +58,15 @@ export async function register(email: string, username: string, password: string
 
 export async function login(email: string, password: string) {
   const token = await cognitoSignIn(email, password);
-  await SecureStore.setItemAsync('authToken', token);
-  const { data } = await api.get<{ userId: string; username: string; email: string }>('/auth/me');
+  setTokenCache(token);
+  // Persist token and fetch user metadata in parallel — the network call
+  // uses the token directly so it doesn't depend on the disk write completing.
+  const [, { data }] = await Promise.all([
+    SecureStore.setItemAsync('authToken', token),
+    api.get<{ userId: string; username: string; email: string }>('/auth/me',
+      { headers: { Authorization: `Bearer ${token}` } }
+    ),
+  ]);
   return { data: { token, ...data } };
 }
 

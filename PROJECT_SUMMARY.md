@@ -146,6 +146,11 @@ server/src/
 - [ ] **Expired coupon auto-update** — Status stays `active` until manually changed. Add a check (client-side on load, or server cron) to flip status to `expired` automatically.
 - [ ] **Group coupon count accuracy** — `coupon_id_list.length` may include revoked or deleted coupons. Ensure the count shown on GroupCard reflects only active shared coupons.
 
+### Auth
+
+- [ ] **Forgot password** — "Forgot password?" link on login screen → user enters email → Cognito sends reset code → user enters code + new password. Uses `forgotPassword()` + `confirmPassword()` from `amazon-cognito-identity-js`.
+- [ ] **Change password** — Option in settings/profile for logged-in users to change their password. Uses `changePassword()` with old + new password (no email code needed).
+
 ### Security & Polish
 
 - [ ] **Token expiry handling** — Cognito access tokens expire in 1 hour. Add 401 catch-all in the API client to redirect to login instead of silent failure.

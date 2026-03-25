@@ -8,18 +8,20 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
   Alert,
   ScrollView,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { register } from '../../services/api';
+import LoadingOverlay from '../../components/LoadingOverlay';
 
 export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
   const router = useRouter();
@@ -53,79 +55,88 @@ export default function RegisterScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>Sign Up</Text>
-        <Text style={styles.subtitle}>Create your Couplet account</Text>
+    <>
+      <LoadingOverlay visible={loading} />
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
+          <Text style={styles.title}>Sign Up</Text>
+          <Text style={styles.subtitle}>Create your Couplet account</Text>
 
-        <View style={styles.inputWrap}>
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor="#A8997A"
-            autoCapitalize="none"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
-          />
-        </View>
-        <View style={styles.inputWrap}>
-          <TextInput
-            style={styles.input}
-            placeholder="Username"
-            placeholderTextColor="#A8997A"
-            autoCapitalize="none"
-            value={username}
-            onChangeText={setUsername}
-          />
-        </View>
-        <View style={styles.inputWrap}>
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor="#A8997A"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
-        </View>
-        <Text style={styles.hint}>Min 8 characters · uppercase · lowercase · number· symbol</Text>
-        <View style={styles.inputWrap}>
-          <TextInput
-            style={styles.input}
-            placeholder="Confirm password"
-            placeholderTextColor="#A8997A"
-            secureTextEntry
-            value={confirm}
-            onChangeText={setConfirm}
-          />
-        </View>
-        {confirm.length > 0 && (
-          <Text style={[styles.hint, { color: password === confirm ? '#4CAF50' : '#E8604C' }]}>
-            {password === confirm ? 'Passwords match' : 'Passwords do not match'}
-          </Text>
-        )}
-
-        <TouchableOpacity style={styles.btn} onPress={handleRegister} disabled={loading || (confirm.length > 0 && password !== confirm)}>
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.btnText}>Create Account</Text>
-          )}
-        </TouchableOpacity>
-
-        <Link href="/(auth)/login" asChild>
-          <TouchableOpacity style={styles.linkBtn}>
-            <Text style={styles.linkText}>
-              Already have an account? <Text style={styles.linkBold}>Log in</Text>
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              placeholderTextColor="#A8997A"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+            />
+          </View>
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={styles.input}
+              placeholder="Username"
+              placeholderTextColor="#A8997A"
+              autoCapitalize="none"
+              value={username}
+              onChangeText={setUsername}
+            />
+          </View>
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={[styles.input, { paddingRight: 40 }]}
+              placeholder="Password"
+              placeholderTextColor="#A8997A"
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPassword}
+            />
+            <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword(v => !v)}>
+              <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color="#A8997A" />
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.hint}>Min 8 characters · uppercase · lowercase · number · symbol</Text>
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={[styles.input, { paddingRight: 40 }]}
+              placeholder="Confirm password"
+              placeholderTextColor="#A8997A"
+              secureTextEntry={!showPassword}
+              value={confirm}
+              onChangeText={setConfirm}
+            />
+            <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword(v => !v)}>
+              <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color="#A8997A" />
+            </TouchableOpacity>
+          </View>
+          {confirm.length > 0 && (
+            <Text style={[styles.hint, { color: password === confirm ? '#4CAF50' : '#E8604C' }]}>
+              {password === confirm ? 'Passwords match' : 'Passwords do not match'}
             </Text>
+          )}
+
+          <TouchableOpacity
+            style={styles.btn}
+            onPress={handleRegister}
+            disabled={loading || (confirm.length > 0 && password !== confirm)}
+          >
+            <Text style={styles.btnText}>Create Account</Text>
           </TouchableOpacity>
-        </Link>
-      </ScrollView>
-    </KeyboardAvoidingView>
+
+          <Link href="/(auth)/login" asChild>
+            <TouchableOpacity style={styles.linkBtn}>
+              <Text style={styles.linkText}>
+                Already have an account? <Text style={styles.linkBold}>Log in</Text>
+              </Text>
+            </TouchableOpacity>
+          </Link>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </>
   );
 }
 
@@ -155,6 +166,7 @@ const styles = StyleSheet.create({
     color: '#1A2332',
     backgroundColor: 'transparent',
   },
+  eyeBtn: { position: 'absolute', right: 0, bottom: 8 },
   btn: {
     backgroundColor: '#E8604C',
     borderRadius: 30,

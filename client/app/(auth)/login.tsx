@@ -8,15 +8,18 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
   Alert,
+  ScrollView,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { login } from '../../services/api';
+import LoadingOverlay from '../../components/LoadingOverlay';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
   const router = useRouter();
@@ -27,6 +30,7 @@ export default function LoginScreen() {
       return;
     }
     setLoading(true);
+    await new Promise(resolve => setTimeout(resolve, 0)); // yield JS thread so overlay renders before SRP computation starts
     try {
       const { data } = await login(email.trim().toLowerCase(), password);
       await signIn(data.token, {
@@ -44,59 +48,64 @@ export default function LoginScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <View style={styles.inner}>
-        <Text style={styles.title}>Log In</Text>
-        <Text style={styles.subtitle}>Good to see you again</Text>
+    <>
+      <LoadingOverlay visible={loading} />
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
+          <Text style={styles.title}>Log In</Text>
+          <Text style={styles.subtitle}>Good to see you again</Text>
 
-        <View style={styles.inputWrap}>
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor="#A8997A"
-            autoCapitalize="none"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
-          />
-        </View>
-        <View style={styles.inputWrap}>
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor="#A8997A"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
-        </View>
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={styles.input}
+              placeholder="Email"
+              placeholderTextColor="#A8997A"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
+              returnKeyType="next"
+            />
+          </View>
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={[styles.input, { paddingRight: 40 }]}
+              placeholder="Password"
+              placeholderTextColor="#A8997A"
+              secureTextEntry={!showPassword}
+              value={password}
+              onChangeText={setPassword}
+              returnKeyType="go"
+              onSubmitEditing={handleLogin}
+            />
+            <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword(v => !v)}>
+              <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color="#A8997A" />
+            </TouchableOpacity>
+          </View>
 
-        <TouchableOpacity style={styles.btn} onPress={handleLogin} disabled={loading}>
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
+          <TouchableOpacity style={styles.btn} onPress={handleLogin} disabled={loading}>
             <Text style={styles.btnText}>Log In</Text>
-          )}
-        </TouchableOpacity>
-
-        <Link href="/(auth)/register" asChild>
-          <TouchableOpacity style={styles.linkBtn}>
-            <Text style={styles.linkText}>
-              Don't have an account? <Text style={styles.linkBold}>Sign up</Text>
-            </Text>
           </TouchableOpacity>
-        </Link>
-      </View>
-    </KeyboardAvoidingView>
+
+          <Link href="/(auth)/register" asChild>
+            <TouchableOpacity style={styles.linkBtn}>
+              <Text style={styles.linkText}>
+                Don't have an account? <Text style={styles.linkBold}>Sign up</Text>
+              </Text>
+            </TouchableOpacity>
+          </Link>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F0E6' },
-  inner: { flex: 1, justifyContent: 'center', paddingHorizontal: 32 },
+  inner: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 32, paddingVertical: 40 },
   title: {
     fontSize: 32,
     fontWeight: '800',
@@ -120,6 +129,7 @@ const styles = StyleSheet.create({
     color: '#1A2332',
     backgroundColor: 'transparent',
   },
+  eyeBtn: { position: 'absolute', right: 0, bottom: 8 },
   btn: {
     backgroundColor: '#E8604C',
     borderRadius: 30,
