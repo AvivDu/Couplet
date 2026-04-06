@@ -99,7 +99,18 @@ router.get('/:id/locations', async (req: AuthRequest, res: Response): Promise<vo
   }
 
   const radiusMeters = Math.min(Number(radius) || 3000, 10000);
-  const center = { latitude: Number(lat), longitude: Number(lng) };
+  const userLat = Number(lat);
+  const userLng = Number(lng);
+  const center = { latitude: userLat, longitude: userLng };
+
+  function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
 
   // Use redeemable_stores if crawled, otherwise fall back to store_name
   const searchTerms = (coupon.redeemable_stores && coupon.redeemable_stores.length > 0)
@@ -123,25 +134,36 @@ router.get('/:id/locations', async (req: AuthRequest, res: Response): Promise<vo
       }),
     });
     const data = await res.json() as any;
-    return (data.places ?? []).map((place: any) => ({
-      name: place.displayName?.text ?? '',
-      address: place.formattedAddress ?? '',
-      lat: place.location?.latitude ?? null,
-      lng: place.location?.longitude ?? null,
-      openNow: place.currentOpeningHours?.openNow ?? null,
-      rating: place.rating ?? null,
-    }));
+    return (data.places ?? []).map((place: any) => {
+      const placeLat = place.location?.latitude ?? null;
+      const placeLng = place.location?.longitude ?? null;
+      const distanceKm = (placeLat !== null && placeLng !== null)
+        ? haversineKm(userLat, userLng, placeLat, placeLng)
+        : null;
+      return {
+        name: place.displayName?.text ?? '',
+        address: place.formattedAddress ?? '',
+        lat: placeLat,
+        lng: placeLng,
+        openNow: place.currentOpeningHours?.openNow ?? null,
+        rating: place.rating ?? null,
+        distanceKm,
+      };
+    });
   }
 
   const results = await Promise.all(searchTerms.map(searchPlaces));
 
-  // Flatten, deduplicate by address, cap at 15
+  // Flatten, deduplicate by address, sort by distance, cap at 15
   const seen = new Set<string>();
-  const locations = results.flat().filter(loc => {
-    if (seen.has(loc.address)) return false;
-    seen.add(loc.address);
-    return true;
-  }).slice(0, 15);
+  const locations = results.flat()
+    .filter(loc => {
+      if (seen.has(loc.address)) return false;
+      seen.add(loc.address);
+      return true;
+    })
+    .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity))
+    .slice(0, 15);
 
   console.log(`[locations] returning ${locations.length} locations`);
   res.json(locations);

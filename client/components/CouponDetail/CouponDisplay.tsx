@@ -281,6 +281,13 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
                     <Text style={styles.locationAddress}>{item.address}</Text>
                   </View>
                   <View style={styles.locationMeta}>
+                    {item.distanceKm !== null && (
+                      <Text style={styles.locationDistance}>
+                        {item.distanceKm < 1
+                          ? `${Math.round(item.distanceKm * 1000)}m`
+                          : `${item.distanceKm.toFixed(1)}km`}
+                      </Text>
+                    )}
                     {item.openNow !== null && (
                       <Text style={[styles.locationOpen, item.openNow ? styles.locationOpenYes : styles.locationOpenNo]}>
                         {item.openNow ? 'Open' : 'Closed'}
@@ -498,7 +505,8 @@ const styles = StyleSheet.create({
   locationInfo: { flex: 1, marginRight: 12 },
   locationName: { fontSize: 15, fontWeight: '700', color: '#1A2332', marginBottom: 3 },
   locationAddress: { fontSize: 12, color: '#A8997A', lineHeight: 16 },
-  locationMeta: { alignItems: 'flex-end', gap: 4 },
+  locationMeta: { alignItems: 'flex-end', gap: 4, minWidth: 52 },
+  locationDistance: { fontSize: 13, fontWeight: '700', color: '#1A2332' },
   locationOpen: { fontSize: 12, fontWeight: '700' },
   locationOpenYes: { color: '#7DC99E' },
   locationOpenNo: { color: '#E8604C' },

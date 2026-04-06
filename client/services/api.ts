@@ -104,6 +104,7 @@ export interface StoreLocation {
   lng: number | null;
   openNow: boolean | null;
   rating: number | null;
+  distanceKm: number | null;
 }
 
 export const getCouponLocations = (couponId: string, lat: number, lng: number) =>
