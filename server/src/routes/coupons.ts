@@ -70,4 +70,41 @@ router.delete('/:id', async (req: AuthRequest, res: Response): Promise<void> => 
   res.status(204).send();
 });
 
+router.get('/:id/locations', async (req: AuthRequest, res: Response): Promise<void> => {
+  const { lat, lng } = req.query;
+  if (!lat || !lng) {
+    res.status(400).json({ error: 'lat and lng query params are required' });
+    return;
+  }
+
+  const coupon = await getCouponById(req.params.id);
+  if (!coupon || coupon.owner_id !== req.userId!) {
+    res.status(404).json({ error: 'Coupon not found' });
+    return;
+  }
+
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  if (!apiKey) {
+    res.status(503).json({ error: 'Places API not configured' });
+    return;
+  }
+
+  const query = encodeURIComponent(coupon.store_name);
+  const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&location=${lat},${lng}&radius=10000&key=${apiKey}`;
+
+  const placesRes = await fetch(url);
+  const placesData = await placesRes.json() as any;
+
+  const locations = (placesData.results ?? []).slice(0, 10).map((place: any) => ({
+    name: place.name,
+    address: place.formatted_address,
+    lat: place.geometry?.location?.lat ?? null,
+    lng: place.geometry?.location?.lng ?? null,
+    openNow: place.opening_hours?.open_now ?? null,
+    rating: place.rating ?? null,
+  }));
+
+  res.json(locations);
+});
+
 export default router;

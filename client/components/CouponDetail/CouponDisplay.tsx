@@ -12,9 +12,10 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { getCouponImage, saveCouponImage } from '../../storage/couponStorage';
-import { getGroups, shareToGroup } from '../../services/api';
-import type { GroupMeta } from '../../services/api';
+import { getGroups, shareToGroup, getCouponLocations } from '../../services/api';
+import type { GroupMeta, StoreLocation } from '../../services/api';
 import { CATEGORY_COLORS } from './constants';
 import type { CouponWithCode } from './types';
 
@@ -31,6 +32,9 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
   const [groupPickerVisible, setGroupPickerVisible] = React.useState(false);
   const [groups, setGroups] = React.useState<GroupMeta[]>([]);
   const [sharingGroupId, setSharingGroupId] = React.useState<string | null>(null);
+  const [locationsVisible, setLocationsVisible] = React.useState(false);
+  const [locations, setLocations] = React.useState<StoreLocation[]>([]);
+  const [locationsLoading, setLocationsLoading] = React.useState(false);
 
   React.useEffect(() => {
     getCouponImage(coupon.coupon_id).then(setImageUri);
@@ -60,6 +64,28 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
       Alert.alert('Error', err?.response?.data?.error ?? 'Could not share coupon.');
     } finally {
       setSharingGroupId(null);
+    }
+  }
+
+  async function handleWhereToUse() {
+    setLocationsLoading(true);
+    setLocationsVisible(true);
+    setLocations([]);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Location needed', 'Please allow location access to find nearby stores.');
+        setLocationsVisible(false);
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const { data } = await getCouponLocations(coupon.coupon_id, pos.coords.latitude, pos.coords.longitude);
+      setLocations(data);
+    } catch {
+      Alert.alert('Error', 'Could not load nearby locations.');
+      setLocationsVisible(false);
+    } finally {
+      setLocationsLoading(false);
     }
   }
 
@@ -174,6 +200,10 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
         <Text style={styles.shareBtnText}>Share to Group</Text>
       </TouchableOpacity>
 
+      <TouchableOpacity style={styles.whereBtn} onPress={handleWhereToUse}>
+        <Text style={styles.whereBtnText}>📍  Where to use</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity
         style={styles.deleteBtn}
         onPress={() => {
@@ -217,6 +247,53 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
               </TouchableOpacity>
             )}
           />
+        </View>
+      </TouchableOpacity>
+    </Modal>
+
+    <Modal
+      visible={locationsVisible}
+      animationType="slide"
+      transparent
+      onRequestClose={() => setLocationsVisible(false)}
+    >
+      <TouchableOpacity
+        style={styles.pickerOverlay}
+        activeOpacity={1}
+        onPress={() => setLocationsVisible(false)}
+      >
+        <View style={[styles.pickerSheet, styles.locationsSheet]}>
+          <View style={styles.pickerHandle} />
+          <Text style={styles.pickerTitle}>📍  Where to use</Text>
+          {locationsLoading ? (
+            <ActivityIndicator color="#E8604C" style={{ marginVertical: 24 }} />
+          ) : locations.length === 0 ? (
+            <Text style={styles.locationsEmpty}>No nearby locations found.</Text>
+          ) : (
+            <FlatList
+              data={locations}
+              keyExtractor={(_, i) => String(i)}
+              style={styles.pickerList}
+              renderItem={({ item }) => (
+                <View style={styles.locationItem}>
+                  <View style={styles.locationInfo}>
+                    <Text style={styles.locationName}>{item.name}</Text>
+                    <Text style={styles.locationAddress}>{item.address}</Text>
+                  </View>
+                  <View style={styles.locationMeta}>
+                    {item.openNow !== null && (
+                      <Text style={[styles.locationOpen, item.openNow ? styles.locationOpenYes : styles.locationOpenNo]}>
+                        {item.openNow ? 'Open' : 'Closed'}
+                      </Text>
+                    )}
+                    {item.rating !== null && (
+                      <Text style={styles.locationRating}>★ {item.rating.toFixed(1)}</Text>
+                    )}
+                  </View>
+                </View>
+              )}
+            />
+          )}
         </View>
       </TouchableOpacity>
     </Modal>
@@ -355,6 +432,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   shareBtnText: { color: '#E8604C', fontSize: 15, fontWeight: '700' },
+  whereBtn: {
+    borderRadius: 30,
+    paddingVertical: 15,
+    alignItems: 'center',
+    backgroundColor: '#1A2332',
+    marginBottom: 12,
+  },
+  whereBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   pickerOverlay: {
     flex: 1,
     backgroundColor: 'rgba(26,35,50,0.5)',
@@ -394,4 +479,28 @@ const styles = StyleSheet.create({
     color: '#1A2332',
     textAlign: 'center',
   },
+  locationsSheet: { maxHeight: '75%' },
+  locationsEmpty: {
+    fontSize: 15,
+    color: '#A8997A',
+    textAlign: 'center',
+    marginVertical: 24,
+  },
+  locationItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0D8CA',
+  },
+  locationInfo: { flex: 1, marginRight: 12 },
+  locationName: { fontSize: 15, fontWeight: '700', color: '#1A2332', marginBottom: 3 },
+  locationAddress: { fontSize: 12, color: '#A8997A', lineHeight: 16 },
+  locationMeta: { alignItems: 'flex-end', gap: 4 },
+  locationOpen: { fontSize: 12, fontWeight: '700' },
+  locationOpenYes: { color: '#7DC99E' },
+  locationOpenNo: { color: '#E8604C' },
+  locationRating: { fontSize: 12, color: '#A8997A' },
 });

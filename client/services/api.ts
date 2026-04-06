@@ -96,6 +96,18 @@ export const updateCoupon = (id: string, data: Partial<CouponMeta>) =>
 
 export const deleteCoupon = (id: string) => api.delete(`/coupons/${id}`);
 
+export interface StoreLocation {
+  name: string;
+  address: string;
+  lat: number | null;
+  lng: number | null;
+  openNow: boolean | null;
+  rating: number | null;
+}
+
+export const getCouponLocations = (couponId: string, lat: number, lng: number) =>
+  api.get<StoreLocation[]>(`/coupons/${couponId}/locations?lat=${lat}&lng=${lng}`);
+
 // Groups
 export interface GroupMeta {
   group_id: string;
