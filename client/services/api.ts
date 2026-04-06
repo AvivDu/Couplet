@@ -80,6 +80,7 @@ export interface CouponMeta {
   balance: number | null;
   status: string;
   created_at: string;
+  redeemable_stores?: string[];
 }
 
 export const getCoupons = () => api.get<CouponMeta[]>('/coupons');

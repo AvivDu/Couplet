@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getCouponsByOwner, getCouponById, insertCoupon, updateCoupon, deleteCoupon } from '../repositories/coupons';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
+import { crawlRedeemableStores } from '../services/crawler';
 
 const router = Router();
 
@@ -33,6 +34,14 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
 
   await insertCoupon(coupon);
   res.status(201).json(coupon);
+
+  // Fire-and-forget: crawl participating stores in the background
+  crawlRedeemableStores(store_name).then(stores => {
+    if (stores.length > 0) {
+      console.log(`[crawler] "${store_name}" → ${stores.length} stores found`);
+      updateCoupon(coupon.coupon_id, req.userId!, { redeemable_stores: stores });
+    }
+  }).catch(() => {});
 });
 
 const VALID_STATUSES = ['active', 'expired', 'used'];
@@ -71,7 +80,7 @@ router.delete('/:id', async (req: AuthRequest, res: Response): Promise<void> => 
 });
 
 router.get('/:id/locations', async (req: AuthRequest, res: Response): Promise<void> => {
-  const { lat, lng } = req.query;
+  const { lat, lng, radius } = req.query;
   if (!lat || !lng) {
     res.status(400).json({ error: 'lat and lng query params are required' });
     return;
@@ -89,21 +98,52 @@ router.get('/:id/locations', async (req: AuthRequest, res: Response): Promise<vo
     return;
   }
 
-  const query = encodeURIComponent(coupon.store_name);
-  const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&location=${lat},${lng}&radius=10000&key=${apiKey}`;
+  const radiusMeters = Math.min(Number(radius) || 3000, 10000);
+  const center = { latitude: Number(lat), longitude: Number(lng) };
 
-  const placesRes = await fetch(url);
-  const placesData = await placesRes.json() as any;
+  // Use redeemable_stores if crawled, otherwise fall back to store_name
+  const searchTerms = (coupon.redeemable_stores && coupon.redeemable_stores.length > 0)
+    ? coupon.redeemable_stores.slice(0, 6)   // cap at 6 parallel API calls
+    : [coupon.store_name];
 
-  const locations = (placesData.results ?? []).slice(0, 10).map((place: any) => ({
-    name: place.name,
-    address: place.formatted_address,
-    lat: place.geometry?.location?.lat ?? null,
-    lng: place.geometry?.location?.lng ?? null,
-    openNow: place.opening_hours?.open_now ?? null,
-    rating: place.rating ?? null,
-  }));
+  console.log(`[locations] searching ${searchTerms.length} term(s) within ${radiusMeters}m at (${lat}, ${lng})`);
 
+  async function searchPlaces(query: string) {
+    const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey!,
+        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.location,places.currentOpeningHours,places.rating',
+      },
+      body: JSON.stringify({
+        textQuery: query,
+        locationBias: { circle: { center, radius: radiusMeters } },
+        maxResultCount: 5,
+      }),
+    });
+    const data = await res.json() as any;
+    return (data.places ?? []).map((place: any) => ({
+      name: place.displayName?.text ?? '',
+      address: place.formattedAddress ?? '',
+      lat: place.location?.latitude ?? null,
+      lng: place.location?.longitude ?? null,
+      openNow: place.currentOpeningHours?.openNow ?? null,
+      rating: place.rating ?? null,
+    }));
+  }
+
+  const results = await Promise.all(searchTerms.map(searchPlaces));
+
+  // Flatten, deduplicate by address, cap at 15
+  const seen = new Set<string>();
+  const locations = results.flat().filter(loc => {
+    if (seen.has(loc.address)) return false;
+    seen.add(loc.address);
+    return true;
+  }).slice(0, 15);
+
+  console.log(`[locations] returning ${locations.length} locations`);
   res.json(locations);
 });
 

@@ -10,6 +10,7 @@ export interface Coupon {
   balance: number | null;
   status: string;
   created_at: string;
+  redeemable_stores?: string[];
 }
 
 export async function getCouponsByOwner(ownerId: string): Promise<Coupon[]> {
