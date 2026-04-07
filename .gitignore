@@ -19,3 +19,6 @@ Gemini_Generated_Image_*.png
 
 # Claude workspace
 .claude/
+
+#SSH keys
+*.pem
