@@ -36,6 +36,12 @@ const api = axios.create({ baseURL: BASE_URL });
 let tokenCache: string | null = null;
 export function setTokenCache(token: string | null) { tokenCache = token; }
 
+// Registered by AuthContext so the interceptor can trigger signOut on 401.
+let unauthorizedHandler: (() => void) | null = null;
+export function setUnauthorizedHandler(handler: () => void) {
+  unauthorizedHandler = handler;
+}
+
 api.interceptors.request.use(async config => {
   if (tokenCache === null) {
     tokenCache = await SecureStore.getItemAsync('authToken');
@@ -43,6 +49,16 @@ api.interceptors.request.use(async config => {
   if (tokenCache) config.headers.Authorization = `Bearer ${tokenCache}`;
   return config;
 });
+
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response?.status === 401 && unauthorizedHandler) {
+      unauthorizedHandler();
+    }
+    return Promise.reject(error);
+  }
+);
 
 // Auth
 const syncUser = (email: string, username: string) =>
@@ -152,5 +168,7 @@ export const shareToGroup = (groupId: string, couponId: string) =>
   api.post<GroupMeta>(`/groups/${groupId}/coupons/${couponId}`);
 export const revokeFromGroup = (groupId: string, couponId: string) =>
   api.delete(`/groups/${groupId}/coupons/${couponId}`);
+export const leaveGroup = (groupId: string) =>
+  api.delete(`/groups/${groupId}/members/me`);
 export const searchUsers = (query: string) =>
   api.get<GroupMember[]>(`/users/search?q=${encodeURIComponent(query)}`);

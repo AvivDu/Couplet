@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getCouponsByOwner, getCouponById, insertCoupon, updateCoupon, deleteCoupon } from '../repositories/coupons';
+import { removeCouponFromAllGroups } from '../repositories/groups';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { crawlRedeemableStores } from '../services/crawler';
 
@@ -76,6 +77,8 @@ router.delete('/:id', async (req: AuthRequest, res: Response): Promise<void> => 
     res.status(404).json({ error: 'Coupon not found' });
     return;
   }
+  // Clean up stale group references in the background
+  removeCouponFromAllGroups(req.params.id).catch(() => {});
   res.status(204).send();
 });
 

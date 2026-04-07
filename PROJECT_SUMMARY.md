@@ -1,7 +1,7 @@
 # Couplet — Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-03-21
+**Last updated:** 2026-04-07
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device — the server holds metadata only.
 
@@ -59,6 +59,7 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Removing a member also removes their shared coupons from the group
 - [x] Share a coupon to a group (owner only) — bottom sheet group picker in CouponDetail
 - [x] Revoke a coupon from a group (admin or coupon owner) — confirmation alert
+- [x] Leave group (non-admin members) — confirmation alert, removes shared coupons
 
 ### Users
 - [x] Search users by email or username — `GET /users/search?q=` (used for adding group members)
@@ -72,6 +73,13 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Safe area handling, no native headers (all screens manage their own top area with `SafeAreaView`)
 - [x] Welcome splash screen with ticket logo
 - [x] Bottom sheet modals (Create Group, Date Picker, Share to Group) — slide-up with drag handle
+- [x] Error messages — all forms show `Alert.alert` on failure (auth, coupon CRUD, group ops)
+- [x] Loading states — `LoadingOverlay` on auth, `ActivityIndicator` on coupon save, add member, share to group
+- [x] Image display in coupon detail — renders saved barcode/QR image; tap to change
+- [x] Coupon search — live local filter by store name on home screen (search bar + clear button)
+- [x] Expired coupon auto-update — on load, active coupons past expiry date are patched to `expired`
+- [x] Token expiry handling — 401 interceptor in `api.ts` triggers `signOut` via `AuthContext`
+- [x] Store locator ("Where to use") — finds nearby stores via Google Places, sorted by distance
 
 ### Infrastructure
 - [x] Node.js + Express server
@@ -135,15 +143,8 @@ server/src/
 - [ ] **Expiration notifications** — Server should check expiration dates and fire push notifications before coupons expire via **AWS SNS** (Phase 3).
 - [ ] **Coupon code type selector** — When adding a coupon, let users specify: text code / barcode / QR code, so the detail screen can render it appropriately.
 - [ ] **Group admin transfer** — Allow admin to hand off the admin role to another member. Currently admin is fixed at creation.
-- [ ] **Leave group** — Let non-admin members leave a group themselves. Currently only admin can remove members.
-
 ### UI / UX
 
-- [ ] **Error messages** — Most forms log errors to console but show no visible feedback. Add inline error text or a toast/alert for auth failures, network errors, share failures, etc.
-- [ ] **Loading states** — Several async actions (add coupon, share to group, add member) lack a loading indicator. Disable buttons / show spinner while in-flight.
-- [ ] **Image display in coupon detail** — Upload is wired up and saved locally; the detail view needs to render the saved image as the barcode/QR visual rather than just an upload button.
-- [ ] **Coupon search** — Home screen has a search bar placeholder, but it isn't connected. Wire it up: query the server, get back matching coupon IDs, filter the local list.
-- [ ] **Expired coupon auto-update** — Status stays `active` until manually changed. Add a check (client-side on load, or server cron) to flip status to `expired` automatically.
 - [ ] **Group coupon count accuracy** — `coupon_id_list.length` may include revoked or deleted coupons. Ensure the count shown on GroupCard reflects only active shared coupons.
 
 ### Auth
@@ -152,8 +153,6 @@ server/src/
 - [ ] **Change password** — Option in settings/profile for logged-in users to change their password. Uses `changePassword()` with old + new password (no email code needed).
 
 ### Security & Polish
-
-- [ ] **Token expiry handling** — Cognito access tokens expire in 1 hour. Add 401 catch-all in the API client to redirect to login instead of silent failure.
 - [ ] **Rate limiting** — Add `express-rate-limit` to auth endpoints to prevent brute-force.
 - [ ] **Input validation on server** — Some routes lack validation (balance should be ≥ 0, status should be enum-checked). Add `zod` or `express-validator`.
 - [ ] **Production deploy** — Server needs hosting, and client `EXPO_PUBLIC_API_URL` updated.

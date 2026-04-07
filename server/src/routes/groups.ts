@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { createGroup, getGroupsByUser, getGroupById, addMemberToGroup, removeMemberFromGroup, addCouponToGroup, removeCouponFromGroup, removeCouponsByOwnerFromGroup } from '../repositories/groups';
+import { createGroup, getGroupsByUser, getGroupById, addMemberToGroup, removeMemberFromGroup, leaveGroup, addCouponToGroup, removeCouponFromGroup, removeCouponsByOwnerFromGroup } from '../repositories/groups';
 import { findUserByEmail, findUserById, findUsersByQuery } from '../repositories/users';
 import { getCouponById } from '../repositories/coupons';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
@@ -107,6 +107,27 @@ router.post('/:id/members', async (req: AuthRequest, res: Response): Promise<voi
 
   const updated = await addMemberToGroup(group.group_id, target.user_id);
   res.json(updated);
+});
+
+// DELETE /groups/:id/members/me — leave a group (non-admin only)
+router.delete('/:id/members/me', async (req: AuthRequest, res: Response): Promise<void> => {
+  const group = await getGroupById(req.params.id);
+  if (!group) {
+    res.status(404).json({ error: 'Group not found' });
+    return;
+  }
+  if (!group.user_id_list.includes(req.userId!)) {
+    res.status(400).json({ error: 'You are not a member of this group' });
+    return;
+  }
+  if (group.admin_user_id === req.userId!) {
+    res.status(400).json({ error: 'Admin cannot leave — transfer admin first or delete the group' });
+    return;
+  }
+
+  await removeCouponsByOwnerFromGroup(group.group_id, req.userId!);
+  await leaveGroup(group.group_id, req.userId!);
+  res.status(204).send();
 });
 
 // DELETE /groups/:id/members/:userId — remove a member (admin only)

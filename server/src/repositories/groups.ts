@@ -47,6 +47,20 @@ export async function addMemberToGroup(groupId: string, userId: string): Promise
   return result.Attributes as Group;
 }
 
+export async function leaveGroup(groupId: string, userId: string): Promise<Group | null> {
+  const group = await getGroupById(groupId);
+  if (!group) return null;
+  const newList = group.user_id_list.filter(id => id !== userId);
+  const result = await ddb.send(new UpdateCommand({
+    TableName: GROUPS_TABLE,
+    Key: { group_id: groupId },
+    UpdateExpression: 'SET user_id_list = :list',
+    ExpressionAttributeValues: { ':list': newList },
+    ReturnValues: 'ALL_NEW',
+  }));
+  return result.Attributes as Group;
+}
+
 export async function removeMemberFromGroup(groupId: string, userId: string, adminId: string): Promise<Group | null> {
   const group = await getGroupById(groupId);
   if (!group || group.admin_user_id !== adminId) return null;
@@ -87,6 +101,16 @@ export async function removeCouponFromGroup(groupId: string, couponId: string): 
     ReturnValues: 'ALL_NEW',
   }));
   return result.Attributes as Group;
+}
+
+export async function removeCouponFromAllGroups(couponId: string): Promise<void> {
+  const result = await ddb.send(new ScanCommand({
+    TableName: GROUPS_TABLE,
+    FilterExpression: 'contains(coupon_id_list, :cid)',
+    ExpressionAttributeValues: { ':cid': couponId },
+  }));
+  const groups = (result.Items as Group[]) ?? [];
+  await Promise.all(groups.map(g => removeCouponFromGroup(g.group_id, couponId)));
 }
 
 export async function removeCouponsByOwnerFromGroup(groupId: string, ownerId: string): Promise<void> {

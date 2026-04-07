@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { setTokenCache } from '../services/api';
+import { setTokenCache, setUnauthorizedHandler } from '../services/api';
 
 interface AuthUser {
   userId: string;
@@ -22,6 +22,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    setUnauthorizedHandler(signOut);
+  }, []);
 
   useEffect(() => {
     (async () => {

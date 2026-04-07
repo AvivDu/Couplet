@@ -15,6 +15,7 @@ import {
   addMember,
   removeMember,
   revokeFromGroup,
+  leaveGroup,
   searchUsers,
 } from '../services/api';
 import type { GroupDetail as GroupDetailType, GroupMember, GroupCoupon } from '../services/api';
@@ -108,6 +109,29 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId }
               await fetchGroup();
             } catch (err: any) {
               Alert.alert('Error', err?.response?.data?.error ?? 'Could not remove member.');
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  async function handleLeaveGroup() {
+    if (!groupId) return;
+    Alert.alert(
+      'Leave group',
+      `Leave "${group?.name}"? Your shared coupons will be removed.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Leave',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await leaveGroup(groupId);
+              onClose();
+            } catch (err: any) {
+              Alert.alert('Error', err?.response?.data?.error ?? 'Could not leave group.');
             }
           },
         },
@@ -273,6 +297,12 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId }
                 );
               })
             )}
+
+            {!isAdmin && (
+              <TouchableOpacity style={styles.leaveBtn} onPress={handleLeaveGroup}>
+                <Text style={styles.leaveBtnText}>Leave Group</Text>
+              </TouchableOpacity>
+            )}
           </ScrollView>
         )}
       </View>
@@ -397,4 +427,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   revokeBtnText: { fontSize: 13, fontWeight: '600', color: '#E8604C' },
+  leaveBtn: {
+    marginTop: 32,
+    borderRadius: 30,
+    paddingVertical: 15,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#E8604C',
+  },
+  leaveBtnText: { color: '#E8604C', fontSize: 15, fontWeight: '600' },
 });

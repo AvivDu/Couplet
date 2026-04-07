@@ -40,7 +40,7 @@ export default function LoginScreen() {
       });
       router.replace('/(tabs)');
     } catch (err: any) {
-      const msg = err?.response?.data?.error ?? 'Something went wrong. Please try again.';
+      const msg = err?.response?.data?.error ?? err?.message ?? 'Something went wrong. Please try again.';
       Alert.alert('Login failed', msg);
     } finally {
       setLoading(false);

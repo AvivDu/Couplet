@@ -10,9 +10,10 @@ import {
   Alert,
   SafeAreaView,
   Modal,
+  TextInput,
 } from 'react-native';
 import { getCoupons, updateCoupon, deleteCoupon, type CouponMeta } from '../../services/api';
-import { getCouponCode, deleteCouponCode } from '../../storage/couponStorage';
+import { getCouponCode, deleteCouponCode, deleteCouponImage } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
 import CouponCard from '../../components/CouponCard';
 import CouponDetail from '../../components/CouponDetail';
@@ -26,6 +27,7 @@ export default function HomeScreen() {
   const [coupons, setCoupons] = useState<CouponMeta[]>([]);
   const [couponCodes, setCouponCodes] = useState<Record<string, string | null>>({});
   const [filter, setFilter] = useState('All');
+  const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<CouponWithCode | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -34,10 +36,25 @@ export default function HomeScreen() {
     if (!user) return;
     try {
       const { data } = await getCoupons();
-      setCoupons(data);
+
+      // Auto-expire: flip any active coupon whose expiry date has passed
+      const now = new Date();
+      const toExpire = data.filter(
+        c => c.status === 'active' && c.expiration_date && new Date(c.expiration_date) < now
+      );
+      let coupons = data;
+      if (toExpire.length > 0) {
+        const updated = await Promise.all(
+          toExpire.map(c => updateCoupon(c.coupon_id, { status: 'expired' }).then(r => r.data))
+        );
+        const updatedMap = Object.fromEntries(updated.map(c => [c.coupon_id, c]));
+        coupons = data.map(c => updatedMap[c.coupon_id] ?? c);
+      }
+
+      setCoupons(coupons);
       const codes: Record<string, string | null> = {};
       await Promise.all(
-        data.map(async c => {
+        coupons.map(async c => {
           codes[c.coupon_id] = await getCouponCode(c.coupon_id);
         })
       );
@@ -55,7 +72,9 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
-  const filtered = filter === 'All' ? coupons : coupons.filter(c => c.category === filter);
+  const filtered = coupons
+    .filter(c => filter === 'All' || c.category === filter)
+    .filter(c => !search.trim() || c.store_name.toLowerCase().includes(search.trim().toLowerCase()));
 
   async function handleMarkUsed(id: string) {
     try {
@@ -76,6 +95,7 @@ export default function HomeScreen() {
           try {
             await deleteCoupon(id);
             await deleteCouponCode(id);
+            await deleteCouponImage(id);
             setCoupons(prev => prev.filter(c => c.coupon_id !== id));
           } catch {
             Alert.alert('Error', 'Could not delete coupon.');
@@ -107,6 +127,25 @@ export default function HomeScreen() {
           <TouchableOpacity onPress={signOut} style={styles.logoutBtn}>
             <Text style={styles.logoutText}>Log out</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Search bar */}
+        <View style={styles.searchWrap}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search coupons..."
+            placeholderTextColor="#A8997A"
+            value={search}
+            onChangeText={setSearch}
+            autoCapitalize="none"
+            returnKeyType="search"
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={styles.searchClear}>✕</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Category dropdown trigger */}
@@ -191,6 +230,24 @@ const styles = StyleSheet.create({
     borderColor: '#C4B8A0',
   },
   logoutText: { fontSize: 13, color: '#1A2332', fontWeight: '600' },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: '#EDE8DC',
+    gap: 8,
+  },
+  searchIcon: { fontSize: 14 },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#1A2332',
+  },
+  searchClear: { fontSize: 13, color: '#A8997A', fontWeight: '600' },
   dropdown: {
     flexDirection: 'row',
     alignItems: 'center',
