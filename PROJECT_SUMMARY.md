@@ -85,12 +85,40 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Node.js + Express server
 - [x] **AWS DynamoDB** via `@aws-sdk/lib-dynamodb` Document Client (Users, Coupons, Groups tables)
 - [x] **AWS Cognito** for auth (User Pool: `us-east-1_gVgsfA5EG`, PreSignUp Lambda for auto-confirm)
-- ⚠️ **Learner Lab credentials expire every 4 hours.** At the start of each lab session, go to Vocareum → AWS Details → Show, and update `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN` in `server/.env`. Without this the server cannot reach DynamoDB.
+- [x] **EC2 deployment** — server hosted on EC2 (`t3.micro`, `us-east-1`), managed by PM2. No credentials in `.env` — IAM role (`LabRole` via `LabInstanceProfile`) handles AWS auth automatically.
+- [x] **Elastic IP** `3.232.231.54` — fixed IP, survives instance restarts. Client `.env` points to this address permanently.
 - [x] CORS enabled on server
 - [x] `.env.example` files for both client and server
 - [x] TypeScript on both client and server
 - [x] `expo-secure-store` for token storage
 - [x] `AsyncStorage` for coupon codes and images
+
+---
+
+## How to Run
+
+### Each Lab Session (Backend)
+1. Start the Learner Lab session
+2. Go to **EC2 → Instances** → select `couplet-server` → **Instance state → Start**
+3. Wait ~30 seconds — PM2 auto-starts the server on boot
+
+No credential copying needed — the IAM role handles AWS auth automatically.
+
+### Update Server After Code Changes
+```bash
+ssh -i "path/to/couplet-key.pem" ec2-user@<EC2_ELASTIC_IP>
+cd Couplet/server
+git pull
+npm run build
+pm2 restart couplet-server
+```
+
+### Run the Client (Development)
+```bash
+cd client
+npx expo start
+```
+Scan the QR code with Expo Go. The app talks to the EC2 backend via `EXPO_PUBLIC_API_URL` in `client/.env` (gitignored).
 
 ---
 
@@ -155,7 +183,7 @@ server/src/
 ### Security & Polish
 - [ ] **Rate limiting** — Add `express-rate-limit` to auth endpoints to prevent brute-force.
 - [ ] **Input validation on server** — Some routes lack validation (balance should be ≥ 0, status should be enum-checked). Add `zod` or `express-validator`.
-- [ ] **Production deploy** — Server needs hosting, and client `EXPO_PUBLIC_API_URL` updated.
+- [x] **Production deploy** — Server running on EC2 at `http://3.232.231.54:3000`, client `EXPO_PUBLIC_API_URL` set.
 
 ### Future / Optional
 
