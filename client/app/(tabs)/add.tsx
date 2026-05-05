@@ -90,6 +90,16 @@ export default function AddCouponScreen() {
     return MONTHS.find(m => m.value === value)?.label ?? '';
   }
 
+  function resetForm() {
+    setCode('');
+    setCouponName('');
+    setCategory('');
+    setExpiryYear('');
+    setExpiryMonth('');
+    setExpiryDay('');
+    setBalance('');
+  }
+
   async function handleAdd() {
     if (!code.trim() || !couponName.trim() || !category) {
       Alert.alert('Missing fields', 'Please fill in coupon name, code, and category.');
@@ -107,6 +117,7 @@ export default function AddCouponScreen() {
 
       await saveCouponCode(data.coupon_id, code.trim());
 
+      resetForm();
       Alert.alert('Coupon added!', `${couponName} coupon has been saved.`, [
         { text: 'OK', onPress: () => router.replace('/(tabs)') },
       ]);
