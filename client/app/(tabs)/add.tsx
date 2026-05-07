@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,83 +12,49 @@ import {
   Alert,
   Modal,
   SafeAreaView,
-  FlatList,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { createCoupon } from '../../services/api';
 import { saveCouponCode } from '../../storage/couponStorage';
+import { CATEGORY_COLORS } from '../../constants/categories';
 
-const CATEGORIES: { label: string; color: string }[] = [
-  { label: 'Food', color: '#F4856A' },
-  { label: 'Fashion', color: '#9B7EC8' },
-  { label: 'Groceries', color: '#7DC99E' },
-  { label: 'Electronics', color: '#6BBDE8' },
-  { label: 'Beauty', color: '#EC9BC0' },
-  { label: 'Travel', color: '#5BC8A8' },
-  { label: 'Sport', color: '#F4856A' },
-  { label: 'Other', color: '#B8C4CC' },
+const ADD_CATEGORIES: { label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { label: 'Food',        icon: 'restaurant-outline'          },
+  { label: 'Groceries',   icon: 'cart-outline'                },
+  { label: 'Fashion',     icon: 'shirt-outline'               },
+  { label: 'Electronics', icon: 'hardware-chip-outline'       },
+  { label: 'Beauty',      icon: 'flower-outline'              },
+  { label: 'Travel',      icon: 'airplane-outline'            },
+  { label: 'Sport',       icon: 'trophy-outline'              },
+  { label: 'Other',       icon: 'ellipsis-horizontal-outline' },
 ];
-
-const YEARS = Array.from({ length: 12 }, (_, i) => String(new Date().getFullYear() + i));
-
-const MONTHS = [
-  { label: 'January', value: '01' },
-  { label: 'February', value: '02' },
-  { label: 'March', value: '03' },
-  { label: 'April', value: '04' },
-  { label: 'May', value: '05' },
-  { label: 'June', value: '06' },
-  { label: 'July', value: '07' },
-  { label: 'August', value: '08' },
-  { label: 'September', value: '09' },
-  { label: 'October', value: '10' },
-  { label: 'November', value: '11' },
-  { label: 'December', value: '12' },
-];
-
-const DAYS = Array.from({ length: 31 }, (_, i) => String(i + 1).padStart(2, '0'));
-
-type DateField = 'year' | 'month' | 'day';
 
 export default function AddCouponScreen() {
   const [code, setCode] = useState('');
   const [couponName, setCouponName] = useState('');
   const [category, setCategory] = useState('');
-  const [expiryYear, setExpiryYear] = useState('');
-  const [expiryMonth, setExpiryMonth] = useState('');
-  const [expiryDay, setExpiryDay] = useState('');
+  const [expiryDate, setExpiryDate] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [balance, setBalance] = useState('');
   const [loading, setLoading] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
-  const [datePickerField, setDatePickerField] = useState<DateField | null>(null);
   const router = useRouter();
 
-  const expiryString =
-    expiryYear && expiryMonth && expiryDay
-      ? `${expiryYear}-${expiryMonth}-${expiryDay}`
-      : undefined;
+  useFocusEffect(
+    useCallback(() => {
+      setCode('');
+      setCouponName('');
+      setCategory('');
+      setExpiryDate(null);
+      setBalance('');
+    }, [])
+  );
 
-  function getPickerItems(): { label: string; value: string }[] {
-    if (datePickerField === 'year') return YEARS.map(y => ({ label: y, value: y }));
-    if (datePickerField === 'month') return MONTHS;
-    return DAYS.map(d => ({ label: d, value: d }));
-  }
-
-  function getCurrentValue() {
-    if (datePickerField === 'year') return expiryYear;
-    if (datePickerField === 'month') return expiryMonth;
-    return expiryDay;
-  }
-
-  function setCurrentValue(value: string) {
-    if (datePickerField === 'year') setExpiryYear(value);
-    else if (datePickerField === 'month') setExpiryMonth(value);
-    else setExpiryDay(value);
-  }
-
-  function getMonthLabel(value: string) {
-    return MONTHS.find(m => m.value === value)?.label ?? '';
-  }
+  const expiryString = expiryDate
+    ? expiryDate.toISOString().split('T')[0]
+    : undefined;
 
   async function handleAdd() {
     if (!code.trim() || !couponName.trim() || !category) {
@@ -150,33 +116,17 @@ export default function AddCouponScreen() {
             />
           </View>
 
-          {/* Expiration Date — three dropdowns */}
-          <Text style={styles.dateLabel}>Expiration Date</Text>
+          {/* Expiration Date */}
+          <Text style={styles.sectionLabel}>Expiration Date</Text>
           <View style={styles.dateRow}>
             <TouchableOpacity
-              style={[styles.datePill, expiryYear ? styles.datePillFilled : null]}
-              onPress={() => setDatePickerField('year')}
+              style={[styles.datePill, expiryDate ? styles.datePillFilled : null]}
+              onPress={() => setShowDatePicker(true)}
             >
-              <Text style={[styles.datePillText, expiryYear ? styles.datePillTextFilled : null]}>
-                {expiryYear || 'Year'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.datePill, expiryMonth ? styles.datePillFilled : null]}
-              onPress={() => setDatePickerField('month')}
-            >
-              <Text style={[styles.datePillText, expiryMonth ? styles.datePillTextFilled : null]}>
-                {expiryMonth ? getMonthLabel(expiryMonth) : 'Month'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.datePill, expiryDay ? styles.datePillFilled : null]}
-              onPress={() => setDatePickerField('day')}
-            >
-              <Text style={[styles.datePillText, expiryDay ? styles.datePillTextFilled : null]}>
-                {expiryDay || 'Day'}
+              <Text style={[styles.datePillText, expiryDate ? styles.datePillTextFilled : null]}>
+                {expiryDate
+                  ? expiryDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                  : 'Select date'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -194,26 +144,23 @@ export default function AddCouponScreen() {
           </View>
 
           {/* Category selector */}
+          <Text style={styles.sectionLabel}>Category</Text>
           <View style={styles.categoryRow}>
-            {CATEGORIES.map(cat => (
-              <TouchableOpacity
-                key={cat.label}
-                style={styles.categoryItem}
-                onPress={() => setCategory(cat.label)}
-                activeOpacity={0.75}
-              >
-                <View
-                  style={[
-                    styles.categoryCircle,
-                    { backgroundColor: cat.color },
-                    category === cat.label && styles.categoryCircleActive,
-                  ]}
-                />
-                <Text style={[styles.categoryLabel, category === cat.label && styles.categoryLabelActive]}>
-                  {cat.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+            {ADD_CATEGORIES.map(cat => {
+              const active = category === cat.label;
+              const color = CATEGORY_COLORS[cat.label] ?? '#EDE8DC';
+              return (
+                <TouchableOpacity
+                  key={cat.label}
+                  style={[styles.categoryCard, { borderColor: color }, active && { backgroundColor: color }]}
+                  onPress={() => setCategory(cat.label)}
+                  activeOpacity={0.75}
+                >
+                  <Ionicons name={cat.icon} size={24} color="#444444" />
+                  <Text style={styles.categoryCardLabel}>{cat.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           <TouchableOpacity style={styles.btn} onPress={handleAdd} disabled={loading}>
@@ -229,44 +176,50 @@ export default function AddCouponScreen() {
           </TouchableOpacity>
         </ScrollView>
 
-        {/* Date Picker Modal */}
+        {/* Android: native date picker dialog */}
+        {Platform.OS === 'android' && showDatePicker && (
+          <DateTimePicker
+            value={expiryDate ?? new Date()}
+            mode="date"
+            minimumDate={new Date()}
+            onChange={(event, date) => {
+              setShowDatePicker(false);
+              if (event.type !== 'dismissed' && date) setExpiryDate(date);
+            }}
+          />
+        )}
+
+        {/* iOS: date picker in bottom sheet */}
         <Modal
-          visible={datePickerField !== null}
+          visible={Platform.OS === 'ios' && showDatePicker}
           animationType="slide"
           transparent
-          onRequestClose={() => setDatePickerField(null)}
+          onRequestClose={() => setShowDatePicker(false)}
         >
           <TouchableOpacity
             style={styles.modalOverlay}
             activeOpacity={1}
-            onPress={() => setDatePickerField(null)}
+            onPress={() => setShowDatePicker(false)}
           >
-            <View style={styles.pickerSheet}>
+            <View style={[styles.pickerSheet, { paddingBottom: 32 }]}>
               <View style={styles.pickerHandle} />
-              <Text style={styles.pickerTitle}>
-                {datePickerField === 'year' ? 'Select Year' : datePickerField === 'month' ? 'Select Month' : 'Select Day'}
-              </Text>
-              <FlatList
-                data={getPickerItems()}
-                keyExtractor={item => item.value}
-                style={styles.pickerList}
-                renderItem={({ item }) => {
-                  const selected = getCurrentValue() === item.value;
-                  return (
-                    <TouchableOpacity
-                      style={[styles.pickerItem, selected && styles.pickerItemSelected]}
-                      onPress={() => {
-                        setCurrentValue(item.value);
-                        setDatePickerField(null);
-                      }}
-                    >
-                      <Text style={[styles.pickerItemText, selected && styles.pickerItemTextSelected]}>
-                        {item.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                }}
+              <Text style={styles.pickerTitle}>Select Date</Text>
+              <DateTimePicker
+                value={expiryDate ?? new Date()}
+                mode="date"
+                display="inline"
+                minimumDate={new Date()}
+                themeVariant="light"
+                accentColor="#E8604C"
+                onChange={(_, date) => { if (date) setExpiryDate(date); }}
+                style={{ alignSelf: 'center' }}
               />
+              <TouchableOpacity
+                style={[styles.btn, { marginTop: 12 }]}
+                onPress={() => setShowDatePicker(false)}
+              >
+                <Text style={styles.btnText}>Done</Text>
+              </TouchableOpacity>
             </View>
           </TouchableOpacity>
         </Modal>
@@ -318,7 +271,7 @@ const styles = StyleSheet.create({
     color: '#1A2332',
     backgroundColor: 'transparent',
   },
-  dateLabel: {
+  sectionLabel: {
     fontSize: 12,
     fontWeight: '600',
     color: '#A8997A',
@@ -326,14 +279,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   dateRow: {
-    flexDirection: 'row',
-    gap: 10,
     marginBottom: 28,
   },
   datePill: {
-    flex: 1,
     paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     borderRadius: 24,
     borderWidth: 1.5,
     borderColor: '#C4B8A0',
@@ -355,34 +305,26 @@ const styles = StyleSheet.create({
   categoryRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 16,
+    gap: 10,
     marginBottom: 36,
-    marginTop: 8,
+    marginTop: 4,
   },
-  categoryItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    minWidth: '40%',
-  },
-  categoryCircle: {
-    width: 32,
-    height: 32,
+  categoryCard: {
+    width: 78,
+    height: 78,
     borderRadius: 16,
+    backgroundColor: '#F5F0E6',
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
   },
-  categoryCircleActive: {
-    borderWidth: 3,
-    borderColor: '#1A2332',
-  },
-  categoryLabel: {
-    fontSize: 14,
-    color: '#1A2332',
-    opacity: 0.6,
-    fontWeight: '500',
-  },
-  categoryLabelActive: {
-    opacity: 1,
-    fontWeight: '700',
+  categoryCardLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#444444',
+    textAlign: 'center',
+    paddingHorizontal: 4,
   },
   btn: {
     backgroundColor: '#E8604C',
@@ -397,14 +339,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   aboutBtnText: { color: '#1A2332', fontSize: 14, opacity: 0.4 },
-  // Date picker sheet
   pickerSheet: {
     backgroundColor: '#F5F0E6',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
-    paddingBottom: 40,
-    maxHeight: '60%',
   },
   pickerHandle: {
     width: 40,
@@ -421,25 +360,6 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: 'center',
   },
-  pickerList: { flexGrow: 0 },
-  pickerItem: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-  },
-  pickerItemSelected: {
-    backgroundColor: 'rgba(232,96,76,0.12)',
-  },
-  pickerItemText: {
-    fontSize: 16,
-    color: '#1A2332',
-    textAlign: 'center',
-  },
-  pickerItemTextSelected: {
-    color: '#E8604C',
-    fontWeight: '700',
-  },
-  // About modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(26,35,50,0.5)',

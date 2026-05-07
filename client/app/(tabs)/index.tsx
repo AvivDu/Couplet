@@ -5,20 +5,48 @@ import {
   Text,
   StyleSheet,
   FlatList,
+  ScrollView,
+  Modal,
   RefreshControl,
   TouchableOpacity,
   Alert,
   SafeAreaView,
-  Modal,
   TextInput,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { CATEGORY_COLORS } from '../../constants/categories';
 import { getCoupons, updateCoupon, deleteCoupon, type CouponMeta } from '../../services/api';
 import { getCouponCode, deleteCouponCode, deleteCouponImage } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
 import CouponCard from '../../components/CouponCard';
 import CouponDetail from '../../components/CouponDetail';
 
-const CATEGORIES = ['All', 'Food', 'Fashion', 'Electronics', 'Beauty', 'Travel', 'Sport', 'Other'];
+type CategoryDef = {
+  label: string;
+  filter: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+};
+
+const CATEGORY_DEFS: CategoryDef[] = [
+  { label: 'All Coupons',  filter: 'All',         icon: 'grid-outline',                color: CATEGORY_COLORS.All         },
+  { label: 'Food',         filter: 'Food',        icon: 'restaurant-outline',          color: CATEGORY_COLORS.Food        },
+  { label: 'Groceries',    filter: 'Groceries',   icon: 'cart-outline',                color: CATEGORY_COLORS.Groceries   },
+  { label: 'Fashion',      filter: 'Fashion',     icon: 'shirt-outline',               color: CATEGORY_COLORS.Fashion     },
+  { label: 'Electronics',  filter: 'Electronics', icon: 'hardware-chip-outline',       color: CATEGORY_COLORS.Electronics },
+  { label: 'Beauty',       filter: 'Beauty',      icon: 'flower-outline',              color: CATEGORY_COLORS.Beauty      },
+  { label: 'Travel',       filter: 'Travel',      icon: 'airplane-outline',            color: CATEGORY_COLORS.Travel      },
+  { label: 'Sport',        filter: 'Sport',       icon: 'trophy-outline',              color: CATEGORY_COLORS.Sport       },
+  { label: 'Other',        filter: 'Other',       icon: 'ellipsis-horizontal-outline', color: CATEGORY_COLORS.Other       },
+];
+
+type SortOption = 'balance-desc' | 'balance-asc' | 'expiry-asc';
+
+const SORT_OPTIONS: { value: SortOption; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { value: 'balance-desc', label: 'Balance: High to Low',      icon: 'arrow-down-outline'  },
+  { value: 'balance-asc',  label: 'Balance: Low to High',      icon: 'arrow-up-outline'    },
+  { value: 'expiry-asc',   label: 'Expiry Date',                icon: 'calendar-outline'   },
+];
 
 type CouponWithCode = CouponMeta & { code: string | null };
 
@@ -28,9 +56,10 @@ export default function HomeScreen() {
   const [couponCodes, setCouponCodes] = useState<Record<string, string | null>>({});
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<SortOption | null>(null);
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<CouponWithCode | null>(null);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -75,6 +104,18 @@ export default function HomeScreen() {
   const filtered = coupons
     .filter(c => filter === 'All' || c.category === filter)
     .filter(c => !search.trim() || c.store_name.toLowerCase().includes(search.trim().toLowerCase()));
+
+  const displayed = sort === null ? filtered : [...filtered].sort((a, b) => {
+    if (sort === 'balance-desc') return (b.balance ?? 0) - (a.balance ?? 0);
+    if (sort === 'balance-asc')  return (a.balance ?? 0) - (b.balance ?? 0);
+    // expiry-asc: coupons without a date go to the bottom
+    if (!a.expiration_date && !b.expiration_date) return 0;
+    if (!a.expiration_date) return 1;
+    if (!b.expiration_date) return -1;
+    return new Date(a.expiration_date).getTime() - new Date(b.expiration_date).getTime();
+  });
+
+  const activeSortLabel = SORT_OPTIONS.find(o => o.value === sort)?.label ?? null;
 
   async function handleMarkUsed(id: string) {
     try {
@@ -148,15 +189,52 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* Category dropdown trigger */}
-        <TouchableOpacity style={styles.dropdown} onPress={() => setDropdownOpen(true)} activeOpacity={0.8}>
-          <Text style={styles.dropdownLabel}>{filter === 'All' ? 'All Coupons' : filter}</Text>
-          <Text style={styles.dropdownArrow}>▾</Text>
-        </TouchableOpacity>
+        {/* Category cards — horizontal scroll */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.categoryScrollView}
+          contentContainerStyle={styles.categoryScroll}
+        >
+          {CATEGORY_DEFS.map(cat => {
+            const active = filter === cat.filter;
+            return (
+              <TouchableOpacity
+                key={cat.filter}
+                style={[styles.categoryCard, active && { backgroundColor: cat.color, borderColor: cat.color }]}
+                onPress={() => setFilter(cat.filter)}
+                activeOpacity={0.75}
+              >
+                <Ionicons name={cat.icon} size={26} color={active ? '#444444' : '#1A2332'} />
+                <Text style={[styles.categoryCardLabel, active && styles.categoryCardLabelActive]}>
+                  {cat.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Sort row */}
+        <View style={styles.sortRow}>
+          <TouchableOpacity style={styles.sortBtn} onPress={() => setSortMenuOpen(true)} activeOpacity={0.75}>
+            <Ionicons name="funnel-outline" size={15} color={sort ? '#E8604C' : '#1A2332'} />
+            <Text style={[styles.sortBtnText, sort && styles.sortBtnTextActive]} numberOfLines={1}>
+              {activeSortLabel ?? 'Sort'}
+            </Text>
+            {sort && (
+              <TouchableOpacity
+                onPress={() => setSort(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close-circle" size={15} color="#E8604C" />
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
+        </View>
 
         {/* Coupon list */}
         <FlatList
-          data={filtered}
+          data={displayed}
           keyExtractor={c => c.coupon_id}
           renderItem={({ item }) => <CouponCard coupon={item} onPress={() => openDetail(item)} />}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#E8604C" />}
@@ -167,30 +245,33 @@ export default function HomeScreen() {
               <Text style={styles.emptyHint}>Tap the tab below to add your first coupon</Text>
             </View>
           }
-          contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : { paddingBottom: 100 }}
+          contentContainerStyle={displayed.length === 0 ? styles.emptyContainer : { paddingBottom: 100 }}
         />
 
-        {/* Dropdown modal */}
-        <Modal visible={dropdownOpen} transparent animationType="fade" onRequestClose={() => setDropdownOpen(false)}>
-          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setDropdownOpen(false)}>
-            <View style={styles.dropdownMenu}>
-              <Text style={styles.dropdownMenuTitle}>Filter by Category</Text>
-              {CATEGORIES.map((cat, i) => (
-                <TouchableOpacity
-                  key={cat}
-                  style={[
-                    styles.dropdownItem,
-                    i < CATEGORIES.length - 1 && styles.dropdownItemBorder,
-                    filter === cat && styles.dropdownItemActive,
-                  ]}
-                  onPress={() => { setFilter(cat); setDropdownOpen(false); }}
-                >
-                  <Text style={[styles.dropdownItemText, filter === cat && styles.dropdownItemTextActive]}>
-                    {cat === 'All' ? 'All Coupons' : cat}
-                  </Text>
-                  {filter === cat && <Text style={styles.checkmark}>✓</Text>}
-                </TouchableOpacity>
-              ))}
+        {/* Sort menu */}
+        <Modal visible={sortMenuOpen} transparent animationType="slide" onRequestClose={() => setSortMenuOpen(false)}>
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setSortMenuOpen(false)}>
+            <View style={styles.sortSheet}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sortSheetTitle}>Sort By</Text>
+              {SORT_OPTIONS.map(opt => {
+                const active = sort === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[styles.sortOption, active && styles.sortOptionActive]}
+                    onPress={() => { setSort(active ? null : opt.value); setSortMenuOpen(false); }}
+                  >
+                    <View style={styles.sortOptionLeft}>
+                      <Ionicons name={opt.icon} size={20} color={active ? '#E8604C' : '#1A2332'} />
+                      <Text style={[styles.sortOptionText, active && styles.sortOptionTextActive]}>
+                        {opt.label}
+                      </Text>
+                    </View>
+                    {active && <Ionicons name="checkmark" size={18} color="#E8604C" />}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </TouchableOpacity>
         </Modal>
@@ -242,70 +323,95 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   searchIcon: { fontSize: 14 },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: '#1A2332',
-  },
+  searchInput: { flex: 1, fontSize: 15, color: '#1A2332' },
   searchClear: { fontSize: 13, color: '#A8997A', fontWeight: '600' },
-  dropdown: {
+  categoryScrollView: { flexGrow: 0, flexShrink: 0 },
+  categoryScroll: { paddingHorizontal: 20, paddingBottom: 4, gap: 10 },
+  categoryCard: {
+    width: 80,
+    height: 80,
+    borderRadius: 16,
+    backgroundColor: '#EDE8DC',
+    borderWidth: 1.5,
+    borderColor: '#E0D8CA',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  categoryCardLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#1A2332',
+    textAlign: 'center',
+    opacity: 0.7,
+    paddingHorizontal: 4,
+  },
+  categoryCardLabelActive: { color: '#444444', opacity: 1 },
+  sortRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  sortBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: 20,
-    marginBottom: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
+    gap: 5,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 20,
     borderWidth: 1.5,
     borderColor: '#C4B8A0',
     backgroundColor: 'transparent',
+    maxWidth: 220,
   },
-  dropdownLabel: { fontSize: 15, fontWeight: '600', color: '#1A2332' },
-  dropdownArrow: { fontSize: 14, color: '#1A2332', opacity: 0.5 },
+  sortBtnText: { fontSize: 13, fontWeight: '600', color: '#1A2332', opacity: 0.6, flexShrink: 1 },
+  sortBtnTextActive: { color: '#E8604C', opacity: 1 },
+  // Sort sheet modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(26,35,50,0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
+    backgroundColor: 'rgba(26,35,50,0.4)',
+    justifyContent: 'flex-end',
   },
-  dropdownMenu: {
+  sortSheet: {
     backgroundColor: '#F5F0E6',
-    borderRadius: 20,
-    width: '100%',
-    paddingVertical: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 10,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+    paddingTop: 16,
   },
-  dropdownMenuTitle: {
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#C4B8A0',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  sortSheetTitle: {
     fontSize: 12,
     fontWeight: '700',
     color: '#1A2332',
     opacity: 0.4,
     letterSpacing: 1,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
+    marginBottom: 8,
   },
-  dropdownItem: {
+  sortOption: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-  },
-  dropdownItemBorder: {
+    paddingVertical: 16,
+    paddingHorizontal: 4,
     borderBottomWidth: 1,
     borderBottomColor: '#E0D8CA',
   },
-  dropdownItemActive: { backgroundColor: 'rgba(232,96,76,0.08)' },
-  dropdownItemText: { fontSize: 16, color: '#1A2332', fontWeight: '500' },
-  dropdownItemTextActive: { color: '#E8604C', fontWeight: '700' },
-  checkmark: { fontSize: 16, color: '#E8604C', fontWeight: '700' },
+  sortOptionActive: { backgroundColor: 'rgba(232,96,76,0.06)', borderRadius: 12 },
+  sortOptionLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  sortOptionText: { fontSize: 15, fontWeight: '500', color: '#1A2332' },
+  sortOptionTextActive: { color: '#E8604C', fontWeight: '700' },
+  // Coupon list empty state
   empty: { alignItems: 'center', gap: 10 },
   emptyContainer: { flex: 1, justifyContent: 'center' },
   emptyIcon: { fontSize: 52 },

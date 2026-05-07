@@ -1,7 +1,7 @@
 # Couplet — Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-04-07
+**Last updated:** 2026-05-07
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device — the server holds metadata only.
 
@@ -30,14 +30,16 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 
 ### Coupon Management (Client)
 - [x] Add new coupon — name, code, category, expiration date, balance
-- [x] Category selector with 8 colored circles (Food, Fashion, Groceries, Electronics, Beauty, Travel, Sport, Other)
-- [x] Custom 3-pill date picker (Year / Month / Day) — bottom sheet modal, no native DatePicker dependency
+- [x] Category selector — 8 rounded-square cards with Ionicons line-art icons; unselected shows category-color border, selected fills with pastel color
+- [x] Native date picker via `@react-native-community/datetimepicker` — calendar dialog on Android, inline bottom-sheet on iOS (replaced custom 3-pill picker)
+- [x] Add Coupon form auto-resets on every screen focus (`useFocusEffect`) — no stale data when returning to the tab
 - [x] Coupon code stored locally in AsyncStorage (never sent to server)
 - [x] Barcode/QR image stored locally in AsyncStorage via expo-image-picker (camera or photo library)
-- [x] Coupon list on home screen with category filter dropdown
+- [x] Coupon list on home screen with horizontal category scroll cards (replaced dropdown) — Ionicons icons, pastel active state
+- [x] Sort button on home screen — Balance High→Low, Balance Low→High, Expiry Date; active sort shown in coral with inline clear; applies across all categories
 - [x] Pull-to-refresh on coupon list
 - [x] Coupon detail modal — view code, image, balance, expiry, status
-- [x] Edit coupon (name, code, expiry, balance, category) — same 3-pill date picker as Add screen
+- [x] Edit coupon (name, code, expiry, balance, category)
 - [x] Delete coupon (removes metadata from server + code/image from local storage)
 - [x] Redeem button marks coupon as `used`
 - [x] Badge on card for `used` and `expired` coupons
@@ -65,6 +67,7 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Search users by email or username — `GET /users/search?q=` (used for adding group members)
 
 ### Design System
+- [x] Pastel category color system — centralized in `client/constants/categories.ts`; applied to category cards, Add Coupon selector, and coupon card backgrounds
 - [x] Warm cream (`#F5F0E6`) + coral (`#E8604C`) / salmon design throughout
 - [x] Underline-style inputs (no box borders — `borderBottomWidth: 1.5, borderBottomColor: #C4B8A0`)
 - [x] Pill-shaped buttons (`borderRadius: 30`, coral fill)
