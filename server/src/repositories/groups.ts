@@ -7,6 +7,7 @@ export interface Group {
   name: string;
   admin_user_id: string;
   user_id_list: string[];
+  pending_user_ids: string[];
   coupon_id_list: string[];
   created_at: string;
 }
@@ -111,6 +112,60 @@ export async function removeCouponFromAllGroups(couponId: string): Promise<void>
   }));
   const groups = (result.Items as Group[]) ?? [];
   await Promise.all(groups.map(g => removeCouponFromGroup(g.group_id, couponId)));
+}
+
+export async function addPendingMemberToGroup(groupId: string, userId: string): Promise<Group | null> {
+  const group = await getGroupById(groupId);
+  if (!group) return null;
+  if ((group.pending_user_ids ?? []).includes(userId)) return group;
+  const result = await ddb.send(new UpdateCommand({
+    TableName: GROUPS_TABLE,
+    Key: { group_id: groupId },
+    UpdateExpression: 'SET pending_user_ids = list_append(if_not_exists(pending_user_ids, :empty), :u)',
+    ExpressionAttributeValues: { ':u': [userId], ':empty': [] },
+    ReturnValues: 'ALL_NEW',
+  }));
+  return result.Attributes as Group;
+}
+
+export async function removePendingMemberFromGroup(groupId: string, userId: string): Promise<Group | null> {
+  const group = await getGroupById(groupId);
+  if (!group) return null;
+  const newList = (group.pending_user_ids ?? []).filter(id => id !== userId);
+  const result = await ddb.send(new UpdateCommand({
+    TableName: GROUPS_TABLE,
+    Key: { group_id: groupId },
+    UpdateExpression: 'SET pending_user_ids = :list',
+    ExpressionAttributeValues: { ':list': newList },
+    ReturnValues: 'ALL_NEW',
+  }));
+  return result.Attributes as Group;
+}
+
+export async function acceptGroupInvitation(groupId: string, userId: string): Promise<Group | null> {
+  const group = await getGroupById(groupId);
+  if (!group) return null;
+  const newPending = (group.pending_user_ids ?? []).filter(id => id !== userId);
+  const newMembers = group.user_id_list.includes(userId)
+    ? group.user_id_list
+    : [...group.user_id_list, userId];
+  const result = await ddb.send(new UpdateCommand({
+    TableName: GROUPS_TABLE,
+    Key: { group_id: groupId },
+    UpdateExpression: 'SET pending_user_ids = :pending, user_id_list = :members',
+    ExpressionAttributeValues: { ':pending': newPending, ':members': newMembers },
+    ReturnValues: 'ALL_NEW',
+  }));
+  return result.Attributes as Group;
+}
+
+export async function getGroupsWithPendingMember(userId: string): Promise<Group[]> {
+  const result = await ddb.send(new ScanCommand({
+    TableName: GROUPS_TABLE,
+    FilterExpression: 'contains(pending_user_ids, :userId)',
+    ExpressionAttributeValues: { ':userId': userId },
+  }));
+  return (result.Items as Group[]) ?? [];
 }
 
 export async function removeCouponsByOwnerFromGroup(groupId: string, ownerId: string): Promise<void> {

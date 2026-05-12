@@ -15,11 +15,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CATEGORY_COLORS } from '../../constants/categories';
-import { getCoupons, updateCoupon, deleteCoupon, type CouponMeta } from '../../services/api';
+import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, type CouponMeta } from '../../services/api';
 import { getCouponCode, deleteCouponCode, deleteCouponImage } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
 import CouponCard from '../../components/CouponCard';
 import CouponDetail from '../../components/CouponDetail';
+import NotificationPanel, { type NotificationItem } from '../../components/NotificationPanel';
 
 type CategoryDef = {
   label: string;
@@ -60,6 +61,8 @@ export default function HomeScreen() {
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<CouponWithCode | null>(null);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notifPanelOpen, setNotifPanelOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -88,6 +91,44 @@ export default function HomeScreen() {
         })
       );
       setCouponCodes(codes);
+
+      // Generate expiry notifications for coupons due within 7 days
+      const soonMs = 7 * 24 * 60 * 60 * 1000;
+      const generated: NotificationItem[] = coupons
+        .filter(c => c.expiration_date)
+        .flatMap(c => {
+          const msLeft = new Date(c.expiration_date!).getTime() - now.getTime();
+          if (c.status === 'active' && msLeft >= 0 && msLeft <= soonMs) {
+            const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+            return [{
+              id: `expiry-${c.coupon_id}`,
+              type: 'coupon' as const,
+              title: `${c.store_name} expiring soon`,
+              body: daysLeft === 0 ? 'Expires today!' : `Expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`,
+              category: c.category,
+              read: false,
+            }];
+          }
+          return [];
+        });
+      let inviteNotifs: NotificationItem[] = [];
+      try {
+        const { data: invitations } = await getInvitations();
+        inviteNotifs = invitations.map(inv => ({
+          id: `invite-${inv.group_id}`,
+          type: 'social' as const,
+          title: 'Group invitation',
+          body: `You've been invited to join "${inv.name}"`,
+          read: false,
+          actionType: 'group_invite' as const,
+          actionGroupId: inv.group_id,
+        }));
+      } catch { /* invitation fetch failure should not break coupon load */ }
+
+      setNotifications(prev => {
+        const readIds = new Set(prev.filter(n => n.read).map(n => n.id));
+        return [...inviteNotifs, ...generated].map(n => ({ ...n, read: readIds.has(n.id) }));
+      });
     } catch {
       Alert.alert('Error', 'Could not load coupons. Is the server running?');
     }
@@ -116,6 +157,22 @@ export default function HomeScreen() {
   });
 
   const activeSortLabel = SORT_OPTIONS.find(o => o.value === sort)?.label ?? null;
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  async function handleAcceptInvite(groupId: string) {
+    await acceptInvitation(groupId);
+    load();
+  }
+
+  async function handleDeclineInvite(groupId: string) {
+    await declineInvitation(groupId);
+    load();
+  }
+
+  function handleBellPress() {
+    setNotifPanelOpen(true);
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  }
 
   async function handleMarkUsed(id: string) {
     try {
@@ -165,9 +222,15 @@ export default function HomeScreen() {
             <Text style={styles.headerTitle}>My Coupons</Text>
             <Text style={styles.headerSub}>Hi, {user?.username} 👋</Text>
           </View>
-          <TouchableOpacity onPress={signOut} style={styles.logoutBtn}>
-            <Text style={styles.logoutText}>Log out</Text>
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity onPress={handleBellPress} style={styles.bellBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="notifications-outline" size={24} color="#1A2332" />
+              {unreadCount > 0 && <View style={styles.badge} />}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={signOut} style={styles.logoutBtn}>
+              <Text style={styles.logoutText}>Log out</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Search bar */}
@@ -276,6 +339,15 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </Modal>
 
+        {/* Notification panel */}
+        <NotificationPanel
+          visible={notifPanelOpen}
+          notifications={notifications}
+          onClose={() => setNotifPanelOpen(false)}
+          onAcceptInvite={handleAcceptInvite}
+          onDeclineInvite={handleDeclineInvite}
+        />
+
         {/* Detail modal */}
         <CouponDetail
           coupon={selected}
@@ -311,6 +383,14 @@ const styles = StyleSheet.create({
     borderColor: '#C4B8A0',
   },
   logoutText: { fontSize: 13, color: '#1A2332', fontWeight: '600' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  bellBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  badge: {
+    position: 'absolute', top: 6, right: 6,
+    width: 8, height: 8, borderRadius: 4,
+    backgroundColor: '#FFB7B2',
+    borderWidth: 1.5, borderColor: '#F5F0E6',
+  },
   searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',

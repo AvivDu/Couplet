@@ -154,7 +154,14 @@ export interface GroupCoupon {
 
 export interface GroupDetail extends GroupMeta {
   members: GroupMember[];
+  pending_members: GroupMember[];
   coupons: GroupCoupon[];
+}
+
+export interface GroupInvitation {
+  group_id: string;
+  name: string;
+  admin_user_id: string;
 }
 
 export const getGroups = () => api.get<GroupMeta[]>('/groups');
@@ -172,3 +179,11 @@ export const leaveGroup = (groupId: string) =>
   api.delete(`/groups/${groupId}/members/me`);
 export const searchUsers = (query: string) =>
   api.get<GroupMember[]>(`/users/search?q=${encodeURIComponent(query)}`);
+
+export const getInvitations = () => api.get<GroupInvitation[]>('/invitations');
+export const acceptInvitation = (groupId: string) =>
+  api.post(`/groups/${groupId}/members/accept`);
+export const declineInvitation = (groupId: string) =>
+  api.delete(`/groups/${groupId}/invitations/me`);
+export const cancelInvitation = (groupId: string, userId: string) =>
+  api.delete(`/groups/${groupId}/pending/${userId}`);

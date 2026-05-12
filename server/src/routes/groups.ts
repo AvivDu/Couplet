@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { createGroup, getGroupsByUser, getGroupById, addMemberToGroup, removeMemberFromGroup, leaveGroup, addCouponToGroup, removeCouponFromGroup, removeCouponsByOwnerFromGroup } from '../repositories/groups';
+import { createGroup, getGroupsByUser, getGroupById, removeMemberFromGroup, leaveGroup, addCouponToGroup, removeCouponFromGroup, removeCouponsByOwnerFromGroup, addPendingMemberToGroup, removePendingMemberFromGroup, acceptGroupInvitation } from '../repositories/groups';
 import { findUserByEmail, findUserById, findUsersByQuery } from '../repositories/users';
 import { getCouponById } from '../repositories/coupons';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
@@ -22,6 +22,7 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
     name: name.trim(),
     admin_user_id: req.userId!,
     user_id_list: [req.userId!],
+    pending_user_ids: [],
     coupon_id_list: [],
     created_at: new Date().toISOString(),
   };
@@ -48,12 +49,17 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
     return;
   }
 
-  const [memberDocs, couponDocs] = await Promise.all([
+  const [memberDocs, pendingDocs, couponDocs] = await Promise.all([
     Promise.all(group.user_id_list.map(uid => findUserById(uid))),
+    Promise.all((group.pending_user_ids ?? []).map(uid => findUserById(uid))),
     Promise.all(group.coupon_id_list.map(cid => getCouponById(cid))),
   ]);
 
   const members = memberDocs
+    .filter(Boolean)
+    .map(u => ({ user_id: u!.user_id, username: u!.username, email: u!.email }));
+
+  const pending_members = pendingDocs
     .filter(Boolean)
     .map(u => ({ user_id: u!.user_id, username: u!.username, email: u!.email }));
 
@@ -69,7 +75,7 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
       status: c!.status,
     }));
 
-  res.json({ ...group, members, coupons });
+  res.json({ ...group, members, pending_members, coupons });
 });
 
 // POST /groups/:id/members — add a member (admin only)
@@ -104,8 +110,12 @@ router.post('/:id/members', async (req: AuthRequest, res: Response): Promise<voi
     res.status(409).json({ error: 'User is already a member' });
     return;
   }
+  if ((group.pending_user_ids ?? []).includes(target.user_id)) {
+    res.status(409).json({ error: 'User already has a pending invitation' });
+    return;
+  }
 
-  const updated = await addMemberToGroup(group.group_id, target.user_id);
+  const updated = await addPendingMemberToGroup(group.group_id, target.user_id);
   res.json(updated);
 });
 
@@ -149,6 +159,47 @@ router.delete('/:id/members/:userId', async (req: AuthRequest, res: Response): P
   // Remove the member's owned coupons from the group first
   await removeCouponsByOwnerFromGroup(group.group_id, req.params.userId);
   await removeMemberFromGroup(group.group_id, req.params.userId, req.userId!);
+  res.status(204).send();
+});
+
+// POST /groups/:id/members/accept — invitee accepts invitation
+router.post('/:id/members/accept', async (req: AuthRequest, res: Response): Promise<void> => {
+  const group = await getGroupById(req.params.id);
+  if (!group) {
+    res.status(404).json({ error: 'Group not found' });
+    return;
+  }
+  if (!(group.pending_user_ids ?? []).includes(req.userId!)) {
+    res.status(403).json({ error: 'No pending invitation for this user' });
+    return;
+  }
+  const updated = await acceptGroupInvitation(group.group_id, req.userId!);
+  res.json(updated);
+});
+
+// DELETE /groups/:id/invitations/me — invitee declines invitation
+router.delete('/:id/invitations/me', async (req: AuthRequest, res: Response): Promise<void> => {
+  const group = await getGroupById(req.params.id);
+  if (!group) {
+    res.status(404).json({ error: 'Group not found' });
+    return;
+  }
+  await removePendingMemberFromGroup(group.group_id, req.userId!);
+  res.status(204).send();
+});
+
+// DELETE /groups/:id/pending/:userId — admin cancels a pending invitation
+router.delete('/:id/pending/:userId', async (req: AuthRequest, res: Response): Promise<void> => {
+  const group = await getGroupById(req.params.id);
+  if (!group) {
+    res.status(404).json({ error: 'Group not found' });
+    return;
+  }
+  if (group.admin_user_id !== req.userId!) {
+    res.status(403).json({ error: 'Only the admin can cancel invitations' });
+    return;
+  }
+  await removePendingMemberFromGroup(group.group_id, req.params.userId);
   res.status(204).send();
 });
 
