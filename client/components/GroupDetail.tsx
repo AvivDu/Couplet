@@ -17,6 +17,7 @@ import {
   revokeFromGroup,
   leaveGroup,
   searchUsers,
+  cancelInvitation,
 } from '../services/api';
 import type { GroupDetail as GroupDetailType, GroupMember, GroupCoupon } from '../services/api';
 
@@ -139,6 +140,25 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId }
     );
   }
 
+  async function handleCancelInvite(member: GroupMember) {
+    if (!groupId) return;
+    Alert.alert('Cancel invitation', `Cancel invite for ${member.username}?`, [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Cancel invite',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await cancelInvitation(groupId, member.user_id);
+            await fetchGroup();
+          } catch (err: any) {
+            Alert.alert('Error', err?.response?.data?.error ?? 'Could not cancel invitation.');
+          }
+        },
+      },
+    ]);
+  }
+
   async function handleRevokeCoupon(couponId: string) {
     if (!groupId) return;
     Alert.alert(
@@ -209,6 +229,37 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId }
                 </View>
               );
             })}
+
+            {/* Pending invitations */}
+            {(group.pending_members ?? []).length > 0 && (
+              <>
+                <Text style={[styles.sectionTitle, { marginTop: 20 }]}>
+                  PENDING ({group.pending_members.length})
+                </Text>
+                {group.pending_members.map(member => (
+                  <View key={member.user_id} style={[styles.memberRow, { opacity: 0.5 }]}>
+                    <View style={styles.avatar}>
+                      <Text style={styles.avatarText}>{getInitials(member.username)}</Text>
+                    </View>
+                    <View style={styles.memberInfo}>
+                      <Text style={styles.memberName}>{member.username}</Text>
+                      <Text style={styles.memberEmail}>{member.email}</Text>
+                    </View>
+                    <View style={styles.pendingBadge}>
+                      <Text style={styles.pendingBadgeText}>Pending</Text>
+                    </View>
+                    {isAdmin && (
+                      <TouchableOpacity
+                        style={styles.cancelInviteBtn}
+                        onPress={() => handleCancelInvite(member)}
+                      >
+                        <Text style={styles.cancelInviteBtnText}>Cancel</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+              </>
+            )}
 
             {/* Add member (admin only) */}
             {isAdmin && (
@@ -436,4 +487,20 @@ const styles = StyleSheet.create({
     borderColor: '#E8604C',
   },
   leaveBtnText: { color: '#E8604C', fontSize: 15, fontWeight: '600' },
+  memberEmail: { fontSize: 12, color: '#A8997A', marginTop: 1 },
+  pendingBadge: {
+    backgroundColor: '#F5E6A3',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginRight: 8,
+  },
+  pendingBadgeText: { fontSize: 11, fontWeight: '700', color: '#8A7200' },
+  cancelInviteBtn: {
+    backgroundColor: 'rgba(200,200,200,0.2)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  cancelInviteBtnText: { fontSize: 12, color: '#1A2332', opacity: 0.6 },
 });

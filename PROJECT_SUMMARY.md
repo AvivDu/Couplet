@@ -1,7 +1,7 @@
 # Couplet — Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-05-07
+**Last updated:** 2026-05-12
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device — the server holds metadata only.
 
@@ -62,6 +62,8 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Share a coupon to a group (owner only) — bottom sheet group picker in CouponDetail
 - [x] Revoke a coupon from a group (admin or coupon owner) — confirmation alert
 - [x] Leave group (non-admin members) — confirmation alert, removes shared coupons
+- [x] **Group invitation system** — admin invites by email/username → user added to `pending_user_ids`; invited user receives notification card with Accept/Decline buttons; Accept moves user to `user_id_list`; admin can cancel pending invites; pending members shown at 50% opacity with Pending badge in GroupDetail
+- [x] **Notification bell** — header bell icon on My Coupons with unread badge; slide-up panel shows expiry alerts (within 7 days) and group invite cards; `GET /invitations` polled on each load
 
 ### Users
 - [x] Search users by email or username — `GET /users/search?q=` (used for adding group members)
@@ -143,7 +145,8 @@ client/
     CouponCard.tsx        — solid-color card with badge for used/expired
     CouponDetail.tsx      — detail/edit modal + image picker + Share to Group picker
     GroupCard.tsx         — group summary card (name, member count, admin badge)
-    GroupDetail.tsx       — members list + shared coupons + add/remove/revoke
+    GroupDetail.tsx       — members list + shared coupons + add/remove/revoke + pending invites
+    NotificationPanel.tsx — slide-up notification panel (expiry alerts + group invite cards)
   context/
     AuthContext.tsx       — token storage, user state, login/logout
   services/
@@ -160,7 +163,8 @@ server/src/
   routes/
     auth.ts               — POST /auth/sync, GET /auth/me
     coupons.ts            — CRUD for coupon metadata (auth-protected)
-    groups.ts             — CRUD for groups + members + coupon sharing (auth-protected)
+    groups.ts             — CRUD for groups + members + coupon sharing + invitation routes (auth-protected)
+    invitations.ts        — GET /invitations (pending invites for current user)
     users.ts              — GET /users/search
 ```
 
