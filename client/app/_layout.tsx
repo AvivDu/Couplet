@@ -1,6 +1,7 @@
 import { Slot, useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 
 function RootGuard() {
@@ -33,8 +34,10 @@ function RootGuard() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <RootGuard />
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <RootGuard />
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }

@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CATEGORY_COLORS } from '../../constants/categories';
-import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, type CouponMeta } from '../../services/api';
+import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, type CouponMeta } from '../../services/api';
 import { getCouponCode, deleteCouponCode, deleteCouponImage } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
 import CouponCard from '../../components/CouponCard';
@@ -63,6 +63,7 @@ export default function HomeScreen() {
   const [selected, setSelected] = useState<CouponWithCode | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notifPanelOpen, setNotifPanelOpen] = useState(false);
+  const [joinedGroupName, setJoinedGroupName] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -128,7 +129,7 @@ export default function HomeScreen() {
         body: n.body,
         read: n.read,
         ...(n.type === 'group_invite' && n.group_id
-          ? { actionType: 'group_invite' as const, actionGroupId: n.group_id }
+          ? { actionType: 'group_invite' as const, actionGroupId: n.group_id, actionGroupName: n.group_name }
           : {}),
       }));
 
@@ -146,6 +147,7 @@ export default function HomeScreen() {
           read: false,
           actionType: 'group_invite' as const,
           actionGroupId: inv.group_id,
+          actionGroupName: inv.name,
         }));
 
       setNotifications(prev => {
@@ -191,14 +193,23 @@ export default function HomeScreen() {
   const unreadCount = notifications.filter(n => !n.read).length;
 
   async function handleAcceptInvite(groupId: string) {
+    const groupName = notifications.find(n => n.actionGroupId === groupId)?.actionGroupName;
     await acceptInvitation(groupId);
     setNotifications(prev => prev.filter(n => n.actionGroupId !== groupId));
+    setJoinedGroupName(groupName ?? null);
     load();
   }
 
   async function handleDeclineInvite(groupId: string) {
     await declineInvitation(groupId);
     load();
+  }
+
+  function handleDismissNotification(id: string) {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+    if (id.startsWith('server-')) {
+      deleteNotification(id.slice('server-'.length)).catch(() => {});
+    }
   }
 
   function handleBellPress() {
@@ -379,7 +390,23 @@ export default function HomeScreen() {
           onClose={() => setNotifPanelOpen(false)}
           onAcceptInvite={handleAcceptInvite}
           onDeclineInvite={handleDeclineInvite}
+          onDismissNotification={handleDismissNotification}
         />
+
+        {/* Joined group confirmation */}
+        {joinedGroupName !== null && (
+          <Modal transparent animationType="fade" visible onRequestClose={() => setJoinedGroupName(null)}>
+            <View style={styles.joinOverlay}>
+              <View style={styles.joinBox}>
+                <TouchableOpacity style={styles.joinCloseBtn} onPress={() => setJoinedGroupName(null)}>
+                  <Ionicons name="close" size={20} color="#1A2332" />
+                </TouchableOpacity>
+                <Ionicons name="people-circle-outline" size={52} color="#E8604C" />
+                <Text style={styles.joinText}>You joined "{joinedGroupName}" group!</Text>
+              </View>
+            </View>
+          </Modal>
+        )}
 
         {/* Detail modal */}
         <CouponDetail
@@ -530,4 +557,41 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 52 },
   emptyText: { fontSize: 18, fontWeight: '700', color: '#1A2332' },
   emptyHint: { fontSize: 14, color: '#1A2332', opacity: 0.45 },
+  joinOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  joinBox: {
+    backgroundColor: '#fff',
+    borderRadius: 24,
+    paddingTop: 44,
+    paddingBottom: 32,
+    paddingHorizontal: 32,
+    alignItems: 'center',
+    width: 300,
+    gap: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  joinCloseBtn: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  joinText: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1A2332',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
 });
