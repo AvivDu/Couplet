@@ -117,6 +117,11 @@ router.post('/:id/members', async (req: AuthRequest, res: Response): Promise<voi
   }
 
   const updated = await addPendingMemberToGroup(group.group_id, target.user_id);
+  if (!updated) {
+    res.status(500).json({ error: 'Failed to update group' });
+    return;
+  }
+  console.log('[send-invite] added userId=%s to pending of groupId=%s', target.user_id, group.group_id);
 
   // Notify the invited user
   const inviter = await findUserById(req.userId!);
@@ -184,6 +189,7 @@ router.post('/:id/members/accept', async (req: AuthRequest, res: Response): Prom
     res.status(404).json({ error: 'Group not found' });
     return;
   }
+  console.log('[accept-invite] userId=%s groupId=%s pending=%j', req.userId, req.params.id, group.pending_user_ids);
   if (!(group.pending_user_ids ?? []).includes(req.userId!)) {
     res.status(403).json({ error: 'No pending invitation for this user' });
     return;
