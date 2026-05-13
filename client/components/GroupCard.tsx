@@ -1,19 +1,27 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import type { GroupMeta } from '../services/api';
 
 interface Props {
   group: GroupMeta;
   currentUserId: string;
+  imageUri?: string | null;
   onPress: () => void;
 }
 
-export default function GroupCard({ group, currentUserId, onPress }: Props) {
+export default function GroupCard({ group, currentUserId, imageUri, onPress }: Props) {
   const isAdmin = group.admin_user_id === currentUserId;
+  const initials = group.name.slice(0, 2).toUpperCase();
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.82}>
       <View style={styles.left}>
-        <Text style={styles.icon}>👥</Text>
+        {imageUri ? (
+          <Image source={{ uri: imageUri }} style={styles.groupImage} />
+        ) : (
+          <View style={styles.groupImageFallback}>
+            <Text style={styles.fallbackText}>{initials}</Text>
+          </View>
+        )}
       </View>
       <View style={styles.info}>
         <View style={styles.nameRow}>
@@ -46,16 +54,21 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
-  left: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#F5F0E6',
+  left: { marginRight: 14 },
+  groupImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  groupImageFallback: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#E8604C',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
   },
-  icon: { fontSize: 22 },
+  fallbackText: { fontSize: 16, fontWeight: '800', color: '#fff' },
   info: { flex: 1 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3 },
   name: { fontSize: 16, fontWeight: '700', color: '#1A2332' },

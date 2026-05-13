@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createGroup, getGroupsByUser, getGroupById, removeMemberFromGroup, leaveGroup, addCouponToGroup, removeCouponFromGroup, removeCouponsByOwnerFromGroup, addPendingMemberToGroup, removePendingMemberFromGroup, acceptGroupInvitation } from '../repositories/groups';
 import { findUserByEmail, findUserById, findUsersByQuery } from '../repositories/users';
 import { getCouponById } from '../repositories/coupons';
+import { insertNotification } from '../repositories/notifications';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -226,6 +227,25 @@ router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): P
   }
 
   const updated = await addCouponToGroup(group.group_id, coupon.coupon_id);
+
+  // Notify all other group members
+  const sharer = await findUserById(req.userId!);
+  const sharerName = sharer?.username ?? 'A member';
+  const otherMembers = group.user_id_list.filter(uid => uid !== req.userId!);
+  await Promise.all(
+    otherMembers.map(uid =>
+      insertNotification({
+        user_id: uid,
+        type: 'group_share',
+        title: `New coupon in "${group.name}"`,
+        body: `${sharerName} shared a ${coupon.store_name} coupon`,
+        read: false,
+        group_id: group.group_id,
+        group_name: group.name,
+      })
+    )
+  );
+
   res.json(updated);
 });
 
