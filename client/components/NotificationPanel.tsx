@@ -1,4 +1,6 @@
-import { View, Text, StyleSheet, Modal, ScrollView, TouchableOpacity, SafeAreaView } from 'react-native';
+import { useRef } from 'react';
+import { View, Text, StyleSheet, Modal, ScrollView, TouchableOpacity, Animated, PanResponder } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { CATEGORY_COLORS } from '../constants/categories';
 
@@ -11,6 +13,7 @@ export type NotificationItem = {
   read: boolean;
   actionType?: 'group_invite';
   actionGroupId?: string;
+  actionGroupName?: string;
 };
 
 interface Props {
@@ -19,13 +22,39 @@ interface Props {
   onClose: () => void;
   onAcceptInvite: (groupId: string) => Promise<void>;
   onDeclineInvite: (groupId: string) => Promise<void>;
+  onDismissNotification: (id: string) => void;
 }
 
-function NotifCard({ item, onAccept, onDecline }: {
+function NotifCard({ item, onAccept, onDecline, onDismiss }: {
   item: NotificationItem;
   onAccept: () => void;
   onDecline: () => void;
+  onDismiss: () => void;
 }) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const opacity = translateX.interpolate({
+    inputRange: [-200, -60, 0, 60, 200],
+    outputRange: [0, 0.5, 1, 0.5, 0],
+    extrapolate: 'clamp',
+  });
+
+  const panResponder = useRef(PanResponder.create({
+    onMoveShouldSetPanResponder: (_, { dx, dy }) =>
+      Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy),
+    onPanResponderMove: (_, { dx }) => translateX.setValue(dx),
+    onPanResponderRelease: (_, { dx }) => {
+      if (Math.abs(dx) > 80) {
+        Animated.timing(translateX, {
+          toValue: dx > 0 ? 500 : -500,
+          duration: 200,
+          useNativeDriver: true,
+        }).start(onDismiss);
+      } else {
+        Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
+      }
+    },
+  })).current;
+
   const stripeColor =
     item.type === 'coupon'
       ? (CATEGORY_COLORS[item.category ?? ''] ?? CATEGORY_COLORS.Other)
@@ -35,7 +64,10 @@ function NotifCard({ item, onAccept, onDecline }: {
     item.type === 'coupon' ? 'time-outline' : 'people-outline';
 
   return (
-    <View style={[styles.card, item.read && styles.cardRead]}>
+    <Animated.View
+      style={[styles.card, item.read && styles.cardRead, { transform: [{ translateX }], opacity }]}
+      {...panResponder.panHandlers}
+    >
       <View style={[styles.stripe, { backgroundColor: stripeColor }]} />
       <View style={styles.cardBody}>
         <Ionicons name={icon} size={20} color="#444444" />
@@ -54,11 +86,11 @@ function NotifCard({ item, onAccept, onDecline }: {
           )}
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
-export default function NotificationPanel({ visible, notifications, onClose, onAcceptInvite, onDeclineInvite }: Props) {
+export default function NotificationPanel({ visible, notifications, onClose, onAcceptInvite, onDeclineInvite, onDismissNotification }: Props) {
   return (
     <Modal
       visible={visible}
@@ -67,7 +99,6 @@ export default function NotificationPanel({ visible, notifications, onClose, onA
       onRequestClose={onClose}
     >
       <SafeAreaView style={styles.safeArea}>
-        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Notifications</Text>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
@@ -89,6 +120,7 @@ export default function NotificationPanel({ visible, notifications, onClose, onA
                 item={item}
                 onAccept={() => item.actionGroupId && onAcceptInvite(item.actionGroupId)}
                 onDecline={() => item.actionGroupId && onDeclineInvite(item.actionGroupId)}
+                onDismiss={() => onDismissNotification(item.id)}
               />
             ))}
           </ScrollView>
