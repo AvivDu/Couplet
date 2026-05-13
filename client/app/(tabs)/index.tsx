@@ -192,6 +192,7 @@ export default function HomeScreen() {
 
   async function handleAcceptInvite(groupId: string) {
     await acceptInvitation(groupId);
+    setNotifications(prev => prev.filter(n => n.actionGroupId !== groupId));
     load();
   }
 

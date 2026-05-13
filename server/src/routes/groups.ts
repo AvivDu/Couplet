@@ -191,6 +191,10 @@ router.post('/:id/members/accept', async (req: AuthRequest, res: Response): Prom
   }
   console.log('[accept-invite] userId=%s groupId=%s pending=%j', req.userId, req.params.id, group.pending_user_ids);
   if (!(group.pending_user_ids ?? []).includes(req.userId!)) {
+    if (group.user_id_list.includes(req.userId!)) {
+      res.json({ message: 'already a member' });
+      return;
+    }
     res.status(403).json({ error: 'No pending invitation for this user' });
     return;
   }
