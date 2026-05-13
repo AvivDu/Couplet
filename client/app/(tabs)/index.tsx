@@ -92,29 +92,53 @@ export default function HomeScreen() {
       );
       setCouponCodes(codes);
 
-      // Generate expiry notifications for coupons due within 7 days
+      // Generate one expiry notification per day (7 down to 1) for each active coupon
       const soonMs = 7 * 24 * 60 * 60 * 1000;
       const generated: NotificationItem[] = coupons
         .filter(c => c.expiration_date)
         .flatMap(c => {
           const msLeft = new Date(c.expiration_date!).getTime() - now.getTime();
-          if (c.status === 'active' && msLeft >= 0 && msLeft <= soonMs) {
+          if (c.status === 'active' && msLeft > 0 && msLeft <= soonMs) {
             const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
             return [{
-              id: `expiry-${c.coupon_id}`,
+              // ID includes daysLeft so each day produces a fresh unread notification
+              id: `expiry-${c.coupon_id}-${daysLeft}`,
               type: 'coupon' as const,
               title: `${c.store_name} expiring soon`,
-              body: daysLeft === 0 ? 'Expires today!' : `Expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}`,
+              body: daysLeft === 1 ? 'Expires tomorrow!' : `Expires in ${daysLeft} days`,
               category: c.category,
               read: false,
             }];
           }
           return [];
         });
-      let inviteNotifs: NotificationItem[] = [];
-      try {
-        const { data: invitations } = await getInvitations();
-        inviteNotifs = invitations.map(inv => ({
+      const [invitationsResult, serverNotifsResult] = await Promise.allSettled([
+        getInvitations(),
+        getNotifications(),
+      ]);
+
+      const invitations = invitationsResult.status === 'fulfilled' ? invitationsResult.value.data : [];
+      const serverNotifData = serverNotifsResult.status === 'fulfilled' ? serverNotifsResult.value.data : [];
+
+      // Map server notifications; group_invite type gets Accept/Decline action buttons
+      const serverNotifs: NotificationItem[] = serverNotifData.map(n => ({
+        id: `server-${n.notification_id}`,
+        type: 'social' as const,
+        title: n.title,
+        body: n.body,
+        read: n.read,
+        ...(n.type === 'group_invite' && n.group_id
+          ? { actionType: 'group_invite' as const, actionGroupId: n.group_id }
+          : {}),
+      }));
+
+      // Legacy: only show getInvitations() items not already covered by a server notification
+      const serverInviteGroupIds = new Set(
+        serverNotifData.filter(n => n.type === 'group_invite' && n.group_id).map(n => n.group_id!)
+      );
+      const inviteNotifs: NotificationItem[] = invitations
+        .filter(inv => !serverInviteGroupIds.has(inv.group_id))
+        .map(inv => ({
           id: `invite-${inv.group_id}`,
           type: 'social' as const,
           title: 'Group invitation',
@@ -123,25 +147,16 @@ export default function HomeScreen() {
           actionType: 'group_invite' as const,
           actionGroupId: inv.group_id,
         }));
-      } catch { /* invitation fetch failure should not break coupon load */ }
-
-      let serverNotifs: NotificationItem[] = [];
-      try {
-        const { data: sn } = await getNotifications();
-        serverNotifs = sn.map(n => ({
-          id: `server-${n.notification_id}`,
-          type: 'social' as const,
-          title: n.title,
-          body: n.body,
-          read: n.read,
-        }));
-      } catch { /* notification fetch failure should not break coupon load */ }
 
       setNotifications(prev => {
         const readIds = new Set(prev.filter(n => n.read).map(n => n.id));
         return [
-          ...inviteNotifs.map(n => ({ ...n, read: readIds.has(n.id) })),
-          ...serverNotifs.map(n => ({ ...n, read: n.read || readIds.has(n.id) })),
+          // Invitations are always unread while still pending
+          ...inviteNotifs,
+          ...serverNotifs.map(n => ({
+            ...n,
+            read: n.actionType === 'group_invite' ? false : (n.read || readIds.has(n.id)),
+          })),
           ...generated.map(n => ({ ...n, read: readIds.has(n.id) })),
         ];
       });
