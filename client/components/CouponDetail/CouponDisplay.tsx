@@ -16,7 +16,7 @@ import * as Location from 'expo-location';
 import { getCouponImage, saveCouponImage } from '../../storage/couponStorage';
 import { getGroups, shareToGroup, getCouponLocations } from '../../services/api';
 import type { GroupMeta, StoreLocation } from '../../services/api';
-import { CATEGORY_COLORS } from './constants';
+import { CATEGORY_COLORS } from '../../constants/categories';
 import type { CouponWithCode } from './types';
 
 interface CouponDisplayProps {
@@ -35,6 +35,7 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
   const [locationsVisible, setLocationsVisible] = React.useState(false);
   const [locations, setLocations] = React.useState<StoreLocation[]>([]);
   const [locationsLoading, setLocationsLoading] = React.useState(false);
+  const [redeemConfirmVisible, setRedeemConfirmVisible] = React.useState(false);
 
   React.useEffect(() => {
     getCouponImage(coupon.coupon_id).then(setImageUri);
@@ -164,10 +165,7 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
         {coupon.status === 'active' && (
           <TouchableOpacity
             style={styles.redeemBtn}
-            onPress={() => {
-              onMarkUsed(coupon.coupon_id);
-              onClose();
-            }}
+            onPress={() => setRedeemConfirmVisible(true)}
             activeOpacity={0.85}
           >
             <Text style={styles.redeemBtnText}>Redeem</Text>
@@ -214,6 +212,42 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
         <Text style={styles.deleteBtnText}>Delete Coupon</Text>
       </TouchableOpacity>
     </ScrollView>
+
+    <Modal
+      visible={redeemConfirmVisible}
+      animationType="fade"
+      transparent
+      onRequestClose={() => setRedeemConfirmVisible(false)}
+    >
+      <View style={styles.confirmOverlay}>
+        <View style={styles.confirmBox}>
+          <Text style={styles.confirmTitle}>Redeem Coupon</Text>
+          <Text style={styles.confirmMessage}>
+            Are you sure you want to redeem the{' '}
+            <Text style={styles.confirmStoreName}>"{coupon.store_name}"</Text>
+            {' '}coupon?
+          </Text>
+          <View style={styles.confirmButtons}>
+            <TouchableOpacity
+              style={styles.confirmNo}
+              onPress={() => setRedeemConfirmVisible(false)}
+            >
+              <Text style={styles.confirmNoText}>No</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.confirmYes}
+              onPress={() => {
+                setRedeemConfirmVisible(false);
+                onMarkUsed(coupon.coupon_id);
+                onClose();
+              }}
+            >
+              <Text style={styles.confirmYesText}>Yes</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
 
     <Modal
       visible={groupPickerVisible}
@@ -511,4 +545,66 @@ const styles = StyleSheet.create({
   locationOpenYes: { color: '#7DC99E' },
   locationOpenNo: { color: '#E8604C' },
   locationRating: { fontSize: 12, color: '#A8997A' },
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(26,35,50,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  confirmBox: {
+    backgroundColor: '#F5F0E6',
+    borderRadius: 20,
+    padding: 28,
+    width: '100%',
+    alignItems: 'center',
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1A2332',
+    marginBottom: 12,
+  },
+  confirmMessage: {
+    fontSize: 15,
+    color: '#1A2332',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+    opacity: 0.8,
+  },
+  confirmStoreName: {
+    fontWeight: '700',
+    opacity: 1,
+  },
+  confirmButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  confirmNo: {
+    flex: 1,
+    borderRadius: 30,
+    paddingVertical: 13,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#C4B8A0',
+  },
+  confirmNoText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1A2332',
+  },
+  confirmYes: {
+    flex: 1,
+    borderRadius: 30,
+    paddingVertical: 13,
+    alignItems: 'center',
+    backgroundColor: '#E8604C',
+  },
+  confirmYesText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+  },
 });

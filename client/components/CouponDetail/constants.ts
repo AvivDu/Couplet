@@ -1,14 +1,3 @@
-export const CATEGORY_COLORS: Record<string, string> = {
-  Food: '#F4856A',
-  Fashion: '#9B7EC8',
-  Groceries: '#7DC99E',
-  Electronics: '#6BBDE8',
-  Beauty: '#EC9BC0',
-  Travel: '#5BC8A8',
-  Sport: '#F4856A',
-  Other: '#B8C4CC',
-};
-
 export const YEARS = Array.from({ length: 12 }, (_, i) => String(2025 + i));
 
 export const MONTHS = [
