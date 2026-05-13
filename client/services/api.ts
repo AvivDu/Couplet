@@ -194,6 +194,7 @@ export interface ServerNotification {
 
 export const getNotifications = () => api.get<ServerNotification[]>('/notifications');
 export const markNotificationsRead = () => api.patch('/notifications/read-all');
+export const deleteNotification = (notificationId: string) => api.delete(`/notifications/${notificationId}`);
 
 export const getInvitations = () => api.get<GroupInvitation[]>('/invitations');
 export const acceptInvitation = (groupId: string) =>

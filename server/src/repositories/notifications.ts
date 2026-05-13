@@ -1,4 +1,4 @@
-import { PutCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { PutCommand, QueryCommand, UpdateCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
 import { ddb, NOTIFICATIONS_TABLE } from '../lib/dynamo';
 
@@ -35,6 +35,13 @@ export async function getNotificationsForUser(userId: string): Promise<Notificat
     Limit: 50,
   }));
   return (result.Items as Notification[]) ?? [];
+}
+
+export async function deleteNotification(userId: string, notificationId: string): Promise<void> {
+  await ddb.send(new DeleteCommand({
+    TableName: NOTIFICATIONS_TABLE,
+    Key: { user_id: userId, notification_id: notificationId },
+  }));
 }
 
 export async function markAllNotificationsRead(userId: string): Promise<void> {

@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CATEGORY_COLORS } from '../../constants/categories';
-import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, type CouponMeta } from '../../services/api';
+import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, type CouponMeta } from '../../services/api';
 import { getCouponCode, deleteCouponCode, deleteCouponImage } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
 import CouponCard from '../../components/CouponCard';
@@ -207,6 +207,9 @@ export default function HomeScreen() {
 
   function handleDismissNotification(id: string) {
     setNotifications(prev => prev.filter(n => n.id !== id));
+    if (id.startsWith('server-')) {
+      deleteNotification(id.slice('server-'.length)).catch(() => {});
+    }
   }
 
   function handleBellPress() {

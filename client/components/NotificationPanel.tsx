@@ -1,6 +1,6 @@
-import { useRef } from 'react';
-import { View, Text, StyleSheet, Modal, ScrollView, TouchableOpacity, Animated, PanResponder } from 'react-native';
+import { View, Text, StyleSheet, Modal, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { CATEGORY_COLORS } from '../constants/categories';
 
@@ -25,36 +25,20 @@ interface Props {
   onDismissNotification: (id: string) => void;
 }
 
+function DeleteAction() {
+  return (
+    <View style={styles.deleteAction}>
+      <Ionicons name="trash-outline" size={22} color="#fff" />
+    </View>
+  );
+}
+
 function NotifCard({ item, onAccept, onDecline, onDismiss }: {
   item: NotificationItem;
   onAccept: () => void;
   onDecline: () => void;
   onDismiss: () => void;
 }) {
-  const translateX = useRef(new Animated.Value(0)).current;
-  const opacity = translateX.interpolate({
-    inputRange: [-200, -60, 0, 60, 200],
-    outputRange: [0, 0.5, 1, 0.5, 0],
-    extrapolate: 'clamp',
-  });
-
-  const panResponder = useRef(PanResponder.create({
-    onMoveShouldSetPanResponder: (_, { dx, dy }) =>
-      Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy),
-    onPanResponderMove: (_, { dx }) => translateX.setValue(dx),
-    onPanResponderRelease: (_, { dx }) => {
-      if (Math.abs(dx) > 80) {
-        Animated.timing(translateX, {
-          toValue: dx > 0 ? 500 : -500,
-          duration: 200,
-          useNativeDriver: true,
-        }).start(onDismiss);
-      } else {
-        Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
-      }
-    },
-  })).current;
-
   const stripeColor =
     item.type === 'coupon'
       ? (CATEGORY_COLORS[item.category ?? ''] ?? CATEGORY_COLORS.Other)
@@ -64,29 +48,35 @@ function NotifCard({ item, onAccept, onDecline, onDismiss }: {
     item.type === 'coupon' ? 'time-outline' : 'people-outline';
 
   return (
-    <Animated.View
-      style={[styles.card, item.read && styles.cardRead, { transform: [{ translateX }], opacity }]}
-      {...panResponder.panHandlers}
+    <Swipeable
+      renderRightActions={() => <DeleteAction />}
+      renderLeftActions={() => <DeleteAction />}
+      onSwipeableOpen={onDismiss}
+      overshootLeft={false}
+      overshootRight={false}
+      containerStyle={styles.swipeContainer}
     >
-      <View style={[styles.stripe, { backgroundColor: stripeColor }]} />
-      <View style={styles.cardBody}>
-        <Ionicons name={icon} size={20} color="#444444" />
-        <View style={styles.textBlock}>
-          <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.cardSub}>{item.body}</Text>
-          {item.actionType === 'group_invite' && (
-            <View style={styles.actionRow}>
-              <TouchableOpacity style={styles.acceptBtn} onPress={onAccept}>
-                <Text style={styles.acceptBtnText}>Accept</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.declineBtn} onPress={onDecline}>
-                <Text style={styles.declineBtnText}>Decline</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+      <View style={[styles.card, item.read && styles.cardRead]}>
+        <View style={[styles.stripe, { backgroundColor: stripeColor }]} />
+        <View style={styles.cardBody}>
+          <Ionicons name={icon} size={20} color="#444444" />
+          <View style={styles.textBlock}>
+            <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
+            <Text style={styles.cardSub}>{item.body}</Text>
+            {item.actionType === 'group_invite' && (
+              <View style={styles.actionRow}>
+                <TouchableOpacity style={styles.acceptBtn} onPress={onAccept}>
+                  <Text style={styles.acceptBtnText}>Accept</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.declineBtn} onPress={onDecline}>
+                  <Text style={styles.declineBtnText}>Decline</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
         </View>
       </View>
-    </Animated.View>
+    </Swipeable>
   );
 }
 
@@ -145,11 +135,14 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 20, fontWeight: '800', color: '#1A2332' },
   closeBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
   list: { paddingVertical: 10, paddingBottom: 60 },
+  swipeContainer: {
+    marginHorizontal: 16,
+    marginVertical: 7,
+    borderRadius: 16,
+  },
   card: {
     flexDirection: 'row',
     borderRadius: 16,
-    marginHorizontal: 16,
-    marginVertical: 7,
     backgroundColor: '#fff',
     overflow: 'hidden',
     shadowColor: '#000',
@@ -179,4 +172,11 @@ const styles = StyleSheet.create({
   acceptBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
   declineBtn: { borderWidth: 1.5, borderColor: '#C4B8A0', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 7 },
   declineBtnText: { fontSize: 13, fontWeight: '700', color: '#1A2332' },
+  deleteAction: {
+    backgroundColor: '#E8604C',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 72,
+    borderRadius: 16,
+  },
 });
