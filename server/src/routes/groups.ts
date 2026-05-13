@@ -117,6 +117,20 @@ router.post('/:id/members', async (req: AuthRequest, res: Response): Promise<voi
   }
 
   const updated = await addPendingMemberToGroup(group.group_id, target.user_id);
+
+  // Notify the invited user
+  const inviter = await findUserById(req.userId!);
+  const inviterName = inviter?.username ?? 'Someone';
+  await insertNotification({
+    user_id: target.user_id,
+    type: 'group_invite',
+    title: 'Group invitation',
+    body: `${inviterName} invited you to join "${group.name}"`,
+    read: false,
+    group_id: group.group_id,
+    group_name: group.name,
+  });
+
   res.json(updated);
 });
 
