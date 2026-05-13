@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CATEGORY_COLORS } from '../../constants/categories';
-import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, type CouponMeta } from '../../services/api';
+import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, type CouponMeta } from '../../services/api';
 import { getCouponCode, deleteCouponCode, deleteCouponImage } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
 import CouponCard from '../../components/CouponCard';
@@ -125,9 +125,25 @@ export default function HomeScreen() {
         }));
       } catch { /* invitation fetch failure should not break coupon load */ }
 
+      let serverNotifs: NotificationItem[] = [];
+      try {
+        const { data: sn } = await getNotifications();
+        serverNotifs = sn.map(n => ({
+          id: `server-${n.notification_id}`,
+          type: 'social' as const,
+          title: n.title,
+          body: n.body,
+          read: n.read,
+        }));
+      } catch { /* notification fetch failure should not break coupon load */ }
+
       setNotifications(prev => {
         const readIds = new Set(prev.filter(n => n.read).map(n => n.id));
-        return [...inviteNotifs, ...generated].map(n => ({ ...n, read: readIds.has(n.id) }));
+        return [
+          ...inviteNotifs.map(n => ({ ...n, read: readIds.has(n.id) })),
+          ...serverNotifs.map(n => ({ ...n, read: n.read || readIds.has(n.id) })),
+          ...generated.map(n => ({ ...n, read: readIds.has(n.id) })),
+        ];
       });
     } catch {
       Alert.alert('Error', 'Could not load coupons. Is the server running?');
@@ -172,6 +188,7 @@ export default function HomeScreen() {
   function handleBellPress() {
     setNotifPanelOpen(true);
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    markNotificationsRead().catch(() => {});
   }
 
   async function handleMarkUsed(id: string) {
@@ -386,10 +403,10 @@ const styles = StyleSheet.create({
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   bellBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
   badge: {
-    position: 'absolute', top: 6, right: 6,
-    width: 8, height: 8, borderRadius: 4,
-    backgroundColor: '#FFB7B2',
-    borderWidth: 1.5, borderColor: '#F5F0E6',
+    position: 'absolute', top: 4, right: 4,
+    width: 12, height: 12, borderRadius: 6,
+    backgroundColor: '#E8604C',
+    borderWidth: 2, borderColor: '#F5F0E6',
   },
   searchWrap: {
     flexDirection: 'row',

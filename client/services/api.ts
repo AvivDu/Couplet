@@ -180,6 +180,21 @@ export const leaveGroup = (groupId: string) =>
 export const searchUsers = (query: string) =>
   api.get<GroupMember[]>(`/users/search?q=${encodeURIComponent(query)}`);
 
+export interface ServerNotification {
+  user_id: string;
+  notification_id: string;
+  type: string;
+  title: string;
+  body: string;
+  read: boolean;
+  created_at: string;
+  group_id?: string;
+  group_name?: string;
+}
+
+export const getNotifications = () => api.get<ServerNotification[]>('/notifications');
+export const markNotificationsRead = () => api.patch('/notifications/read-all');
+
 export const getInvitations = () => api.get<GroupInvitation[]>('/invitations');
 export const acceptInvitation = (groupId: string) =>
   api.post(`/groups/${groupId}/members/accept`);
