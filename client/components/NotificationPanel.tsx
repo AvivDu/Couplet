@@ -59,7 +59,7 @@ function NotifCard({ item, onAccept, onDecline, onDismiss }: {
       <View style={[styles.card, item.read && styles.cardRead]}>
         <View style={[styles.stripe, { backgroundColor: stripeColor }]} />
         <View style={styles.cardBody}>
-          <Ionicons name={icon} size={20} color="#444444" />
+          <Ionicons name={icon} size={22} color="#E8604C" />
           <View style={styles.textBlock}>
             <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
             <Text style={styles.cardSub}>{item.body}</Text>
@@ -121,7 +121,7 @@ export default function NotificationPanel({ visible, notifications, onClose, onA
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F5F0E6' },
+  safeArea: { flex: 1, backgroundColor: '#EDE7D9' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -129,51 +129,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0D8CA',
+    borderBottomWidth: 1.5,
+    borderBottomColor: '#C4B8A0',
   },
   headerTitle: { fontSize: 20, fontWeight: '800', color: '#1A2332' },
   closeBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  list: { paddingVertical: 10, paddingBottom: 60 },
+  list: { paddingVertical: 12, paddingBottom: 60 },
   swipeContainer: {
     marginHorizontal: 16,
-    marginVertical: 7,
+    marginVertical: 6,
     borderRadius: 16,
   },
   card: {
     flexDirection: 'row',
     borderRadius: 16,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
-    elevation: 3,
+    borderWidth: 1.5,
+    borderColor: '#C4B8A0',
+    shadowColor: '#1A2332',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 6,
   },
-  cardRead: { opacity: 0.6 },
-  stripe: { width: 5, alignSelf: 'stretch' },
+  cardRead: { backgroundColor: '#F7F2EA', borderColor: '#D6CCBA' },
+  stripe: { width: 8, alignSelf: 'stretch' },
   cardBody: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 14,
+    gap: 14,
+    paddingVertical: 18,
+    paddingHorizontal: 16,
   },
   textBlock: { flex: 1 },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: '#1A2332', marginBottom: 2 },
-  cardSub: { fontSize: 13, color: '#1A2332', opacity: 0.55 },
+  cardTitle: { fontSize: 15, fontWeight: '800', color: '#1A2332', marginBottom: 3 },
+  cardSub: { fontSize: 13, fontWeight: '500', color: '#4A3F30', lineHeight: 18 },
   empty: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: '#1A2332' },
-  emptyHint: { fontSize: 14, color: '#1A2332', opacity: 0.45 },
+  emptyHint: { fontSize: 14, color: '#7A6A55' },
   actionRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
   acceptBtn: { backgroundColor: '#E8604C', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 7 },
   acceptBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
-  declineBtn: { borderWidth: 1.5, borderColor: '#C4B8A0', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 7 },
+  declineBtn: { borderWidth: 1.5, borderColor: '#8A7A65', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 7 },
   declineBtnText: { fontSize: 13, fontWeight: '700', color: '#1A2332' },
   deleteAction: {
-    backgroundColor: '#E8604C',
+    backgroundColor: '#C0392B',
     justifyContent: 'center',
     alignItems: 'center',
     width: 72,
