@@ -23,6 +23,8 @@ import {
   cancelInvitation,
   shareToGroup,
   getCoupons,
+  renameGroup,
+  deleteGroup,
 } from '../services/api';
 import type { GroupDetail as GroupDetailType, GroupMember, CouponMeta } from '../services/api';
 import { saveGroupImage, getGroupImage } from '../storage/groupStorage';
@@ -32,9 +34,10 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   currentUserId: string;
+  onGroupDeleted?: () => void;
 }
 
-export default function GroupDetail({ groupId, visible, onClose, currentUserId }: Props) {
+export default function GroupDetail({ groupId, visible, onClose, currentUserId, onGroupDeleted }: Props) {
   const [group, setGroup] = useState<GroupDetailType | null>(null);
   const [loading, setLoading] = useState(false);
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -48,6 +51,12 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId }
   const [couponPickerVisible, setCouponPickerVisible] = useState(false);
   const [myCoupons, setMyCoupons] = useState<CouponMeta[]>([]);
   const [sharingCouponId, setSharingCouponId] = useState<string | null>(null);
+
+  const [renameModalVisible, setRenameModalVisible] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const isAdmin = group?.admin_user_id === currentUserId;
 
@@ -139,6 +148,35 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId }
         catch (err: any) { Alert.alert('Error', err?.response?.data?.error ?? 'Could not cancel invitation.'); }
       }},
     ]);
+  }
+
+  async function handleRenameGroup() {
+    if (!groupId || !newGroupName.trim()) return;
+    setRenaming(true);
+    try {
+      const { data } = await renameGroup(groupId, newGroupName.trim());
+      setGroup(prev => prev ? { ...prev, name: data.name } : prev);
+      setRenameModalVisible(false);
+      setNewGroupName('');
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.error ?? 'Could not rename group.');
+    } finally {
+      setRenaming(false);
+    }
+  }
+
+  async function handleDeleteGroup() {
+    if (!groupId) return;
+    setDeleting(true);
+    try {
+      await deleteGroup(groupId);
+      setDeleteConfirmVisible(false);
+      onGroupDeleted?.();
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.error ?? 'Could not delete group.');
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function handleLeaveGroup() {
@@ -304,6 +342,27 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId }
                   <Text style={styles.leaveBtnText}>Leave Group</Text>
                 </TouchableOpacity>
               )}
+
+              {isAdmin && (
+                <View style={styles.adminActions}>
+                  <TouchableOpacity
+                    style={styles.renameBtn}
+                    onPress={() => { setNewGroupName(group.name); setRenameModalVisible(true); }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="pencil-outline" size={16} color="#E8604C" />
+                    <Text style={styles.renameBtnText}>Rename Group</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.deleteBtn}
+                    onPress={() => setDeleteConfirmVisible(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#D93025" />
+                    <Text style={styles.deleteBtnText}>Delete Group</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </ScrollView>
           </>
         )}
@@ -443,6 +502,105 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId }
                   <Text style={styles.dialogInviteBtnText}>Invite</Text>
                 )}
               </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* Rename Group Dialog */}
+        <Modal
+          visible={renameModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => { setRenameModalVisible(false); setNewGroupName(''); }}
+        >
+          <TouchableOpacity
+            style={styles.dialogOverlay}
+            activeOpacity={1}
+            onPress={() => { setRenameModalVisible(false); setNewGroupName(''); }}
+          >
+            <View style={styles.dialog} onStartShouldSetResponder={() => true}>
+              <View style={styles.dialogHeader}>
+                <Text style={styles.dialogTitle}>Rename Group</Text>
+                <TouchableOpacity
+                  onPress={() => { setRenameModalVisible(false); setNewGroupName(''); }}
+                  style={styles.dialogCloseBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="close" size={20} color="#1A2332" />
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                style={styles.dialogInput}
+                placeholder="New group name"
+                placeholderTextColor="#A8997A"
+                value={newGroupName}
+                onChangeText={setNewGroupName}
+                autoFocus
+                maxLength={60}
+              />
+              <TouchableOpacity
+                style={[styles.dialogInviteBtn, (!newGroupName.trim() || renaming) && styles.dialogInviteBtnDisabled]}
+                onPress={handleRenameGroup}
+                disabled={!newGroupName.trim() || renaming}
+                activeOpacity={0.8}
+              >
+                {renaming ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.dialogInviteBtnText}>Save</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* Delete Group Confirmation */}
+        <Modal
+          visible={deleteConfirmVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setDeleteConfirmVisible(false)}
+        >
+          <TouchableOpacity
+            style={styles.dialogOverlay}
+            activeOpacity={1}
+            onPress={() => setDeleteConfirmVisible(false)}
+          >
+            <View style={styles.dialog} onStartShouldSetResponder={() => true}>
+              <View style={styles.dialogHeader}>
+                <Text style={styles.dialogTitle}>Delete Group?</Text>
+                <TouchableOpacity
+                  onPress={() => setDeleteConfirmVisible(false)}
+                  style={styles.dialogCloseBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="close" size={20} color="#1A2332" />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.deleteWarningText}>
+                Are you sure you want to delete "{group?.name}"? This action is permanent and will remove all members.
+              </Text>
+              <View style={styles.deleteDialogActions}>
+                <TouchableOpacity
+                  style={styles.deleteCancelBtn}
+                  onPress={() => setDeleteConfirmVisible(false)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.deleteCancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.deleteConfirmBtn, deleting && styles.dialogInviteBtnDisabled]}
+                  onPress={handleDeleteGroup}
+                  disabled={deleting}
+                  activeOpacity={0.8}
+                >
+                  {deleting ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.deleteConfirmBtnText}>Delete</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
           </TouchableOpacity>
         </Modal>
@@ -805,4 +963,54 @@ const styles = StyleSheet.create({
   couponPickerName: { fontSize: 15, fontWeight: '600', color: '#1A2332' },
   couponPickerSub: { fontSize: 13, color: '#A8997A', marginTop: 2 },
   alreadySharedText: { fontSize: 13, fontWeight: '600', color: '#A8997A' },
+
+  adminActions: { marginTop: 32, gap: 12 },
+  renameBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 30,
+    paddingVertical: 15,
+    borderWidth: 1.5,
+    borderColor: '#E8604C',
+  },
+  renameBtnText: { color: '#E8604C', fontSize: 15, fontWeight: '600' },
+  deleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 30,
+    paddingVertical: 15,
+    borderWidth: 1.5,
+    borderColor: '#D93025',
+  },
+  deleteBtnText: { color: '#D93025', fontSize: 15, fontWeight: '600' },
+
+  deleteWarningText: {
+    fontSize: 14,
+    color: '#1A2332',
+    opacity: 0.7,
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  deleteDialogActions: { flexDirection: 'row', gap: 12 },
+  deleteCancelBtn: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#C4B8A0',
+  },
+  deleteCancelBtnText: { fontSize: 15, fontWeight: '600', color: '#1A2332' },
+  deleteConfirmBtn: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    backgroundColor: '#D93025',
+  },
+  deleteConfirmBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });

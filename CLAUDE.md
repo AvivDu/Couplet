@@ -19,7 +19,7 @@ Server coordinates P2P sessions but never relays coupon data.
 ## Data Model
 **Server — Users:** `user_id, email, user_name, password_hash, created_at, coupon_id_list`
 **Server — Coupon (metadata only):** `coupon_id, owner_id, category, redeemable_stores, expiration_date, balance, status`
-**Server — Group:** `group_id, user_id_list, pending_user_ids, coupon_id_list, admin_user_id`
+**Server — Group:** `group_id, name, user_id_list, pending_user_ids, coupon_id_list, admin_user_id`
 **Client local storage:** coupon code / QR / barcode, owner identifier, sharing permissions
 
 ## Features
@@ -28,7 +28,7 @@ Server coordinates P2P sessions but never relays coupon data.
 3. Coupon management — add/view/update, filter by category or expiry, status: `active/expired/used`
 4. Expiry notifications — server monitors metadata, pushes via AWS SNS, never accesses codes
 5. Redemption — local only, client sends `used` status to server, notifies group if balance zero
-6. Groups & P2P sharing — server manages groups/permissions, coupon data goes device-to-device; invitation flow: admin invites → pending_user_ids → invitee accepts/declines via notification panel
+6. Groups & P2P sharing — server manages groups/permissions, coupon data goes device-to-device; invitation flow: admin invites → pending_user_ids → invitee accepts/declines via notification panel; admin can rename or delete the group (403 for non-admins)
 7. Search — client queries server by store → server returns coupon IDs → client filters locally
 
 ## Screens

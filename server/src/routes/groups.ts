@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { createGroup, getGroupsByUser, getGroupById, removeMemberFromGroup, leaveGroup, addCouponToGroup, removeCouponFromGroup, removeCouponsByOwnerFromGroup, addPendingMemberToGroup, removePendingMemberFromGroup, acceptGroupInvitation } from '../repositories/groups';
+import { createGroup, getGroupsByUser, getGroupById, removeMemberFromGroup, leaveGroup, addCouponToGroup, removeCouponFromGroup, removeCouponsByOwnerFromGroup, addPendingMemberToGroup, removePendingMemberFromGroup, acceptGroupInvitation, renameGroup, deleteGroup } from '../repositories/groups';
 import { findUserByEmail, findUserById, findUsersByQuery } from '../repositories/users';
 import { getCouponById } from '../repositories/coupons';
 import { insertNotification } from '../repositories/notifications';
@@ -295,6 +295,41 @@ router.delete('/:id/coupons/:couponId', async (req: AuthRequest, res: Response):
   }
 
   await removeCouponFromGroup(group.group_id, coupon.coupon_id);
+  res.status(204).send();
+});
+
+// PUT /groups/:id/name — admin renames the group
+router.put('/:id/name', async (req: AuthRequest, res: Response): Promise<void> => {
+  const { name } = req.body;
+  if (!name?.trim()) {
+    res.status(400).json({ error: 'name is required' });
+    return;
+  }
+  const group = await getGroupById(req.params.id);
+  if (!group) {
+    res.status(404).json({ error: 'Group not found' });
+    return;
+  }
+  if (group.admin_user_id !== req.userId!) {
+    res.status(403).json({ error: 'Only the admin can rename the group' });
+    return;
+  }
+  const updated = await renameGroup(req.params.id, name.trim());
+  res.json(updated);
+});
+
+// DELETE /groups/:id — admin deletes the group
+router.delete('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
+  const group = await getGroupById(req.params.id);
+  if (!group) {
+    res.status(404).json({ error: 'Group not found' });
+    return;
+  }
+  if (group.admin_user_id !== req.userId!) {
+    res.status(403).json({ error: 'Only the admin can delete the group' });
+    return;
+  }
+  await deleteGroup(req.params.id);
   res.status(204).send();
 });
 
