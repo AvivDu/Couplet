@@ -1,7 +1,7 @@
 # Couplet — Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-05-12
+**Last updated:** 2026-05-14
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device — the server holds metadata only.
 
@@ -63,7 +63,9 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Revoke a coupon from a group (admin or coupon owner) — confirmation alert
 - [x] Leave group (non-admin members) — confirmation alert, removes shared coupons
 - [x] **Group invitation system** — admin invites by email/username → user added to `pending_user_ids`; invited user receives notification card with Accept/Decline buttons; Accept moves user to `user_id_list`; admin can cancel pending invites; pending members shown at 50% opacity with Pending badge in GroupDetail
-- [x] **Notification bell** — header bell icon on My Coupons with unread badge; slide-up panel shows expiry alerts (within 7 days) and group invite cards; `GET /invitations` polled on each load
+- [x] **Notification bell** — header bell icon on My Coupons with unread badge; slide-up panel shows expiry alerts (within 7 days) and group invite cards; swipe left/right to dismiss; `GET /invitations` polled on each load
+- [x] **Rename group** — admin-only; inline modal with current name pre-filled; `PUT /groups/:id/name`; updates local state on success; 403 for non-admins
+- [x] **Delete group** — admin-only; centered confirmation modal with permanent-action warning; `DELETE /groups/:id`; navigates back to groups list on success; 403 for non-admins
 
 ### Users
 - [x] Search users by email or username — `GET /users/search?q=` (used for adding group members)

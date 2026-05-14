@@ -1,4 +1,4 @@
-import { GetCommand, PutCommand, UpdateCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, UpdateCommand, ScanCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb, GROUPS_TABLE } from '../lib/dynamo';
 import { getCouponById } from './coupons';
 
@@ -166,6 +166,25 @@ export async function getGroupsWithPendingMember(userId: string): Promise<Group[
     ExpressionAttributeValues: { ':userId': userId },
   }));
   return (result.Items as Group[]) ?? [];
+}
+
+export async function renameGroup(groupId: string, newName: string): Promise<Group | null> {
+  const result = await ddb.send(new UpdateCommand({
+    TableName: GROUPS_TABLE,
+    Key: { group_id: groupId },
+    UpdateExpression: 'SET #n = :name',
+    ExpressionAttributeNames: { '#n': 'name' },
+    ExpressionAttributeValues: { ':name': newName },
+    ReturnValues: 'ALL_NEW',
+  }));
+  return result.Attributes as Group;
+}
+
+export async function deleteGroup(groupId: string): Promise<void> {
+  await ddb.send(new DeleteCommand({
+    TableName: GROUPS_TABLE,
+    Key: { group_id: groupId },
+  }));
 }
 
 export async function removeCouponsByOwnerFromGroup(groupId: string, ownerId: string): Promise<void> {

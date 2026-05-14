@@ -177,6 +177,10 @@ export const revokeFromGroup = (groupId: string, couponId: string) =>
   api.delete(`/groups/${groupId}/coupons/${couponId}`);
 export const leaveGroup = (groupId: string) =>
   api.delete(`/groups/${groupId}/members/me`);
+export const renameGroup = (groupId: string, name: string) =>
+  api.put<GroupMeta>(`/groups/${groupId}/name`, { name });
+export const deleteGroup = (groupId: string) =>
+  api.delete(`/groups/${groupId}`);
 export const searchUsers = (query: string) =>
   api.get<GroupMember[]>(`/users/search?q=${encodeURIComponent(query)}`);
 

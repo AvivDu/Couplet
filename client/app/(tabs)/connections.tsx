@@ -172,9 +172,13 @@ export default function ConnectionsScreen() {
         visible={detailVisible}
         onClose={() => {
           setDetailVisible(false);
-          fetchGroups(); // refresh list when detail closes
+          fetchGroups();
         }}
         currentUserId={user.userId}
+        onGroupDeleted={() => {
+          setDetailVisible(false);
+          fetchGroups();
+        }}
       />
     </SafeAreaView>
   );
