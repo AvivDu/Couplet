@@ -396,15 +396,17 @@ export default function HomeScreen() {
         {/* Joined group confirmation */}
         {joinedGroupName !== null && (
           <Modal transparent animationType="fade" visible onRequestClose={() => setJoinedGroupName(null)}>
-            <View style={styles.joinOverlay}>
-              <View style={styles.joinBox}>
-                <TouchableOpacity style={styles.joinCloseBtn} onPress={() => setJoinedGroupName(null)}>
-                  <Ionicons name="close" size={20} color="#1A2332" />
-                </TouchableOpacity>
-                <Ionicons name="people-circle-outline" size={52} color="#E8604C" />
-                <Text style={styles.joinText}>You joined "{joinedGroupName}" group!</Text>
-              </View>
-            </View>
+            <TouchableOpacity style={styles.joinOverlay} activeOpacity={1} onPress={() => setJoinedGroupName(null)}>
+              <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()}>
+                <View style={styles.joinBox}>
+                  <TouchableOpacity style={styles.joinCloseBtn} onPress={() => setJoinedGroupName(null)}>
+                    <Ionicons name="close" size={20} color="#1A2332" />
+                  </TouchableOpacity>
+                  <Ionicons name="people-circle-outline" size={52} color="#E8604C" />
+                  <Text style={styles.joinText}>You joined "{joinedGroupName}" group!</Text>
+                </View>
+              </TouchableOpacity>
+            </TouchableOpacity>
           </Modal>
         )}
 
