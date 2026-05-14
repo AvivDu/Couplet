@@ -11,9 +11,7 @@ function RootGuard() {
 
   useEffect(() => {
     if (isLoading) return;
-
     const inAuthGroup = segments[0] === '(auth)';
-
     if (!user && !inAuthGroup) {
       router.replace('/(auth)/welcome');
     } else if (user && inAuthGroup) {

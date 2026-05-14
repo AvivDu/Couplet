@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { login } from '../../services/api';
 import LoadingOverlay from '../../components/LoadingOverlay';
+import CoupletLogo from '../../components/CoupletLogo';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -55,8 +56,9 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
-          <Text style={styles.title}>Log In</Text>
-          <Text style={styles.subtitle}>Good to see you again</Text>
+          <View style={styles.brand}>
+            <CoupletLogo size="medium" showTagline />
+          </View>
 
           <View style={styles.inputWrap}>
             <TextInput
@@ -105,18 +107,11 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F0E6' },
-  inner: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 32, paddingVertical: 40 },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#1A2332',
-    marginBottom: 6,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: '#1A2332',
-    opacity: 0.5,
-    marginBottom: 40,
+  inner: { flexGrow: 1, paddingHorizontal: 32, paddingBottom: 40 },
+  brand: {
+    alignItems: 'center',
+    paddingTop: 72,
+    paddingBottom: 48,
   },
   inputWrap: {
     borderBottomWidth: 1.5,

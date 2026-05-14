@@ -1,7 +1,7 @@
 # Couplet — Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-05-14
+**Last updated:** 2026-05-14 (branding + splash animation)
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device — the server holds metadata only.
 
@@ -78,6 +78,8 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Category-colored solid cards for coupons (`borderRadius: 16`)
 - [x] Bottom tab bar with 3 tabs: My Coupons · Add · Groups (cream bg, coral active)
 - [x] Safe area handling, no native headers (all screens manage their own top area with `SafeAreaView`)
+- [x] **Branded C logo** — `logo-c.png` (transparent PNG) rendered via `CSymbol`; `CoupletLogo` composes C + "OUPLET" wordmark at small/medium/large sizes with optional tagline
+- [x] **4-phase welcome animation** — Phase 1: large C centered (scale 2×); Phase 2: slides left + scales to 1× (550 ms); Phase 3: "OUPLET" types out letter-by-letter via `Animated.stagger`; Phase 4: tagline fades in → CTA button fades in
 - [x] Welcome splash screen with ticket logo
 - [x] Bottom sheet modals (Create Group, Date Picker, Share to Group) — slide-up with drag handle
 - [x] Error messages — all forms show `Alert.alert` on failure (auth, coupon CRUD, group ops)
@@ -135,7 +137,7 @@ Scan the QR code with Expo Go. The app talks to the EC2 backend via `EXPO_PUBLIC
 client/
   app/
     (auth)/
-      welcome.tsx         — splash, logo, CTA
+      welcome.tsx         — 4-phase animated entry: C centers → slides + shrinks → types OUPLET → tagline → CTA
       login.tsx           — underline inputs + coral button
       register.tsx        — same, with password strength hint + match indicator
     (tabs)/
@@ -144,6 +146,9 @@ client/
       add.tsx             — Add Coupon: form + 3-pill date picker + About modal
       connections.tsx     — Groups: list, create group modal, opens GroupDetail
   components/
+    CSymbol.tsx           — C icon from logo-c.png asset (size prop)
+    CoupletLogo.tsx       — wordmark: CSymbol + "OUPLET" text, size/tagline props
+    SplashScreen.tsx      — reusable fade-in/scale splash overlay (isLoading + onComplete)
     CouponCard.tsx        — solid-color card with badge for used/expired
     CouponDetail.tsx      — detail/edit modal + image picker + Share to Group picker
     GroupCard.tsx         — group summary card (name, member count, admin badge)
