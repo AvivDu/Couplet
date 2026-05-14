@@ -1,23 +1,135 @@
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Animated,
+} from 'react-native';
 import { useRouter } from 'expo-router';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import CSymbol from '../../components/CSymbol';
+
+const C_SIZE = 78;
+const FONT_SIZE = 40;
+const GAP = 6;
+const OUPLET = ['O', 'U', 'P', 'L', 'E', 'T'] as const;
 
 export default function WelcomeScreen() {
   const router = useRouter();
 
+  // Animation state
+  const cOpacity    = useRef(new Animated.Value(0)).current;
+  const cScale      = useRef(new Animated.Value(2)).current;
+  const cTranslateX = useRef(new Animated.Value(0)).current;
+
+  const charOpacities = useRef(OUPLET.map(() => new Animated.Value(0))).current;
+  const taglineOpacity = useRef(new Animated.Value(0)).current;
+  const btnOpacity     = useRef(new Animated.Value(0)).current;
+
+  // Measured once from the rendered logo row
+  const [rowMeasured, setRowMeasured] = useState(false);
+
+  function onLogoRowLayout(e: { nativeEvent: { layout: { width: number } } }) {
+    if (rowMeasured) return;
+    const rowW = e.nativeEvent.layout.width;
+    // Offset that, when added, moves C from its flex position to screen center.
+    // With transform order [scale, translateX]: translation is not multiplied by scale.
+    const offset = (rowW - C_SIZE) / 2;
+    cTranslateX.setValue(offset);
+    // Reveal C only after initial position is set to avoid flash
+    Animated.timing(cOpacity, { toValue: 1, duration: 0, useNativeDriver: true }).start();
+    setRowMeasured(true);
+  }
+
+  useEffect(() => {
+    if (!rowMeasured) return;
+
+    // Phase 1 → Phase 2: after 500 ms, C slides left + scales down
+    const t = setTimeout(() => {
+      Animated.parallel([
+        Animated.timing(cScale, {
+          toValue: 1,
+          duration: 550,
+          useNativeDriver: true,
+        }),
+        Animated.timing(cTranslateX, {
+          toValue: 0,
+          duration: 550,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        // Phase 3: type out O-U-P-L-E-T
+        Animated.stagger(
+          70,
+          charOpacities.map(o =>
+            Animated.timing(o, { toValue: 1, duration: 40, useNativeDriver: true }),
+          ),
+        ).start(() => {
+          // Phase 4: tagline fades in
+          Animated.timing(taglineOpacity, {
+            toValue: 1,
+            duration: 550,
+            useNativeDriver: true,
+          }).start(() => {
+            // Button appears
+            Animated.timing(btnOpacity, {
+              toValue: 1,
+              duration: 400,
+              useNativeDriver: true,
+            }).start();
+          });
+        });
+      });
+    }, 500);
+
+    return () => clearTimeout(t);
+  }, [rowMeasured]);
+
   return (
     <View style={styles.container}>
-      {/* Logo */}
-      <View style={styles.logoWrap}>
-        <View style={[styles.ticket, styles.ticketBack]} />
-        <View style={[styles.ticket, styles.ticketFront]} />
+      <View style={styles.logoArea}>
+        {/* Logo row — measured once to compute centering offset */}
+        <View style={styles.logoRow} onLayout={onLogoRowLayout}>
+          {/* Animated C: starts large + centered, slides left and shrinks */}
+          <Animated.View
+            style={{
+              opacity: cOpacity,
+              transform: [{ scale: cScale }, { translateX: cTranslateX }],
+            }}
+          >
+            <CSymbol size={C_SIZE} />
+          </Animated.View>
+
+          <View style={{ width: GAP }} />
+
+          {/* OUPLET — each letter types in individually */}
+          <View style={styles.textRow}>
+            {OUPLET.map((char, i) => (
+              <Animated.Text
+                key={i}
+                style={[styles.oupletChar, { opacity: charOpacities[i] }]}
+              >
+                {char}
+              </Animated.Text>
+            ))}
+          </View>
+        </View>
+
+        {/* Tagline — Phase 4 */}
+        <Animated.Text style={[styles.tagline, { opacity: taglineOpacity }]}>
+          All your coupons. In one place.
+        </Animated.Text>
       </View>
 
-      <Text style={styles.title}>Welcome to Couplet!</Text>
-      <Text style={styles.tagline}>Your wallet, happier.</Text>
-
-      <TouchableOpacity style={styles.btn} onPress={() => router.push('/(auth)/login')}>
-        <Text style={styles.btnText}>Log In / Sign Up</Text>
-      </TouchableOpacity>
+      {/* CTA — appears after full animation */}
+      <Animated.View style={[styles.btnWrap, { opacity: btnOpacity }]}>
+        <TouchableOpacity
+          style={styles.btn}
+          onPress={() => router.push('/(auth)/login')}
+        >
+          <Text style={styles.btnText}>Log In / Sign Up</Text>
+        </TouchableOpacity>
+      </Animated.View>
     </View>
   );
 }
@@ -27,54 +139,44 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F0E6',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
   },
-  logoWrap: {
-    width: 90,
-    height: 90,
+  logoArea: {
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 32,
+    marginTop: '28%',
   },
-  ticket: {
-    position: 'absolute',
-    width: 68,
-    height: 28,
-    borderRadius: 8,
+  logoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  ticketBack: {
-    backgroundColor: '#1A2332',
-    transform: [{ rotate: '40deg' }],
-    top: 10,
-    right: 4,
+  textRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  ticketFront: {
-    backgroundColor: '#E8604C',
-    transform: [{ rotate: '-30deg' }],
-    bottom: 10,
-    left: 4,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '800',
+  oupletChar: {
+    fontSize: FONT_SIZE,
+    fontWeight: '900',
     color: '#1A2332',
-    textAlign: 'center',
-    marginBottom: 8,
+    letterSpacing: FONT_SIZE * 0.07,
+    includeFontPadding: false,
   },
   tagline: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#1A2332',
+    opacity: 0.55,
+    letterSpacing: 1.0,
+    marginTop: C_SIZE * 0.08,
     textAlign: 'center',
-    marginBottom: 48,
-    opacity: 0.6,
+  },
+  btnWrap: {
+    position: 'absolute',
+    bottom: 60,
+    left: 32,
+    right: 32,
   },
   btn: {
     backgroundColor: '#E8604C',
     borderRadius: 30,
     paddingVertical: 16,
-    paddingHorizontal: 48,
-    alignSelf: 'stretch',
     alignItems: 'center',
   },
   btnText: {
