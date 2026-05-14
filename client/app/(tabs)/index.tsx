@@ -193,11 +193,22 @@ export default function HomeScreen() {
   const unreadCount = notifications.filter(n => !n.read).length;
 
   async function handleAcceptInvite(groupId: string) {
-    const groupName = notifications.find(n => n.actionGroupId === groupId)?.actionGroupName;
-    await acceptInvitation(groupId);
-    setNotifications(prev => prev.filter(n => n.actionGroupId !== groupId));
-    setJoinedGroupName(groupName ?? null);
-    load();
+    const notif = notifications.find(n => n.actionGroupId === groupId);
+    try {
+      const { data } = await acceptInvitation(groupId);
+      const groupName: string = (data as any)?.name ?? notif?.actionGroupName ?? 'the group';
+      setNotifications(prev => prev.filter(n => n.actionGroupId !== groupId));
+      if (notif?.id.startsWith('server-')) {
+        deleteNotification(notif.id.slice('server-'.length)).catch(() => {});
+      }
+      // Close the panel first, then show the popup after the sheet-close animation (~350ms)
+      // Avoids stacking two Modals simultaneously which makes the second one invisible on iOS
+      setNotifPanelOpen(false);
+      setTimeout(() => setJoinedGroupName(groupName), 350);
+      load();
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.error ?? 'Could not accept invitation.');
+    }
   }
 
   async function handleDeclineInvite(groupId: string) {
@@ -396,17 +407,17 @@ export default function HomeScreen() {
         {/* Joined group confirmation */}
         {joinedGroupName !== null && (
           <Modal transparent animationType="fade" visible onRequestClose={() => setJoinedGroupName(null)}>
-            <TouchableOpacity style={styles.joinOverlay} activeOpacity={1} onPress={() => setJoinedGroupName(null)}>
-              <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()}>
-                <View style={styles.joinBox}>
-                  <TouchableOpacity style={styles.joinCloseBtn} onPress={() => setJoinedGroupName(null)}>
-                    <Ionicons name="close" size={20} color="#1A2332" />
-                  </TouchableOpacity>
-                  <Ionicons name="people-circle-outline" size={52} color="#E8604C" />
-                  <Text style={styles.joinText}>You joined "{joinedGroupName}" group!</Text>
-                </View>
-              </TouchableOpacity>
-            </TouchableOpacity>
+            <View style={styles.joinOverlay}>
+              {/* Backdrop — rendered first so the box sits on top and receives touches first */}
+              <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setJoinedGroupName(null)} />
+              <View style={styles.joinBox}>
+                <TouchableOpacity style={styles.joinCloseBtn} onPress={() => setJoinedGroupName(null)}>
+                  <Ionicons name="close" size={20} color="#1A2332" />
+                </TouchableOpacity>
+                <Ionicons name="people-circle-outline" size={52} color="#E8604C" />
+                <Text style={styles.joinText}>You joined "{joinedGroupName}" group!</Text>
+              </View>
+            </View>
           </Modal>
         )}
 

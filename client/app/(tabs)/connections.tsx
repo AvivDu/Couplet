@@ -212,26 +212,25 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 18, fontWeight: '700', color: '#1A2332' },
   emptySub: { fontSize: 14, color: '#A8997A' },
 
-  // Create sheet
+  // Create dialog
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(26,35,50,0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
   },
   sheet: {
     backgroundColor: '#F5F0E6',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderRadius: 24,
     padding: 24,
-    paddingBottom: 40,
+    paddingBottom: 28,
+    width: '100%',
   },
   sheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#C4B8A0',
-    alignSelf: 'center',
-    marginBottom: 20,
+    display: 'none',
+    width: 0,
+    height: 0,
   },
   sheetTitle: {
     fontSize: 20,
