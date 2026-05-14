@@ -78,11 +78,13 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId, 
       fetchGroup();
       getGroupImage(groupId).then(setImageUri);
     } else {
-      setGroup(null);
+      // Don't clear group here — it goes blank mid-animation. Reset only interactive state;
+      // group data will be re-fetched fresh on the next open.
       setMemberQuery('');
       setSuggestions([]);
-      setImageUri(null);
       setInviteSheetVisible(false);
+      setRenameModalVisible(false);
+      setDeleteConfirmVisible(false);
     }
   }, [visible, groupId, fetchGroup]);
 
@@ -480,7 +482,7 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId, 
                     <TouchableOpacity
                       key={s.user_id}
                       style={styles.suggestion}
-                      onPress={() => { setMemberQuery(''); setSuggestions([]); handleAddMember(s.email); }}
+                      onPress={() => { setMemberQuery(s.email); setSuggestions([]); }}
                     >
                       <Text style={styles.suggestionName}>{s.username}</Text>
                       <Text style={styles.suggestionEmail}>{s.email}</Text>
@@ -506,15 +508,10 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId, 
           </TouchableOpacity>
         </Modal>
 
-        {/* Rename Group Dialog */}
-        <Modal
-          visible={renameModalVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => { setRenameModalVisible(false); setNewGroupName(''); }}
-        >
+        {/* Rename Group Dialog — View overlay avoids nested-Modal iOS conflict */}
+        {renameModalVisible && (
           <TouchableOpacity
-            style={styles.dialogOverlay}
+            style={[StyleSheet.absoluteFill, styles.dialogOverlay]}
             activeOpacity={1}
             onPress={() => { setRenameModalVisible(false); setNewGroupName(''); }}
           >
@@ -552,17 +549,12 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId, 
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
-        </Modal>
+        )}
 
-        {/* Delete Group Confirmation */}
-        <Modal
-          visible={deleteConfirmVisible}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setDeleteConfirmVisible(false)}
-        >
+        {/* Delete Group Confirmation — View overlay avoids nested-Modal iOS conflict */}
+        {deleteConfirmVisible && (
           <TouchableOpacity
-            style={styles.dialogOverlay}
+            style={[StyleSheet.absoluteFill, styles.dialogOverlay]}
             activeOpacity={1}
             onPress={() => setDeleteConfirmVisible(false)}
           >
@@ -603,7 +595,7 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId, 
               </View>
             </View>
           </TouchableOpacity>
-        </Modal>
+        )}
 
         {/* Share Coupon Picker */}
         <Modal
