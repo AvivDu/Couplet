@@ -94,8 +94,8 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Node.js + Express server
 - [x] **AWS DynamoDB** via `@aws-sdk/lib-dynamodb` Document Client (Users, Coupons, Groups tables)
 - [x] **AWS Cognito** for auth (User Pool: `us-east-1_gVgsfA5EG`, PreSignUp Lambda for auto-confirm)
-- [x] **EC2 deployment** — server hosted on EC2 (`t3.micro`, `us-east-1`), managed by PM2. No credentials in `.env` — IAM role (`LabRole` via `LabInstanceProfile`) handles AWS auth automatically.
-- [x] **Elastic IP** `3.232.231.54` — fixed IP, survives instance restarts. Client `.env` points to this address permanently.
+- [x] **AWS Lambda** — server runs serverless via `serverless-http` wrapping Express. No EC2, no PM2, no Elastic IP. IAM role (`LabRole`) assigned directly to Lambda for AWS auth.
+- [x] **AWS API Gateway HTTP API** (`couplet-api`) — permanent public URL `https://ij27gn1sg9.execute-api.us-east-1.amazonaws.com`, routes `ANY /{proxy+}` to Lambda. Auto-deploy enabled.
 - [x] CORS enabled on server
 - [x] `.env.example` files for both client and server
 - [x] TypeScript on both client and server
@@ -107,20 +107,16 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 ## How to Run
 
 ### Each Lab Session (Backend)
-1. Start the Learner Lab session
-2. Go to **EC2 → Instances** → select `couplet-server` → **Instance state → Start**
-3. Wait ~30 seconds — PM2 auto-starts the server on boot
-
-No credential copying needed — the IAM role handles AWS auth automatically.
+Nothing to do — Lambda runs on-demand. No instance to start, no PM2, no SSH.
+Just start the Learner Lab session so AWS credentials are active for DynamoDB/Cognito access.
 
 ### Update Server After Code Changes
 ```bash
-ssh -i "path/to/couplet-key.pem" ec2-user@<EC2_ELASTIC_IP>
-cd Couplet/server
-git pull
+cd server
 npm run build
-pm2 restart couplet-server
+Compress-Archive -Path dist, node_modules -DestinationPath lambda.zip -Force
 ```
+Then go to **Lambda → couplet-server → Upload from → .zip file** and upload `lambda.zip`.
 
 ### Run the Client (Development)
 ```bash
@@ -197,7 +193,7 @@ server/src/
 ### Security & Polish
 - [ ] **Rate limiting** — Add `express-rate-limit` to auth endpoints to prevent brute-force.
 - [ ] **Input validation on server** — Some routes lack validation (balance should be ≥ 0, status should be enum-checked). Add `zod` or `express-validator`.
-- [x] **Production deploy** — Server running on EC2 at `http://3.232.231.54:3000`, client `EXPO_PUBLIC_API_URL` set.
+- [x] **Production deploy** — Server running on Lambda via API Gateway at `https://ij27gn1sg9.execute-api.us-east-1.amazonaws.com`, client `EXPO_PUBLIC_API_URL` set.
 
 ### Future / Optional
 

@@ -10,10 +10,11 @@ Server coordinates P2P sessions but never relays coupon data.
 | Layer | Tech |
 |---|---|
 | Mobile | React Native |
-| Backend | Node.js + Express |
+| Backend | Node.js + Express on **AWS Lambda** (serverless, via `serverless-http`) |
+| API Gateway | AWS API Gateway HTTP API — public URL, routes all requests to Lambda |
 | Auth | AWS Cognito (issues JWTs for all API calls) |
 | Notifications | AWS SNS |
-| P2P | WebRTC (TBD) |
+| P2P | WebRTC (TBD) — signaling via API Gateway WebSocket + Lambda |
 | Database | AWS DynamoDB |
 
 ## Data Model
