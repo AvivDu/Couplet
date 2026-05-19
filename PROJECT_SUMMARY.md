@@ -123,7 +123,7 @@ Then go to **Lambda → couplet-server → Upload from → .zip file** and uploa
 cd client
 npx expo start
 ```
-Scan the QR code with Expo Go. The app talks to the EC2 backend via `EXPO_PUBLIC_API_URL` in `client/.env` (gitignored).
+Scan the QR code with Expo Go. The app talks to the Lambda backend (via API Gateway) using `EXPO_PUBLIC_API_URL` in `client/.env` (gitignored).
 
 ---
 

@@ -43,7 +43,7 @@ interface Group {
 }
 ```
 
-Add Mongoose schema and these db functions:
+Add DynamoDB helper functions for Group:
 
 ```typescript
 db.createGroup(group: Group): Promise<void>
@@ -341,7 +341,7 @@ In `client/components/CouponDetail.tsx`, add a **"Share to Group"** button below
 Work can be split between two developers:
 
 ### Developer A — Server
-1. Add Group Mongoose schema to `db.ts`
+1. Add Group DynamoDB helpers to `db.ts`
 2. Implement all `db.*` group functions
 3. Build `routes/groups.ts` with all endpoints
 4. Build `routes/users.ts` (search endpoint)
