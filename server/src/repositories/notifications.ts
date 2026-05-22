@@ -12,6 +12,8 @@ export interface Notification {
   created_at: string;
   group_id?: string;
   group_name?: string;
+  coupon_id?: string;
+  coupon_code?: string;
 }
 
 export async function insertNotification(

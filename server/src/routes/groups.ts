@@ -230,6 +230,7 @@ router.delete('/:id/pending/:userId', async (req: AuthRequest, res: Response): P
 
 // POST /groups/:id/coupons/:couponId — share a coupon to a group
 router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): Promise<void> => {
+  const { coupon_code } = req.body;
   const group = await getGroupById(req.params.id);
   if (!group) {
     res.status(404).json({ error: 'Group not found' });
@@ -266,6 +267,8 @@ router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): P
         read: false,
         group_id: group.group_id,
         group_name: group.name,
+        coupon_id: coupon.coupon_id,
+        coupon_code: coupon_code ?? undefined,
       })
     )
   );
@@ -295,6 +298,24 @@ router.delete('/:id/coupons/:couponId', async (req: AuthRequest, res: Response):
   }
 
   await removeCouponFromGroup(group.group_id, coupon.coupon_id);
+
+  // Notify all non-owner members so they can delete the local coupon code
+  const otherMembers = group.user_id_list.filter(uid => uid !== coupon.owner_id);
+  await Promise.all(
+    otherMembers.map(uid =>
+      insertNotification({
+        user_id: uid,
+        type: 'coupon_revoked',
+        title: `Coupon removed from "${group.name}"`,
+        body: `A ${coupon.store_name} coupon was removed from this group`,
+        read: false,
+        group_id: group.group_id,
+        group_name: group.name,
+        coupon_id: coupon.coupon_id,
+      })
+    )
+  );
+
   res.status(204).send();
 });
 
