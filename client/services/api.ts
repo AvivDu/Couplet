@@ -171,8 +171,8 @@ export const addMember = (groupId: string, identifier: string) =>
   api.post<GroupMeta>(`/groups/${groupId}/members`, { identifier });
 export const removeMember = (groupId: string, userId: string) =>
   api.delete(`/groups/${groupId}/members/${userId}`);
-export const shareToGroup = (groupId: string, couponId: string) =>
-  api.post<GroupMeta>(`/groups/${groupId}/coupons/${couponId}`);
+export const shareToGroup = (groupId: string, couponId: string, code?: string | null) =>
+  api.post<GroupMeta>(`/groups/${groupId}/coupons/${couponId}`, code ? { coupon_code: code } : {});
 export const revokeFromGroup = (groupId: string, couponId: string) =>
   api.delete(`/groups/${groupId}/coupons/${couponId}`);
 export const leaveGroup = (groupId: string) =>
@@ -194,6 +194,8 @@ export interface ServerNotification {
   created_at: string;
   group_id?: string;
   group_name?: string;
+  coupon_id?: string;
+  coupon_code?: string;
 }
 
 export const getNotifications = () => api.get<ServerNotification[]>('/notifications');

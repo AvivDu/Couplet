@@ -12,13 +12,12 @@ import {
   Alert,
   RefreshControl,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { getGroups, createGroup } from '../../services/api';
 import type { GroupMeta } from '../../services/api';
 import { getGroupImage } from '../../storage/groupStorage';
 import GroupCard from '../../components/GroupCard';
-import GroupDetail from '../../components/GroupDetail';
 
 export default function ConnectionsScreen() {
   const { user } = useAuth();
@@ -32,9 +31,6 @@ export default function ConnectionsScreen() {
   const [groupName, setGroupName] = useState('');
   const [creating, setCreating] = useState(false);
 
-  // Detail modal
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
-  const [detailVisible, setDetailVisible] = useState(false);
 
   async function fetchGroups() {
     try {
@@ -81,11 +77,6 @@ export default function ConnectionsScreen() {
     }
   }
 
-  function openDetail(groupId: string) {
-    setSelectedGroupId(groupId);
-    setDetailVisible(true);
-  }
-
   if (!user) return null;
 
   return (
@@ -113,7 +104,7 @@ export default function ConnectionsScreen() {
               group={item}
               currentUserId={user.userId}
               imageUri={groupImages[item.group_id]}
-              onPress={() => openDetail(item.group_id)}
+              onPress={() => router.push(`/group/${item.group_id}`)}
             />
           )}
           ListEmptyComponent={
@@ -166,20 +157,6 @@ export default function ConnectionsScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Group detail modal */}
-      <GroupDetail
-        groupId={selectedGroupId}
-        visible={detailVisible}
-        onClose={() => {
-          setDetailVisible(false);
-          fetchGroups();
-        }}
-        currentUserId={user.userId}
-        onGroupDeleted={() => {
-          setDetailVisible(false);
-          fetchGroups();
-        }}
-      />
     </SafeAreaView>
   );
 }

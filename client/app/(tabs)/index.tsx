@@ -16,7 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { CATEGORY_COLORS } from '../../constants/categories';
 import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, type CouponMeta } from '../../services/api';
-import { getCouponCode, deleteCouponCode, deleteCouponImage } from '../../storage/couponStorage';
+import { getCouponCode, saveCouponCode, deleteCouponCode, deleteCouponImage } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
 import CouponCard from '../../components/CouponCard';
 import CouponDetail from '../../components/CouponDetail';
@@ -120,6 +120,27 @@ export default function HomeScreen() {
 
       const invitations = invitationsResult.status === 'fulfilled' ? invitationsResult.value.data : [];
       const serverNotifData = serverNotifsResult.status === 'fulfilled' ? serverNotifsResult.value.data : [];
+
+      // Save coupon codes delivered through group_share notifications
+      const groupShareNotifs = serverNotifData.filter(n => n.type === 'group_share');
+      console.log('[DEBUG notif] group_share count:', groupShareNotifs.length,
+        '| with code:', groupShareNotifs.filter(n => n.coupon_code).length,
+        '| sample:', JSON.stringify(groupShareNotifs[0] ?? null));
+      const codeDeliveries = groupShareNotifs.filter(n => n.coupon_id && n.coupon_code);
+      if (codeDeliveries.length > 0) {
+        await Promise.all(
+          codeDeliveries.map(n => saveCouponCode(n.coupon_id!, n.coupon_code!))
+        );
+        console.log('[DEBUG notif] saved codes for coupon_ids:', codeDeliveries.map(n => n.coupon_id));
+      }
+
+      // Delete local coupon codes for any revoked coupons
+      const revokedCouponIds = serverNotifData
+        .filter(n => n.type === 'coupon_revoked' && n.coupon_id)
+        .map(n => n.coupon_id!);
+      if (revokedCouponIds.length > 0) {
+        await Promise.all(revokedCouponIds.map(id => deleteCouponCode(id)));
+      }
 
       // Map server notifications; group_invite type gets Accept/Decline action buttons
       const serverNotifs: NotificationItem[] = serverNotifData.map(n => ({
