@@ -9,3 +9,14 @@ export const CATEGORY_COLORS: Record<string, string> = {
   Sport:       '#FAFAC8',
   Other:       '#B9C4B6',
 };
+
+export const CATEGORY_ICONS: Record<string, string> = {
+  Food:        'restaurant-outline',
+  Groceries:   'cart-outline',
+  Fashion:     'shirt-outline',
+  Electronics: 'hardware-chip-outline',
+  Beauty:      'flower-outline',
+  Travel:      'airplane-outline',
+  Sport:       'trophy-outline',
+  Other:       'ellipsis-horizontal-outline',
+};

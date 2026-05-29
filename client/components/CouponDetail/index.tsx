@@ -52,6 +52,7 @@ export default function CouponDetail({
             onEdit={() => setIsEditing(true)}
             onDelete={onDelete}
             onMarkUsed={onMarkUsed}
+            onUpdate={onUpdate}
             onClose={onClose}
           />
         ) : (

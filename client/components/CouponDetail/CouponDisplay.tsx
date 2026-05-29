@@ -10,13 +10,16 @@ import {
   FlatList,
   Modal,
   ActivityIndicator,
+  Switch,
+  TextInput,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import { Ionicons } from '@expo/vector-icons';
 import { getCouponImage, saveCouponImage } from '../../storage/couponStorage';
-import { getGroups, shareToGroup, getCouponLocations } from '../../services/api';
-import type { GroupMeta, StoreLocation } from '../../services/api';
-import { CATEGORY_COLORS } from '../../constants/categories';
+import { getGroups, shareToGroup, getCouponLocations, updateCoupon } from '../../services/api';
+import type { GroupMeta, StoreLocation, CouponMeta } from '../../services/api';
+import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants/categories';
 import type { CouponWithCode } from './types';
 
 interface CouponDisplayProps {
@@ -24,21 +27,28 @@ interface CouponDisplayProps {
   onEdit: () => void;
   onDelete: (id: string) => void;
   onMarkUsed: (id: string) => void;
+  onUpdate: (updated: CouponMeta, newCode: string) => void;
   onClose: () => void;
 }
 
-export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, onClose }: CouponDisplayProps) {
+export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, onUpdate, onClose }: CouponDisplayProps) {
   const [imageUri, setImageUri] = React.useState<string | null>(null);
+  const [showTextCode, setShowTextCode] = React.useState(true);
   const [groupPickerVisible, setGroupPickerVisible] = React.useState(false);
   const [groups, setGroups] = React.useState<GroupMeta[]>([]);
   const [sharingGroupId, setSharingGroupId] = React.useState<string | null>(null);
   const [locationsVisible, setLocationsVisible] = React.useState(false);
   const [locations, setLocations] = React.useState<StoreLocation[]>([]);
   const [locationsLoading, setLocationsLoading] = React.useState(false);
-  const [redeemConfirmVisible, setRedeemConfirmVisible] = React.useState(false);
+  const [redeemModalVisible, setRedeemModalVisible] = React.useState(false);
+  const [partialAmount, setPartialAmount] = React.useState('');
+  const [partialLoading, setPartialLoading] = React.useState(false);
 
   React.useEffect(() => {
-    getCouponImage(coupon.coupon_id).then(setImageUri);
+    getCouponImage(coupon.coupon_id).then(uri => {
+      setImageUri(uri);
+      if (uri !== null) setShowTextCode(false);
+    });
   }, [coupon.coupon_id]);
 
   async function handleShareToGroup() {
@@ -105,6 +115,7 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
             const uri = result.assets[0].uri;
             await saveCouponImage(coupon.coupon_id, uri);
             setImageUri(uri);
+            setShowTextCode(false);
           }
         },
       },
@@ -121,6 +132,7 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
             const uri = result.assets[0].uri;
             await saveCouponImage(coupon.coupon_id, uri);
             setImageUri(uri);
+            setShowTextCode(false);
           }
         },
       },
@@ -128,7 +140,42 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
     ]);
   }
 
+  async function handlePartialRedeem() {
+    const amount = parseFloat(partialAmount);
+    const currentBalance = coupon.balance ?? 0;
+    if (isNaN(amount) || amount <= 0) {
+      Alert.alert('Invalid amount', 'Enter a positive number.');
+      return;
+    }
+    if (amount > currentBalance) {
+      Alert.alert('Amount too large', `Cannot exceed ₪${currentBalance.toFixed(2)}.`);
+      return;
+    }
+    const newBalance = parseFloat((currentBalance - amount).toFixed(2));
+    const updateData: Partial<CouponMeta> = { balance: newBalance };
+    if (newBalance === 0) updateData.status = 'used';
+
+    setPartialLoading(true);
+    try {
+      const { data: updated } = await updateCoupon(coupon.coupon_id, updateData);
+      onUpdate(updated, coupon.code ?? '');
+      setRedeemModalVisible(false);
+      setPartialAmount('');
+      if (newBalance === 0) {
+        Alert.alert('Fully Redeemed', 'Balance is now zero.');
+        onClose();
+      } else {
+        Alert.alert('Success', `₪${amount.toFixed(2)} redeemed. Remaining: ₪${newBalance.toFixed(2)}.`);
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.error ?? 'Could not redeem.');
+    } finally {
+      setPartialLoading(false);
+    }
+  }
+
   const color = CATEGORY_COLORS[coupon.category] ?? CATEGORY_COLORS.Other;
+  const categoryIcon = (CATEGORY_ICONS[coupon.category] ?? 'ellipsis-horizontal-outline') as any;
   const expiry = coupon.expiration_date
     ? new Date(coupon.expiration_date).toLocaleDateString()
     : 'No expiry';
@@ -137,11 +184,14 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
   return (
     <>
     <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+
+      {/* Coupon card */}
       <View style={[styles.couponCard, { backgroundColor: color }]}>
+        <Ionicons name={categoryIcon} size={28} color="#1A2332" style={styles.categoryIcon} />
         <Text style={styles.couponStore}>{coupon.store_name}</Text>
         <Text style={styles.couponCategory}>{coupon.category}</Text>
 
-        {imageUri !== null && (
+        {imageUri !== null && !showTextCode && (
           <TouchableOpacity style={styles.imageBox} onPress={pickImage} activeOpacity={0.8}>
             <Image source={{ uri: imageUri }} style={styles.uploadedImage} resizeMode="contain" />
             <View style={styles.changeOverlay}>
@@ -150,97 +200,152 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
           </TouchableOpacity>
         )}
 
-        <View style={styles.codePill}>
-          <Text style={styles.codePillText}>Code: {coupon.code ?? '—'}</Text>
-        </View>
+        {(showTextCode || imageUri === null) && (
+          <View style={styles.codeLarge}>
+            <Text style={styles.codeLargeText}>{coupon.code ?? '—'}</Text>
+          </View>
+        )}
 
-        {coupon.status === 'active' && (
-          <TouchableOpacity
-            style={styles.redeemBtn}
-            onPress={() => setRedeemConfirmVisible(true)}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.redeemBtnText}>Redeem</Text>
-          </TouchableOpacity>
+        {imageUri !== null && (
+          <View style={styles.toggleRow}>
+            <Text style={styles.toggleLabel}>
+              {showTextCode ? 'Switch to QR Code' : 'Switch to Text Code'}
+            </Text>
+            <Switch
+              value={showTextCode}
+              onValueChange={setShowTextCode}
+              trackColor={{ false: 'rgba(26,35,50,0.18)', true: 'rgba(26,35,50,0.45)' }}
+              thumbColor="#fff"
+            />
+          </View>
         )}
       </View>
 
+      {/* Details card */}
       <View style={styles.detailsSection}>
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Balance</Text>
-          <Text style={styles.detailValue}>{balance}</Text>
+          <Text style={styles.balanceValue}>{balance}</Text>
         </View>
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Expires</Text>
-          <Text style={styles.detailValue}>{expiry}</Text>
+          <View style={styles.detailRowRight}>
+            <Text style={styles.detailValue}>{expiry}</Text>
+            <Ionicons name="hourglass-outline" size={15} color="#A8997A" />
+          </View>
         </View>
         <View style={[styles.detailRow, styles.detailRowLast]}>
           <Text style={styles.detailLabel}>Status</Text>
-          <Text style={[styles.detailValue, coupon.status !== 'active' && styles.statusUsed]}>
-            {coupon.status.charAt(0).toUpperCase() + coupon.status.slice(1)}
-          </Text>
+          <View style={styles.detailRowRight}>
+            {coupon.status === 'active' && <View style={styles.statusDot} />}
+            <Text style={[styles.detailValue, coupon.status !== 'active' && styles.statusUsed]}>
+              {coupon.status.charAt(0).toUpperCase() + coupon.status.slice(1)}
+            </Text>
+          </View>
         </View>
       </View>
 
-      <TouchableOpacity style={styles.editBtn} onPress={onEdit}>
-        <Text style={styles.editBtnText}>Edit Coupon</Text>
-      </TouchableOpacity>
+      {/* Primary action — Redeem */}
+      {coupon.status === 'active' && (
+        <TouchableOpacity
+          style={styles.redeemBtn}
+          onPress={() => setRedeemModalVisible(true)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.redeemBtnText}>Redeem</Text>
+        </TouchableOpacity>
+      )}
 
-      <TouchableOpacity style={styles.shareBtn} onPress={handleShareToGroup}>
-        <Text style={styles.shareBtnText}>Share to Group</Text>
-      </TouchableOpacity>
+      {/* Secondary actions — Edit + Share */}
+      <View style={styles.actionRow}>
+        <TouchableOpacity style={styles.editBtn} onPress={onEdit}>
+          <Ionicons name="pencil-outline" size={16} color="#E8604C" />
+          <Text style={styles.editBtnText}>Edit Coupon</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.shareBtn} onPress={handleShareToGroup}>
+          <Ionicons name="share-social-outline" size={16} color="#E8604C" />
+          <Text style={styles.shareBtnText}>Share to Group</Text>
+        </TouchableOpacity>
+      </View>
 
-      <TouchableOpacity style={styles.whereBtn} onPress={handleWhereToUse}>
-        <Text style={styles.whereBtnText}>📍  Where to use</Text>
-      </TouchableOpacity>
-
+      {/* Where to use — minimalist link */}
       <TouchableOpacity
-        style={styles.deleteBtn}
-        onPress={() => {
-          onDelete(coupon.coupon_id);
-          onClose();
-        }}
+        style={styles.whereLink}
+        onPress={handleWhereToUse}
+        hitSlop={{ top: 10, bottom: 10, left: 20, right: 20 }}
       >
-        <Text style={styles.deleteBtnText}>Delete Coupon</Text>
+        <Ionicons name="location-outline" size={18} color="#1A2332" />
+        <Text style={styles.whereLinkText}>Where to use</Text>
       </TouchableOpacity>
+
+      {/* Delete — destructive plain text link */}
+      <TouchableOpacity
+        style={styles.deleteLink}
+        onPress={() => { onDelete(coupon.coupon_id); onClose(); }}
+      >
+        <Text style={styles.deleteLinkText}>Delete Coupon</Text>
+      </TouchableOpacity>
+
     </ScrollView>
 
+    {/* Unified redemption choice modal */}
     <Modal
-      visible={redeemConfirmVisible}
+      visible={redeemModalVisible}
       animationType="fade"
       transparent
-      onRequestClose={() => setRedeemConfirmVisible(false)}
+      onRequestClose={() => { setRedeemModalVisible(false); setPartialAmount(''); }}
     >
       <View style={styles.confirmOverlay}>
         <View style={styles.confirmBox}>
-          <Text style={styles.confirmTitle}>Redeem Coupon</Text>
-          <Text style={styles.confirmMessage}>
-            Are you sure you want to redeem the{' '}
-            <Text style={styles.confirmStoreName}>"{coupon.store_name}"</Text>
-            {' '}coupon?
-          </Text>
-          <View style={styles.confirmButtons}>
-            <TouchableOpacity
-              style={styles.confirmNo}
-              onPress={() => setRedeemConfirmVisible(false)}
-            >
-              <Text style={styles.confirmNoText}>No</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.confirmYes}
-              onPress={() => {
-                setRedeemConfirmVisible(false);
-                onMarkUsed(coupon.coupon_id);
-                onClose();
-              }}
-            >
-              <Text style={styles.confirmYesText}>Yes</Text>
-            </TouchableOpacity>
+          <Text style={styles.confirmTitle}>How would you like to redeem?</Text>
+
+          <TouchableOpacity
+            style={styles.redeemAllBtn}
+            onPress={() => {
+              setRedeemModalVisible(false);
+              onMarkUsed(coupon.coupon_id);
+              onClose();
+            }}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.redeemAllBtnText}>Redeem All</Text>
+          </TouchableOpacity>
+
+          <View style={styles.orDivider}>
+            <View style={styles.orLine} />
+            <Text style={styles.orText}>OR</Text>
+            <View style={styles.orLine} />
           </View>
+
+          <TextInput
+            style={styles.partialInput}
+            placeholder={`Enter amount  (max ₪${(coupon.balance ?? 0).toFixed(2)})`}
+            placeholderTextColor="#A8997A"
+            keyboardType="numeric"
+            value={partialAmount}
+            onChangeText={setPartialAmount}
+          />
+          <TouchableOpacity
+            style={styles.redeemPartialConfirmBtn}
+            onPress={handlePartialRedeem}
+            disabled={partialLoading}
+          >
+            {partialLoading
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={styles.redeemPartialConfirmBtnText}>Confirm Partial Redeem</Text>}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.cancelLink}
+            onPress={() => { setRedeemModalVisible(false); setPartialAmount(''); }}
+          >
+            <Text style={styles.cancelLinkText}>Cancel</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
 
+    {/* Group picker modal */}
     <Modal
       visible={groupPickerVisible}
       animationType="slide"
@@ -277,6 +382,7 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
       </TouchableOpacity>
     </Modal>
 
+    {/* Locations modal */}
     <Modal
       visible={locationsVisible}
       animationType="slide"
@@ -336,12 +442,15 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
 
 const styles = StyleSheet.create({
   body: { padding: 20, paddingBottom: 48 },
+
+  // Coupon card
   couponCard: {
     borderRadius: 20,
     padding: 24,
     marginBottom: 28,
     alignItems: 'center',
   },
+  categoryIcon: { marginBottom: 8, opacity: 0.7 },
   couponStore: {
     fontSize: 22,
     fontWeight: '800',
@@ -365,10 +474,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  uploadedImage: {
-    width: '100%',
-    height: '100%',
-  },
+  uploadedImage: { width: '100%', height: '100%' },
   changeOverlay: {
     position: 'absolute',
     bottom: 0,
@@ -379,49 +485,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   changeOverlayText: { color: '#fff', fontSize: 12, fontWeight: '600' },
-  uploadPlaceholder: {
-    alignItems: 'center',
-    gap: 6,
-  },
-  uploadIcon: {
-    fontSize: 28,
-    color: '#A8997A',
-    fontWeight: '300',
-  },
-  uploadLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1A2332',
-    opacity: 0.55,
-  },
-  uploadHint: {
-    fontSize: 12,
-    color: '#A8997A',
-  },
-  codePill: {
+  codeLarge: {
     backgroundColor: '#fff',
-    borderRadius: 24,
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    marginBottom: 20,
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 28,
+    marginBottom: 14,
+    alignItems: 'center',
   },
-  codePillText: {
-    fontSize: 15,
-    fontWeight: '700',
+  codeLargeText: {
+    fontSize: 22,
+    fontWeight: '800',
     color: '#1A2332',
-    letterSpacing: 1,
+    letterSpacing: 2,
   },
-  redeemBtn: {
-    backgroundColor: 'rgba(26,35,50,0.18)',
-    borderRadius: 24,
-    paddingVertical: 13,
-    paddingHorizontal: 48,
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  redeemBtnText: {
-    color: '#1A2332',
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  toggleLabel: { fontSize: 13, color: '#1A2332', opacity: 0.7 },
+
+  // Details card
   detailsSection: {
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -432,47 +517,135 @@ const styles = StyleSheet.create({
   detailRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F0EBE0',
   },
+  detailRowRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   detailRowLast: { borderBottomWidth: 0 },
   detailLabel: { fontSize: 15, color: '#1A2332', opacity: 0.55 },
   detailValue: { fontSize: 15, fontWeight: '600', color: '#1A2332' },
+  balanceValue: { fontSize: 22, fontWeight: '800', color: '#1A2332' },
+  statusDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#7DC99E' },
   statusUsed: { color: '#B8C4CC' },
+
+  // Primary — Redeem button
+  redeemBtn: {
+    backgroundColor: '#1A2332',
+    borderRadius: 30,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  redeemBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+
+  // Secondary — Edit + Share
+  actionRow: { flexDirection: 'row', gap: 10, marginBottom: 4 },
   editBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 30,
+    paddingVertical: 15,
+    borderWidth: 1.5,
+    borderColor: '#E8604C',
+  },
+  editBtnText: { color: '#E8604C', fontSize: 15, fontWeight: '700' },
+  shareBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 30,
+    paddingVertical: 15,
+    borderWidth: 1.5,
+    borderColor: '#E8604C',
+  },
+  shareBtnText: { color: '#E8604C', fontSize: 15, fontWeight: '700' },
+
+  // Where to use link
+  whereLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 14,
+    marginVertical: 12,
+  },
+  whereLinkText: { fontSize: 19, fontWeight: '600', color: '#1A2332' },
+
+  // Delete link
+  deleteLink: { alignItems: 'center', paddingVertical: 14, marginTop: 12 },
+  deleteLinkText: { fontSize: 16, color: '#C0857A', fontWeight: '500' },
+
+  // Unified redeem modal
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(26,35,50,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  confirmBox: {
+    backgroundColor: '#F5F0E6',
+    borderRadius: 20,
+    padding: 28,
+    width: '100%',
+    alignItems: 'center',
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1A2332',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  redeemAllBtn: {
+    width: '100%',
+    backgroundColor: '#1A2332',
+    borderRadius: 30,
+    paddingVertical: 15,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  redeemAllBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  orDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginVertical: 16,
+    gap: 10,
+  },
+  orLine: { flex: 1, height: 1, backgroundColor: '#E0D8CA' },
+  orText: { fontSize: 12, fontWeight: '700', color: '#A8997A', letterSpacing: 1 },
+  partialInput: {
+    width: '100%',
+    borderBottomWidth: 1.5,
+    borderBottomColor: '#C4B8A0',
+    paddingVertical: 10,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1A2332',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  redeemPartialConfirmBtn: {
+    width: '100%',
     backgroundColor: '#E8604C',
     borderRadius: 30,
     paddingVertical: 15,
     alignItems: 'center',
-    marginBottom: 12,
+    marginTop: 12,
   },
-  editBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  deleteBtn: {
-    borderRadius: 24,
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E8604C',
-  },
-  deleteBtnText: { color: '#E8604C', fontSize: 15, fontWeight: '600' },
-  shareBtn: {
-    borderRadius: 30,
-    paddingVertical: 15,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#E8604C',
-    marginBottom: 12,
-  },
-  shareBtnText: { color: '#E8604C', fontSize: 15, fontWeight: '700' },
-  whereBtn: {
-    borderRadius: 30,
-    paddingVertical: 15,
-    alignItems: 'center',
-    backgroundColor: '#1A2332',
-    marginBottom: 12,
-  },
-  whereBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  redeemPartialConfirmBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  cancelLink: { marginTop: 16, paddingVertical: 8, alignItems: 'center' },
+  cancelLinkText: { fontSize: 14, color: '#A8997A', fontWeight: '500' },
+
+  // Pickers / sheets
   pickerOverlay: {
     flex: 1,
     backgroundColor: 'rgba(26,35,50,0.5)',
@@ -502,16 +675,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   pickerList: { flexGrow: 0 },
-  pickerItem: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-  },
-  pickerItemText: {
-    fontSize: 16,
-    color: '#1A2332',
-    textAlign: 'center',
-  },
+  pickerItem: { paddingVertical: 14, paddingHorizontal: 16, borderRadius: 12 },
+  pickerItemText: { fontSize: 16, color: '#1A2332', textAlign: 'center' },
   locationsSheet: { maxHeight: '75%' },
   locationsEmpty: {
     fontSize: 15,
@@ -537,66 +702,4 @@ const styles = StyleSheet.create({
   locationOpenYes: { color: '#7DC99E' },
   locationOpenNo: { color: '#E8604C' },
   locationRating: { fontSize: 12, color: '#A8997A' },
-  confirmOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(26,35,50,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  confirmBox: {
-    backgroundColor: '#F5F0E6',
-    borderRadius: 20,
-    padding: 28,
-    width: '100%',
-    alignItems: 'center',
-  },
-  confirmTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1A2332',
-    marginBottom: 12,
-  },
-  confirmMessage: {
-    fontSize: 15,
-    color: '#1A2332',
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 24,
-    opacity: 0.8,
-  },
-  confirmStoreName: {
-    fontWeight: '700',
-    opacity: 1,
-  },
-  confirmButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    width: '100%',
-  },
-  confirmNo: {
-    flex: 1,
-    borderRadius: 30,
-    paddingVertical: 13,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#C4B8A0',
-  },
-  confirmNoText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1A2332',
-  },
-  confirmYes: {
-    flex: 1,
-    borderRadius: 30,
-    paddingVertical: 13,
-    alignItems: 'center',
-    backgroundColor: '#E8604C',
-  },
-  confirmYesText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#fff',
-  },
 });
