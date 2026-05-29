@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { createGroup, getGroupsByUser, getGroupById, removeMemberFromGroup, leaveGroup, addCouponToGroup, removeCouponFromGroup, removeCouponsByOwnerFromGroup, addPendingMemberToGroup, removePendingMemberFromGroup, acceptGroupInvitation, renameGroup, deleteGroup } from '../repositories/groups';
-import { findUserByEmail, findUserById, findUsersByQuery } from '../repositories/users';
+import { findUserByEmail, findUserByPhone, findUserById, findUsersByQuery } from '../repositories/users';
 import { getCouponById } from '../repositories/coupons';
 import { insertNotification } from '../repositories/notifications';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
@@ -58,11 +58,11 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
 
   const members = memberDocs
     .filter(Boolean)
-    .map(u => ({ user_id: u!.user_id, username: u!.username, email: u!.email }));
+    .map(u => ({ user_id: u!.user_id, username: u!.username, email: u!.email, phone_number: u!.phone_number }));
 
   const pending_members = pendingDocs
     .filter(Boolean)
-    .map(u => ({ user_id: u!.user_id, username: u!.username, email: u!.email }));
+    .map(u => ({ user_id: u!.user_id, username: u!.username, email: u!.email, phone_number: u!.phone_number }));
 
   const coupons = couponDocs
     .filter(Boolean)
@@ -97,8 +97,12 @@ router.post('/:id/members', async (req: AuthRequest, res: Response): Promise<voi
     return;
   }
 
-  // Find user by email or username
+  // Find user by email, username, or phone number
   let target = await findUserByEmail(identifier);
+  if (!target && /\d/.test(identifier)) {
+    // identifier contains digits — try resolving it as a phone number
+    target = await findUserByPhone(identifier);
+  }
   if (!target) {
     const results = await findUsersByQuery(identifier);
     target = results.find(u => u.username.toLowerCase() === identifier.toLowerCase()) ?? null;

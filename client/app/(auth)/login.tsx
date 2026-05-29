@@ -18,7 +18,7 @@ import LoadingOverlay from '../../components/LoadingOverlay';
 import CoupletLogo from '../../components/CoupletLogo';
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -26,18 +26,21 @@ export default function LoginScreen() {
   const router = useRouter();
 
   async function handleLogin() {
-    if (!email.trim() || !password) {
-      Alert.alert('Missing fields', 'Please enter email and password.');
+    if (!identifier.trim() || !password) {
+      Alert.alert('Missing fields', 'Please enter your email or phone and password.');
       return;
     }
     setLoading(true);
     await new Promise(resolve => setTimeout(resolve, 0)); // yield JS thread so overlay renders before SRP computation starts
     try {
-      const { data } = await login(email.trim().toLowerCase(), password);
+      // Only lowercase emails; phone numbers are passed through as typed.
+      const id = identifier.trim();
+      const { data } = await login(id.includes('@') ? id.toLowerCase() : id, password);
       await signIn(data.token, {
         userId: data.userId,
         email: data.email,
         username: data.username,
+        phone_number: data.phone_number,
       });
       router.replace('/(tabs)');
     } catch (err: any) {
@@ -63,12 +66,11 @@ export default function LoginScreen() {
           <View style={styles.inputWrap}>
             <TextInput
               style={styles.input}
-              placeholder="Email"
+              placeholder="Email or phone"
               placeholderTextColor="#A8997A"
               autoCapitalize="none"
-              keyboardType="email-address"
-              value={email}
-              onChangeText={setEmail}
+              value={identifier}
+              onChangeText={setIdentifier}
               returnKeyType="next"
             />
           </View>

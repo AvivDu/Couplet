@@ -61,25 +61,58 @@ api.interceptors.response.use(
 );
 
 // Auth
-const syncUser = (email: string, username: string) =>
-  api.post<{ userId: string; username: string; email: string }>('/auth/sync', { email, username });
+type AuthUserData = { userId: string; username: string; email: string; phone_number?: string };
 
-export async function register(email: string, username: string, password: string) {
+const syncUser = (email: string, username: string, phone_number: string) =>
+  api.post<AuthUserData>('/auth/sync', { email, username, phone_number });
+
+// Resolves a phone number to its account email via the public endpoint.
+// Returns null if no account owns that phone (404).
+export async function resolvePhone(phone: string): Promise<string | null> {
+  try {
+    const { data } = await api.get<{ email: string }>(
+      `/auth/resolve?phone=${encodeURIComponent(phone)}`
+    );
+    return data.email;
+  } catch (err: any) {
+    if (err?.response?.status === 404) return null;
+    throw err;
+  }
+}
+
+export async function register(email: string, username: string, password: string, phone: string) {
+  // Phone uniqueness isn't enforced by Cognito (it's our own field), so check
+  // before creating the Cognito user to avoid an orphaned account.
+  const existingEmail = await resolvePhone(phone);
+  if (existingEmail) {
+    throw new Error('That phone number is already in use.');
+  }
   const token = await cognitoSignUp(email, password, username);
   setTokenCache(token);
   await SecureStore.setItemAsync('authToken', token);
-  const { data } = await syncUser(email, username);
+  const { data } = await syncUser(email, username, phone);
   return { data: { token, ...data } };
 }
 
-export async function login(email: string, password: string) {
+export async function login(identifier: string, password: string) {
+  // Cognito's username is the email. If the user typed a phone number, resolve
+  // it to the owning email first, then sign in with that.
+  let email = identifier;
+  if (!identifier.includes('@')) {
+    const resolved = await resolvePhone(identifier);
+    if (!resolved) {
+      throw new Error('No account found for that phone number.');
+    }
+    email = resolved;
+  }
+
   const token = await cognitoSignIn(email, password);
   setTokenCache(token);
   // Persist token and fetch user metadata in parallel — the network call
   // uses the token directly so it doesn't depend on the disk write completing.
   const [, { data }] = await Promise.all([
     SecureStore.setItemAsync('authToken', token),
-    api.get<{ userId: string; username: string; email: string }>('/auth/me',
+    api.get<AuthUserData>('/auth/me',
       { headers: { Authorization: `Bearer ${token}` } }
     ),
   ]);
@@ -140,6 +173,7 @@ export interface GroupMember {
   user_id: string;
   username: string;
   email: string;
+  phone_number?: string;
 }
 
 export interface GroupCoupon {

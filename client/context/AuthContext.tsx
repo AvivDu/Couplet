@@ -6,6 +6,7 @@ interface AuthUser {
   userId: string;
   email: string;
   username: string;
+  phone_number?: string;
 }
 
 interface AuthContextType {
