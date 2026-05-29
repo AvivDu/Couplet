@@ -141,22 +141,14 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
         <Text style={styles.couponStore}>{coupon.store_name}</Text>
         <Text style={styles.couponCategory}>{coupon.category}</Text>
 
-        <TouchableOpacity style={styles.imageBox} onPress={pickImage} activeOpacity={0.8}>
-          {imageUri ? (
-            <>
-              <Image source={{ uri: imageUri }} style={styles.uploadedImage} resizeMode="contain" />
-              <View style={styles.changeOverlay}>
-                <Text style={styles.changeOverlayText}>Tap to change</Text>
-              </View>
-            </>
-          ) : (
-            <View style={styles.uploadPlaceholder}>
-              <Text style={styles.uploadIcon}>↑</Text>
-              <Text style={styles.uploadLabel}>Upload barcode / QR</Text>
-              <Text style={styles.uploadHint}>Camera or Photo Library</Text>
+        {imageUri !== null && (
+          <TouchableOpacity style={styles.imageBox} onPress={pickImage} activeOpacity={0.8}>
+            <Image source={{ uri: imageUri }} style={styles.uploadedImage} resizeMode="contain" />
+            <View style={styles.changeOverlay}>
+              <Text style={styles.changeOverlayText}>Tap to change</Text>
             </View>
-          )}
-        </TouchableOpacity>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.codePill}>
           <Text style={styles.codePillText}>Code: {coupon.code ?? '—'}</Text>

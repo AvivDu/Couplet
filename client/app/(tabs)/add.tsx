@@ -12,12 +12,14 @@ import {
   Alert,
   Modal,
   SafeAreaView,
+  Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { createCoupon } from '../../services/api';
-import { saveCouponCode } from '../../storage/couponStorage';
+import { saveCouponCode, saveCouponImage } from '../../storage/couponStorage';
 import { CATEGORY_COLORS } from '../../constants/categories';
 
 const ADD_CATEGORIES: { label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -40,6 +42,7 @@ export default function AddCouponScreen() {
   const [balance, setBalance] = useState('');
   const [loading, setLoading] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
+  const [imageUri, setImageUri] = useState<string | null>(null);
   const router = useRouter();
 
   useFocusEffect(
@@ -49,12 +52,43 @@ export default function AddCouponScreen() {
       setCategory('');
       setExpiryDate(null);
       setBalance('');
+      setImageUri(null);
     }, [])
   );
 
   const expiryString = expiryDate
     ? expiryDate.toISOString().split('T')[0]
     : undefined;
+
+  async function pickImage() {
+    Alert.alert('Coupon Image', 'Choose a source', [
+      {
+        text: 'Camera',
+        onPress: async () => {
+          const perm = await ImagePicker.requestCameraPermissionsAsync();
+          if (perm.status !== 'granted') {
+            Alert.alert('Permission needed', 'Please allow camera access in Settings.');
+            return;
+          }
+          const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.85 });
+          if (!result.canceled) setImageUri(result.assets[0].uri);
+        },
+      },
+      {
+        text: 'Photo Library',
+        onPress: async () => {
+          const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (perm.status !== 'granted') {
+            Alert.alert('Permission needed', 'Please allow photo library access in Settings.');
+            return;
+          }
+          const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, quality: 0.85 });
+          if (!result.canceled) setImageUri(result.assets[0].uri);
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
 
   async function handleAdd() {
     if (!code.trim() || !couponName.trim() || !category) {
@@ -72,6 +106,9 @@ export default function AddCouponScreen() {
       });
 
       await saveCouponCode(data.coupon_id, code.trim());
+      if (imageUri) {
+        await saveCouponImage(data.coupon_id, imageUri);
+      }
 
       Alert.alert('Coupon added!', `${couponName} coupon has been saved.`, [
         { text: 'OK', onPress: () => router.replace('/(tabs)') },
@@ -114,6 +151,32 @@ export default function AddCouponScreen() {
               value={code}
               onChangeText={setCode}
             />
+          </View>
+
+          {/* Barcode / QR Image (optional) */}
+          <Text style={styles.sectionLabel}>Barcode / QR Image (optional)</Text>
+          <View style={styles.imagePickerWrap}>
+            <TouchableOpacity style={styles.imagePicker} onPress={pickImage} activeOpacity={0.8}>
+              {imageUri ? (
+                <>
+                  <Image source={{ uri: imageUri }} style={styles.imagePreview} resizeMode="contain" />
+                  <View style={styles.imageChangeOverlay}>
+                    <Text style={styles.imageChangeText}>Tap to change</Text>
+                  </View>
+                </>
+              ) : (
+                <View style={styles.imageEmpty}>
+                  <Ionicons name="qr-code-outline" size={32} color="#A8997A" />
+                  <Text style={styles.imageEmptyText}>Add barcode or QR image</Text>
+                  <Text style={styles.imageEmptyHint}>Camera or Photo Library</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            {imageUri && (
+              <TouchableOpacity style={styles.imageRemoveBtn} onPress={() => setImageUri(null)} hitSlop={8}>
+                <Ionicons name="close-circle" size={22} color="#E8604C" />
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Expiration Date */}
@@ -386,4 +449,58 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
   },
   modalCloseBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  imagePickerWrap: {
+    position: 'relative',
+    marginBottom: 28,
+  },
+  imagePicker: {
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#C4B8A0',
+    borderStyle: 'dashed',
+    height: 120,
+    overflow: 'hidden',
+    backgroundColor: '#FDFAF4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageRemoveBtn: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#F5F0E6',
+    borderRadius: 11,
+  },
+  imagePreview: {
+    width: '100%',
+    height: '100%',
+  },
+  imageChangeOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(26,35,50,0.45)',
+    paddingVertical: 5,
+    alignItems: 'center',
+  },
+  imageChangeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  imageEmpty: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  imageEmptyText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1A2332',
+    opacity: 0.55,
+  },
+  imageEmptyHint: {
+    fontSize: 11,
+    color: '#A8997A',
+  },
 });

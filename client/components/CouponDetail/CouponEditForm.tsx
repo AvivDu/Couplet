@@ -6,9 +6,13 @@ import {
   TextInput,
   StyleSheet,
   Alert,
+  TouchableOpacity,
+  Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
 import { updateCoupon } from '../../services/api';
-import { saveCouponCode } from '../../storage/couponStorage';
+import { saveCouponCode, saveCouponImage, getCouponImage, deleteCouponImage } from '../../storage/couponStorage';
 import { DAYS, MONTHS, YEARS } from './constants';
 import DatePickerSheet from './DatePickerSheet';
 import type { CouponWithCode } from './types';
@@ -39,6 +43,11 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
       coupon.balance != null ? String(coupon.balance) : ''
     );
     const [datePickerField, setDatePickerField] = React.useState<DateField | null>(null);
+    const [imageUri, setImageUri] = React.useState<string | null>(null);
+
+    React.useEffect(() => {
+      getCouponImage(coupon.coupon_id).then(setImageUri);
+    }, [coupon.coupon_id]);
 
     React.useEffect(() => {
       setEditName(coupon.store_name);
@@ -97,6 +106,44 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
       submit: handleSave,
     }));
 
+    async function pickImage() {
+      Alert.alert('Coupon Image', 'Choose a source', [
+        {
+          text: 'Camera',
+          onPress: async () => {
+            const perm = await ImagePicker.requestCameraPermissionsAsync();
+            if (perm.status !== 'granted') {
+              Alert.alert('Permission needed', 'Please allow camera access in Settings.');
+              return;
+            }
+            const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.85 });
+            if (!result.canceled) {
+              const uri = result.assets[0].uri;
+              await saveCouponImage(coupon.coupon_id, uri);
+              setImageUri(uri);
+            }
+          },
+        },
+        {
+          text: 'Photo Library',
+          onPress: async () => {
+            const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (perm.status !== 'granted') {
+              Alert.alert('Permission needed', 'Please allow photo library access in Settings.');
+              return;
+            }
+            const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, quality: 0.85 });
+            if (!result.canceled) {
+              const uri = result.assets[0].uri;
+              await saveCouponImage(coupon.coupon_id, uri);
+              setImageUri(uri);
+            }
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+
     function getPickerItems(): { label: string; value: string }[] {
       if (datePickerField === 'year') return YEARS.map(y => ({ label: y, value: y }));
       if (datePickerField === 'month') return MONTHS;
@@ -150,6 +197,38 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
               value={editCode}
               onChangeText={setEditCode}
             />
+          </View>
+
+          <Text style={styles.dateLabel}>Barcode / QR Image (optional)</Text>
+          <View style={styles.imagePickerWrap}>
+            <TouchableOpacity style={styles.imagePicker} onPress={pickImage} activeOpacity={0.8}>
+              {imageUri ? (
+                <>
+                  <Image source={{ uri: imageUri }} style={styles.imagePreview} resizeMode="contain" />
+                  <View style={styles.imageChangeOverlay}>
+                    <Text style={styles.imageChangeText}>Tap to change</Text>
+                  </View>
+                </>
+              ) : (
+                <View style={styles.imageEmpty}>
+                  <Text style={styles.imageEmptyIcon}>+</Text>
+                  <Text style={styles.imageEmptyText}>Add barcode or QR image</Text>
+                  <Text style={styles.imageEmptyHint}>Camera or Photo Library</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            {imageUri && (
+              <TouchableOpacity
+                style={styles.imageRemoveBtn}
+                onPress={async () => {
+                  await deleteCouponImage(coupon.coupon_id);
+                  setImageUri(null);
+                }}
+                hitSlop={8}
+              >
+                <Ionicons name="close-circle" size={22} color="#E8604C" />
+              </TouchableOpacity>
+            )}
           </View>
 
           <Text style={styles.dateLabel}>Expiration Date</Text>
@@ -254,5 +333,64 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#1A2332',
     fontWeight: '600',
+  },
+  imagePickerWrap: {
+    position: 'relative',
+    marginBottom: 28,
+  },
+  imagePicker: {
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#C4B8A0',
+    borderStyle: 'dashed',
+    height: 120,
+    overflow: 'hidden',
+    backgroundColor: '#FDFAF4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageRemoveBtn: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#F5F0E6',
+    borderRadius: 11,
+  },
+  imagePreview: {
+    width: '100%',
+    height: '100%',
+  },
+  imageChangeOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(26,35,50,0.45)',
+    paddingVertical: 5,
+    alignItems: 'center',
+  },
+  imageChangeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  imageEmpty: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  imageEmptyIcon: {
+    fontSize: 28,
+    color: '#A8997A',
+    lineHeight: 32,
+  },
+  imageEmptyText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1A2332',
+    opacity: 0.55,
+  },
+  imageEmptyHint: {
+    fontSize: 11,
+    color: '#A8997A',
   },
 });
