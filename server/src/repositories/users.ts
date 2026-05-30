@@ -49,6 +49,14 @@ export async function findUserByPhone(phone: string): Promise<User | null> {
     .find(u => u.phone_number && normalizePhone(u.phone_number) === target) ?? null;
 }
 
+export async function findUsersByPhones(phones: string[]): Promise<User[]> {
+  if (phones.length === 0) return [];
+  const result = await ddb.send(new ScanCommand({ TableName: USERS_TABLE }));
+  const allUsers = result.Items as User[] ?? [];
+  const targets = new Set(phones.map(p => p.replace(/\D/g, '')).filter(Boolean));
+  return allUsers.filter(u => u.phone_number && targets.has(u.phone_number.replace(/\D/g, '')));
+}
+
 export async function updateUserById(
   userId: string,
   updates: { username?: string; phone_number?: string }

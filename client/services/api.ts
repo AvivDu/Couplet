@@ -191,6 +191,18 @@ export const deleteGroup = (groupId: string) =>
 export const searchUsers = (query: string) =>
   api.get<GroupMember[]>(`/users/search?q=${encodeURIComponent(query)}`);
 
+export interface ContactMatch {
+  user_id: string;
+  username: string;
+  email: string;
+  phone_number: string;
+}
+
+export async function matchContacts(phones: string[]): Promise<ContactMatch[]> {
+  const { data } = await api.post<ContactMatch[]>('/users/match-contacts', { phones });
+  return data;
+}
+
 export interface ServerNotification {
   user_id: string;
   notification_id: string;

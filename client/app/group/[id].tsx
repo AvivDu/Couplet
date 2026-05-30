@@ -14,10 +14,12 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import * as Contacts from 'expo-contacts';
 import { Ionicons } from '@expo/vector-icons';
 import {
   getGroup,
   addMember,
+  matchContacts,
   removeMember,
   revokeFromGroup,
   leaveGroup,
@@ -29,7 +31,9 @@ import {
   deleteGroup,
   getNotifications,
 } from '../../services/api';
-import type { GroupDetail as GroupDetailType, GroupMember, CouponMeta } from '../../services/api';
+import type { GroupDetail as GroupDetailType, GroupMember, CouponMeta, ContactMatch } from '../../services/api';
+
+type ContactMatchWithName = ContactMatch & { contactName: string };
 import { saveGroupImage, getGroupImage } from '../../storage/groupStorage';
 import { getCouponCode, saveCouponCode } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
@@ -61,6 +65,10 @@ export default function GroupScreen() {
   const [renaming, setRenaming] = useState(false);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [contactsSheetVisible, setContactsSheetVisible] = useState(false);
+  const [contactMatches, setContactMatches] = useState<ContactMatchWithName[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [invitingContactUserId, setInvitingContactUserId] = useState<string | null>(null);
   const [selectedCoupon, setSelectedCoupon] = useState<CouponWithCode | null>(null);
   const [loadingCouponId, setLoadingCouponId] = useState<string | null>(null);
 
@@ -266,6 +274,67 @@ export default function GroupScreen() {
       Alert.alert('Error', err?.response?.data?.error ?? 'Could not share coupon.');
     } finally {
       setSharingCouponId(null);
+    }
+  }
+
+  function normalizePhone(raw: string): string {
+    const digits = raw.replace(/\D/g, '');
+    // +972 5X... → 05X...
+    if (digits.startsWith('972') && digits.length >= 12) return '0' + digits.slice(3);
+    return digits;
+  }
+
+  async function handleOpenContacts() {
+    setInviteSheetVisible(false);
+    const { status } = await Contacts.requestPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Denied', 'Couplet needs contact access to find your friends.');
+      return;
+    }
+    setContactsSheetVisible(true);
+    setContactsLoading(true);
+    try {
+      const { data: deviceContacts } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
+      });
+      const phoneToName: Record<string, string> = {};
+      for (const c of deviceContacts) {
+        for (const p of c.phoneNumbers ?? []) {
+          const normalized = normalizePhone(p.number ?? '');
+          if (normalized) phoneToName[normalized] = c.name ?? 'Unknown';
+        }
+      }
+      const allPhones = Object.keys(phoneToName);
+      if (allPhones.length === 0) { setContactMatches([]); return; }
+      const serverMatches = await matchContacts(allPhones);
+      const existingIds = new Set([
+        ...(group?.members.map(m => m.user_id) ?? []),
+        ...(group?.pending_members.map(m => m.user_id) ?? []),
+      ]);
+      setContactMatches(
+        serverMatches
+          .filter(m => !existingIds.has(m.user_id))
+          .map(m => ({ ...m, contactName: phoneToName[m.phone_number] ?? m.username }))
+      );
+    } catch {
+      Alert.alert('Error', 'Could not load contacts.');
+      setContactsSheetVisible(false);
+    } finally {
+      setContactsLoading(false);
+    }
+  }
+
+  async function handleInviteContact(match: ContactMatchWithName) {
+    if (!groupId) return;
+    setInvitingContactUserId(match.user_id);
+    try {
+      await addMember(groupId, match.email);
+      setContactMatches(prev => prev.filter(m => m.user_id !== match.user_id));
+      await fetchGroup();
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.error ?? 'Could not invite.');
+    } finally {
+      setInvitingContactUserId(null);
     }
   }
 
@@ -697,6 +766,14 @@ export default function GroupScreen() {
                 <Text style={styles.dialogInviteBtnText}>Invite</Text>
               )}
             </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addFromContactsBtn}
+              onPress={handleOpenContacts}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="people-outline" size={16} color="#E8604C" />
+              <Text style={styles.addFromContactsBtnText}>Add from Contacts</Text>
+            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -802,6 +879,55 @@ export default function GroupScreen() {
           </View>
         </TouchableOpacity>
       )}
+
+      {/* Add from Contacts Sheet */}
+      <Modal
+        visible={contactsSheetVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setContactsSheetVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.sheetOverlay}
+          activeOpacity={1}
+          onPress={() => setContactsSheetVisible(false)}
+        >
+          <View style={styles.sheet} onStartShouldSetResponder={() => true}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Your Contacts on Couplet</Text>
+            {contactsLoading ? (
+              <ActivityIndicator color="#E8604C" style={{ marginVertical: 32 }} />
+            ) : contactMatches.length === 0 ? (
+              <Text style={styles.emptyCoupons}>None of your contacts are on Couplet yet.</Text>
+            ) : (
+              <ScrollView style={{ maxHeight: '80%' }}>
+                {contactMatches.map(match => (
+                  <View key={match.user_id} style={styles.memberRow}>
+                    <View style={styles.memberAvatar}>
+                      <Text style={styles.memberAvatarText}>{getInitials(match.contactName)}</Text>
+                    </View>
+                    <View style={styles.memberInfo}>
+                      <Text style={styles.memberName}>{match.contactName}</Text>
+                      <Text style={styles.memberEmail}>@{match.username}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.inviteContactBtn, invitingContactUserId === match.user_id && { opacity: 0.4 }]}
+                      onPress={() => handleInviteContact(match)}
+                      disabled={invitingContactUserId === match.user_id}
+                      activeOpacity={0.8}
+                    >
+                      {invitingContactUserId === match.user_id
+                        ? <ActivityIndicator color="#fff" size="small" />
+                        : <Text style={styles.inviteContactBtnText}>Invite</Text>}
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <View style={{ height: 40 }} />
+              </ScrollView>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Share Coupon Picker */}
       <Modal
@@ -1228,4 +1354,25 @@ const styles = StyleSheet.create({
   couponPickerName: { fontSize: 15, fontWeight: '600', color: '#1A2332' },
   couponPickerSub: { fontSize: 13, color: '#A8997A', marginTop: 2 },
   alreadySharedText: { fontSize: 13, fontWeight: '600', color: '#A8997A' },
+
+  inviteContactBtn: {
+    backgroundColor: '#E8604C',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  inviteContactBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+
+  addFromContactsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 10,
+    borderWidth: 1.5,
+    borderColor: '#E8604C',
+    borderRadius: 14,
+    paddingVertical: 13,
+  },
+  addFromContactsBtnText: { fontSize: 15, fontWeight: '600', color: '#E8604C' },
 });

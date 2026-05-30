@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { findUsersByQuery } from '../repositories/users';
+import { findUsersByQuery, findUsersByPhones } from '../repositories/users';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -20,6 +20,20 @@ router.get('/search', async (req: AuthRequest, res: Response): Promise<void> => 
     .map(u => ({ user_id: u.user_id, username: u.username, email: u.email }));
 
   res.json(results);
+});
+
+// POST /users/match-contacts — bulk phone lookup, returns Couplet users matching input phones
+router.post('/match-contacts', async (req: AuthRequest, res: Response): Promise<void> => {
+  const phones: string[] = req.body.phones ?? [];
+  if (!Array.isArray(phones) || phones.length === 0) {
+    res.status(400).json({ error: 'phones array is required' }); return;
+  }
+  const matched = await findUsersByPhones(phones);
+  res.json(
+    matched
+      .filter(u => u.user_id !== req.userId)
+      .map(u => ({ user_id: u.user_id, username: u.username, email: u.email, phone_number: u.phone_number! }))
+  );
 });
 
 export default router;
