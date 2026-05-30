@@ -395,6 +395,7 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId, 
                       </View>
                       <View style={styles.memberInfo}>
                         <Text style={styles.memberName}>{member.username}{isCurrentUser ? ' (you)' : ''}</Text>
+                        {member.phone_number ? <Text style={styles.memberEmail}>{member.phone_number}</Text> : null}
                         {isGroupAdmin && <Text style={styles.adminLabel}>Admin</Text>}
                       </View>
                       {isAdmin && !isCurrentUser && !isGroupAdmin && (
@@ -418,7 +419,7 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId, 
                         </View>
                         <View style={[styles.memberInfo, { opacity: 0.5 }]}>
                           <Text style={styles.memberName}>{member.username}</Text>
-                          <Text style={styles.memberEmail}>{member.email}</Text>
+                          <Text style={styles.memberEmail}>{member.phone_number ?? member.email}</Text>
                         </View>
                         <View style={[styles.pendingBadge, { opacity: 0.5 }]}>
                           <Text style={styles.pendingBadgeText}>Pending</Text>
@@ -482,10 +483,10 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId, 
                     <TouchableOpacity
                       key={s.user_id}
                       style={styles.suggestion}
-                      onPress={() => { setMemberQuery(s.email); setSuggestions([]); }}
+                      onPress={() => { setMemberQuery(s.phone_number ?? s.email); setSuggestions([]); }}
                     >
                       <Text style={styles.suggestionName}>{s.username}</Text>
-                      <Text style={styles.suggestionEmail}>{s.email}</Text>
+                      <Text style={styles.suggestionEmail}>{s.phone_number ?? s.email}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
