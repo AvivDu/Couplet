@@ -12,10 +12,12 @@ import {
   Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Contacts from 'expo-contacts';
 import { Ionicons } from '@expo/vector-icons';
 import {
   getGroup,
   addMember,
+  matchContacts,
   removeMember,
   revokeFromGroup,
   leaveGroup,
@@ -26,7 +28,9 @@ import {
   renameGroup,
   deleteGroup,
 } from '../services/api';
-import type { GroupDetail as GroupDetailType, GroupMember, CouponMeta } from '../services/api';
+import type { GroupDetail as GroupDetailType, GroupMember, CouponMeta, ContactMatch } from '../services/api';
+
+type ContactMatchWithName = ContactMatch & { contactName: string };
 import { saveGroupImage, getGroupImage } from '../storage/groupStorage';
 
 interface Props {
@@ -57,6 +61,11 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId, 
   const [renaming, setRenaming] = useState(false);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  const [contactsSheetVisible, setContactsSheetVisible] = useState(false);
+  const [contactMatches, setContactMatches] = useState<ContactMatchWithName[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [invitingContactUserId, setInvitingContactUserId] = useState<string | null>(null);
 
   const isAdmin = group?.admin_user_id === currentUserId;
 
@@ -227,6 +236,61 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId, 
     }
   }
 
+  async function handleOpenContacts() {
+    const { status } = await Contacts.requestPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Denied', 'Couplet needs contact access to find your friends.');
+      return;
+    }
+    setContactsSheetVisible(true);
+    setContactsLoading(true);
+    try {
+      const { data: deviceContacts } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
+      });
+      const phoneToName: Record<string, string> = {};
+      for (const c of deviceContacts) {
+        for (const p of c.phoneNumbers ?? []) {
+          const digits = (p.number ?? '').replace(/\D/g, '');
+          const normalized = digits.startsWith('972') && digits.length >= 12 ? '0' + digits.slice(3) : digits;
+          if (normalized) phoneToName[normalized] = c.name ?? 'Unknown';
+        }
+      }
+      const allPhones = Object.keys(phoneToName);
+      if (allPhones.length === 0) { setContactMatches([]); return; }
+
+      const serverMatches = await matchContacts(allPhones);
+      const existingIds = new Set([
+        ...(group?.members.map(m => m.user_id) ?? []),
+        ...(group?.pending_members.map(m => m.user_id) ?? []),
+      ]);
+      setContactMatches(
+        serverMatches
+          .filter(m => !existingIds.has(m.user_id))
+          .map(m => ({ ...m, contactName: phoneToName[m.phone_number] ?? m.username }))
+      );
+    } catch {
+      Alert.alert('Error', 'Could not load contacts.');
+      setContactsSheetVisible(false);
+    } finally {
+      setContactsLoading(false);
+    }
+  }
+
+  async function handleInviteContact(match: ContactMatchWithName) {
+    if (!groupId) return;
+    setInvitingContactUserId(match.user_id);
+    try {
+      await addMember(groupId, match.email);
+      setContactMatches(prev => prev.filter(m => m.user_id !== match.user_id));
+      await fetchGroup();
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.error ?? 'Could not invite.');
+    } finally {
+      setInvitingContactUserId(null);
+    }
+  }
+
   function getInitials(name: string) {
     return name.slice(0, 2).toUpperCase();
   }
@@ -286,6 +350,19 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId, 
                 <Text style={[styles.actionBtnText, styles.actionBtnTextSecondary]}>Share Coupon</Text>
               </TouchableOpacity>
             </View>
+
+            {isAdmin && (
+              <View style={styles.contactsActionRow}>
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.actionBtnSecondary, styles.contactsActionBtn]}
+                  onPress={handleOpenContacts}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="people-outline" size={18} color="#E8604C" />
+                  <Text style={[styles.actionBtnText, styles.actionBtnTextSecondary]}>Add from Contacts</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
             <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
               {/* Shared Coupons */}
@@ -597,6 +674,55 @@ export default function GroupDetail({ groupId, visible, onClose, currentUserId, 
             </View>
           </TouchableOpacity>
         )}
+
+        {/* Add from Contacts Sheet */}
+        <Modal
+          visible={contactsSheetVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setContactsSheetVisible(false)}
+        >
+          <TouchableOpacity
+            style={styles.sheetOverlay}
+            activeOpacity={1}
+            onPress={() => setContactsSheetVisible(false)}
+          >
+            <View style={styles.sheet} onStartShouldSetResponder={() => true}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetTitle}>Your Contacts on Couplet</Text>
+              {contactsLoading ? (
+                <ActivityIndicator color="#E8604C" style={{ marginVertical: 32 }} />
+              ) : contactMatches.length === 0 ? (
+                <Text style={styles.emptyCoupons}>None of your contacts are on Couplet yet.</Text>
+              ) : (
+                <ScrollView style={{ maxHeight: '80%' }}>
+                  {contactMatches.map(match => (
+                    <View key={match.user_id} style={styles.memberRow}>
+                      <View style={styles.avatar}>
+                        <Text style={styles.avatarText}>{getInitials(match.contactName)}</Text>
+                      </View>
+                      <View style={styles.memberInfo}>
+                        <Text style={styles.memberName}>{match.contactName}</Text>
+                        <Text style={styles.memberEmail}>@{match.username}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.addMemberBtn, invitingContactUserId === match.user_id && { opacity: 0.4 }]}
+                        onPress={() => handleInviteContact(match)}
+                        disabled={invitingContactUserId === match.user_id}
+                        activeOpacity={0.8}
+                      >
+                        {invitingContactUserId === match.user_id
+                          ? <ActivityIndicator color="#fff" size="small" />
+                          : <Text style={styles.addMemberBtnText}>Invite</Text>}
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  <View style={{ height: 40 }} />
+                </ScrollView>
+              )}
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
         {/* Share Coupon Picker */}
         <Modal
@@ -1006,4 +1132,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#D93025',
   },
   deleteConfirmBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+
+  contactsActionRow: { paddingHorizontal: 20, marginBottom: 4 },
+  contactsActionBtn: { flex: 0, alignSelf: 'flex-start', paddingHorizontal: 20 },
 });
