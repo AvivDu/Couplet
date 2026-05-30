@@ -1,6 +1,9 @@
-import { useCallback, useState } from 'react';
-import { useFocusEffect } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
 import {
+  Animated,
+  Dimensions,
+  Image,
   View,
   Text,
   StyleSheet,
@@ -16,7 +19,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { CATEGORY_COLORS } from '../../constants/categories';
 import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, type CouponMeta } from '../../services/api';
-import { getCouponCode, saveCouponCode, deleteCouponCode, deleteCouponImage } from '../../storage/couponStorage';
+import { getCouponCode, saveCouponCode, deleteCouponCode, deleteCouponImage, getUserAvatar } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
 import CouponCard from '../../components/CouponCard';
 import CouponDetail from '../../components/CouponDetail';
@@ -51,8 +54,11 @@ const SORT_OPTIONS: { value: SortOption; label: string; icon: keyof typeof Ionic
 
 type CouponWithCode = CouponMeta & { code: string | null };
 
+const DRAWER_WIDTH = Dimensions.get('window').width * 0.48;
+
 export default function HomeScreen() {
   const { user, signOut } = useAuth();
+  const router = useRouter();
   const [coupons, setCoupons] = useState<CouponMeta[]>([]);
   const [couponCodes, setCouponCodes] = useState<Record<string, string | null>>({});
   const [filter, setFilter] = useState('All');
@@ -64,6 +70,10 @@ export default function HomeScreen() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notifPanelOpen, setNotifPanelOpen] = useState(false);
   const [joinedGroupName, setJoinedGroupName] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [aboutVisible, setAboutVisible] = useState(false);
+  const [drawerAvatarUri, setDrawerAvatarUri] = useState<string | null>(null);
+  const drawerAnim = useRef(new Animated.Value(0)).current;
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -289,6 +299,19 @@ export default function HomeScreen() {
     setSelected({ ...updated, code: newCode });
   }
 
+  function openDrawer() {
+    getUserAvatar().then(setDrawerAvatarUri);
+    setDrawerOpen(true);
+    Animated.timing(drawerAnim, { toValue: 1, duration: 260, useNativeDriver: true }).start();
+  }
+
+  function closeDrawer(cb?: () => void) {
+    Animated.timing(drawerAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      setDrawerOpen(false);
+      cb?.();
+    });
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -303,8 +326,12 @@ export default function HomeScreen() {
               <Ionicons name="notifications-outline" size={24} color="#1A2332" />
               {unreadCount > 0 && <View style={styles.badge} />}
             </TouchableOpacity>
-            <TouchableOpacity onPress={signOut} style={styles.logoutBtn}>
-              <Text style={styles.logoutText}>Log out</Text>
+            <TouchableOpacity
+              onPress={openDrawer}
+              style={styles.settingsBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="settings-outline" size={24} color="#1A2332" />
             </TouchableOpacity>
           </View>
         </View>
@@ -451,6 +478,80 @@ export default function HomeScreen() {
           onMarkUsed={handleMarkUsed}
           onUpdate={handleUpdate}
         />
+
+        {/* Settings Drawer */}
+        {drawerOpen && (
+          <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+            <TouchableOpacity
+              style={styles.drawerOverlay}
+              activeOpacity={1}
+              onPress={() => closeDrawer()}
+            />
+            <Animated.View
+              style={[
+                styles.drawer,
+                {
+                  width: DRAWER_WIDTH,
+                  transform: [{ translateX: drawerAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [DRAWER_WIDTH, 0],
+                  }) }],
+                },
+              ]}
+            >
+              <View style={styles.drawerHeader}>
+                <View style={styles.avatarCircle}>
+                  {drawerAvatarUri
+                    ? <Image source={{ uri: drawerAvatarUri }} style={styles.avatarImage} />
+                    : <Ionicons name="person-outline" size={32} color="#A8997A" />}
+                </View>
+                <Text style={styles.drawerUsername}>{user?.username}</Text>
+                <TouchableOpacity
+                  style={styles.drawerProfileBtn}
+                  onPress={() => closeDrawer(() => router.push('/edit-profile'))}
+                >
+                  <Text style={styles.drawerProfileBtnText}>View & Edit Profile</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.drawerBody}>
+                <TouchableOpacity
+                  style={styles.drawerItem}
+                  onPress={() => { closeDrawer(); setTimeout(() => setAboutVisible(true), 250); }}
+                >
+                  <Ionicons name="information-circle-outline" size={20} color="#1A2332" />
+                  <Text style={styles.drawerItemText}>About Couplet</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.drawerFooter}>
+                <TouchableOpacity style={styles.drawerItem} onPress={() => closeDrawer(signOut)}>
+                  <Ionicons name="log-out-outline" size={20} color="#C0857A" />
+                  <Text style={[styles.drawerItemText, { color: '#C0857A' }]}>Log Out</Text>
+                </TouchableOpacity>
+              </View>
+            </Animated.View>
+          </View>
+        )}
+
+        {/* About modal */}
+        <Modal visible={aboutVisible} animationType="fade" transparent onRequestClose={() => setAboutVisible(false)}>
+          <View style={styles.aboutOverlay}>
+            <View style={styles.aboutCard}>
+              <Text style={styles.aboutTitle}>Couplet</Text>
+              <Text style={styles.aboutVersion}>Version 1.0.0</Text>
+              <Text style={styles.aboutDesc}>Your personal coupon wallet — store, manage, and share coupons securely. Coupon codes never leave your device.</Text>
+              <View style={styles.aboutDivider} />
+              <Text style={styles.aboutTeamLabel}>BUILT BY</Text>
+              <Text style={styles.aboutTeam}>Aviv Duzy</Text>
+              <Text style={styles.aboutTeam}>Roni Kenigsberg</Text>
+              <Text style={styles.aboutTeam}>Doron Shen-Tzur</Text>
+              <TouchableOpacity style={styles.aboutCloseBtn} onPress={() => setAboutVisible(false)}>
+                <Text style={styles.aboutCloseBtnText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -469,15 +570,8 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 28, fontWeight: '800', color: '#1A2332' },
   headerSub: { fontSize: 14, color: '#1A2332', opacity: 0.5, marginTop: 2 },
-  logoutBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: '#C4B8A0',
-  },
-  logoutText: { fontSize: 13, color: '#1A2332', fontWeight: '600' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  settingsBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   bellBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
   badge: {
     position: 'absolute', top: 4, right: 4,
@@ -542,7 +636,6 @@ const styles = StyleSheet.create({
   },
   sortBtnText: { fontSize: 13, fontWeight: '600', color: '#1A2332', opacity: 0.6, flexShrink: 1 },
   sortBtnTextActive: { color: '#E8604C', opacity: 1 },
-  // Sort sheet modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(26,35,50,0.4)',
@@ -585,7 +678,6 @@ const styles = StyleSheet.create({
   sortOptionLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   sortOptionText: { fontSize: 15, fontWeight: '500', color: '#1A2332' },
   sortOptionTextActive: { color: '#E8604C', fontWeight: '700' },
-  // Coupon list empty state
   empty: { alignItems: 'center', gap: 10 },
   emptyContainer: { flex: 1, justifyContent: 'center' },
   emptyIcon: { fontSize: 52 },
@@ -628,4 +720,92 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
   },
+  // Settings Drawer
+  drawerOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(26,35,50,0.45)' },
+  drawer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#F5F0E6',
+    paddingTop: 56,
+    paddingBottom: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: -2, height: 0 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 16,
+  },
+  drawerHeader: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0D8CA',
+  },
+  avatarCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#E0D8CA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  avatarImage: { width: 72, height: 72 },
+  drawerUsername: { fontSize: 16, fontWeight: '700', color: '#1A2332', marginBottom: 10 },
+  drawerProfileBtn: {
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#E8604C',
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+  },
+  drawerProfileBtnText: { fontSize: 13, fontWeight: '600', color: '#E8604C' },
+  drawerBody: { flex: 1, paddingTop: 16, paddingHorizontal: 8 },
+  drawerFooter: {
+    paddingHorizontal: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E0D8CA',
+    paddingTop: 12,
+  },
+  drawerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+  },
+  drawerItemText: { fontSize: 15, fontWeight: '500', color: '#1A2332' },
+  // About modal
+  aboutOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(26,35,50,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  aboutCard: {
+    backgroundColor: '#F5F0E6',
+    borderRadius: 24,
+    padding: 28,
+    width: '100%',
+    alignItems: 'center',
+  },
+  aboutTitle: { fontSize: 28, fontWeight: '800', color: '#E8604C', marginBottom: 4 },
+  aboutVersion: { fontSize: 13, color: '#1A2332', opacity: 0.4, marginBottom: 16 },
+  aboutDesc: { fontSize: 14, color: '#1A2332', opacity: 0.6, textAlign: 'center', lineHeight: 20 },
+  aboutDivider: { height: 1, backgroundColor: '#C4B8A0', width: '100%', marginVertical: 20 },
+  aboutTeamLabel: { fontSize: 11, fontWeight: '700', color: '#1A2332', opacity: 0.4, letterSpacing: 1, marginBottom: 10 },
+  aboutTeam: { fontSize: 15, color: '#1A2332', fontWeight: '500', marginBottom: 4 },
+  aboutCloseBtn: {
+    marginTop: 24,
+    backgroundColor: '#E8604C',
+    borderRadius: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 40,
+  },
+  aboutCloseBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 });

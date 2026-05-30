@@ -30,3 +30,13 @@ export async function getCouponImage(couponId: string): Promise<string | null> {
 export async function deleteCouponImage(couponId: string): Promise<void> {
   await AsyncStorage.removeItem(`${IMAGE_PREFIX}${couponId}`);
 }
+
+const USER_AVATAR_KEY = 'user_avatar';
+
+export async function saveUserAvatar(uri: string): Promise<void> {
+  await AsyncStorage.setItem(USER_AVATAR_KEY, uri);
+}
+
+export async function getUserAvatar(): Promise<string | null> {
+  return AsyncStorage.getItem(USER_AVATAR_KEY);
+}
