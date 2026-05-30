@@ -18,6 +18,7 @@ import LoadingOverlay from '../../components/LoadingOverlay';
 
 export default function RegisterScreen() {
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -27,8 +28,14 @@ export default function RegisterScreen() {
   const router = useRouter();
 
   async function handleRegister() {
-    if (!email.trim() || !username.trim() || !password || !confirm) {
+    if (!email.trim() || !phone.trim() || !username.trim() || !password || !confirm) {
       Alert.alert('Missing fields', 'Please fill in all fields.');
+      return;
+    }
+    // Israeli local format: 9-10 digits starting with 0 (ignore spaces/dashes).
+    const phoneDigits = phone.replace(/\D/g, '');
+    if (!/^0\d{8,9}$/.test(phoneDigits)) {
+      Alert.alert('Invalid phone', 'Enter a valid phone number, e.g. 050-1234567.');
       return;
     }
     if (password !== confirm) return;
@@ -39,11 +46,12 @@ export default function RegisterScreen() {
 
     setLoading(true);
     try {
-      const { data } = await register(email.trim().toLowerCase(), username.trim(), password);
+      const { data } = await register(email.trim().toLowerCase(), username.trim(), password, phone.trim());
       await signIn(data.token, {
         userId: data.userId,
         email: data.email,
         username: data.username,
+        phone_number: data.phone_number,
       });
       router.replace('/(tabs)');
     } catch (err: any) {
@@ -74,6 +82,17 @@ export default function RegisterScreen() {
               keyboardType="email-address"
               value={email}
               onChangeText={setEmail}
+            />
+          </View>
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={styles.input}
+              placeholder="Phone"
+              placeholderTextColor="#A8997A"
+              autoCapitalize="none"
+              keyboardType="phone-pad"
+              value={phone}
+              onChangeText={setPhone}
             />
           </View>
           <View style={styles.inputWrap}>
