@@ -1,6 +1,7 @@
 import { PutCommand, QueryCommand, UpdateCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { v4 as uuidv4 } from 'uuid';
 import { ddb, NOTIFICATIONS_TABLE } from '../lib/dynamo';
+import { pushToUser } from '../lib/websocket';
 
 export interface Notification {
   user_id: string;
@@ -25,6 +26,20 @@ export async function insertNotification(
     created_at: new Date().toISOString(),
   };
   await ddb.send(new PutCommand({ TableName: NOTIFICATIONS_TABLE, Item: item }));
+  return item;
+}
+
+// Insert a notification AND push it live over the WebSocket. The pushed payload
+// is always code-stripped: coupon codes never travel inside a notification
+// frame (the code, when present, is delivered separately via the ephemeral
+// coupon_transfer relay). Persisting coupon_code on the item is a temporary
+// offline fallback only — see TODO(P2P) at the group_share call site.
+export async function notifyUser(
+  notif: Omit<Notification, 'notification_id' | 'created_at'>
+): Promise<Notification> {
+  const item = await insertNotification(notif);
+  const { coupon_code, ...metadataOnly } = item;
+  await pushToUser(item.user_id, { event: 'notification', notification: metadataOnly });
   return item;
 }
 

@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from '../context/AuthContext';
+import { NotificationsProvider } from '../context/NotificationsContext';
 
 function RootGuard() {
   const { user, isLoading } = useAuth();
@@ -34,7 +35,9 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
-        <RootGuard />
+        <NotificationsProvider>
+          <RootGuard />
+        </NotificationsProvider>
       </AuthProvider>
     </GestureHandlerRootView>
   );

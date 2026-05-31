@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import {
   Animated,
@@ -21,6 +21,7 @@ import { CATEGORY_COLORS } from '../../constants/categories';
 import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, type CouponMeta } from '../../services/api';
 import { getCouponCode, saveCouponCode, deleteCouponCode, deleteCouponImage, getUserAvatar } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
+import { useNotifications } from '../../context/NotificationsContext';
 import CouponCard from '../../components/CouponCard';
 import CouponDetail from '../../components/CouponDetail';
 import NotificationPanel, { type NotificationItem } from '../../components/NotificationPanel';
@@ -58,6 +59,7 @@ const DRAWER_WIDTH = Dimensions.get('window').width * 0.48;
 
 export default function HomeScreen() {
   const { user, signOut } = useAuth();
+  const { revision } = useNotifications();
   const router = useRouter();
   const [coupons, setCoupons] = useState<CouponMeta[]>([]);
   const [couponCodes, setCouponCodes] = useState<Record<string, string | null>>({});
@@ -155,10 +157,13 @@ export default function HomeScreen() {
       // Map server notifications; group_invite type gets Accept/Decline action buttons
       const serverNotifs: NotificationItem[] = serverNotifData.map(n => ({
         id: `server-${n.notification_id}`,
+        serverId: n.notification_id,
         type: 'social' as const,
         title: n.title,
         body: n.body,
         read: n.read,
+        // Non-invite notifications with a group become tap-to-navigate.
+        ...(n.type !== 'group_invite' && n.group_id ? { navigateGroupId: n.group_id } : {}),
         ...(n.type === 'group_invite' && n.group_id
           ? { actionType: 'group_invite' as const, actionGroupId: n.group_id, actionGroupName: n.group_name }
           : {}),
@@ -199,6 +204,12 @@ export default function HomeScreen() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Live refresh: the WebSocket provider bumps `revision` on every incoming
+  // event so the list updates instantly without a manual screen refresh.
+  useEffect(() => {
+    if (revision > 0) load();
+  }, [revision, load]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -252,6 +263,16 @@ export default function HomeScreen() {
     if (id.startsWith('server-')) {
       deleteNotification(id.slice('server-'.length)).catch(() => {});
     }
+  }
+
+  // Tapping a (non-invite) notification deletes it and jumps to its group.
+  function handlePressNotification(item: NotificationItem) {
+    const groupId = item.navigateGroupId ?? item.actionGroupId;
+    if (!groupId) return;
+    setNotifications(prev => prev.filter(n => n.id !== item.id));
+    if (item.serverId) deleteNotification(item.serverId).catch(() => {});
+    setNotifPanelOpen(false);
+    router.push(`/group/${groupId}`);
   }
 
   function handleBellPress() {
@@ -450,6 +471,7 @@ export default function HomeScreen() {
           onAcceptInvite={handleAcceptInvite}
           onDeclineInvite={handleDeclineInvite}
           onDismissNotification={handleDismissNotification}
+          onPressItem={handlePressNotification}
         />
 
         {/* Joined group confirmation */}

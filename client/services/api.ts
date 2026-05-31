@@ -29,6 +29,18 @@ function resolveBaseUrl() {
 
 export const BASE_URL = resolveBaseUrl();
 
+// WebSocket API base (wss://<id>.execute-api.<region>.amazonaws.com/<stage>).
+// Lives on AWS, so there is no local-dev fallback — set EXPO_PUBLIC_WS_URL to
+// enable live notifications + coupon relay. When unset the socket simply never
+// connects and the app falls back to poll-on-focus, so nothing breaks in dev.
+export const WS_URL = process.env.EXPO_PUBLIC_WS_URL ?? null;
+
+export function buildNotificationsSocketUrl(token: string): string | null {
+  if (!WS_URL) return null;
+  const sep = WS_URL.includes('?') ? '&' : '?';
+  return `${WS_URL}${sep}token=${encodeURIComponent(token)}`;
+}
+
 const api = axios.create({ baseURL: BASE_URL });
 
 // In-memory token cache — avoids a SecureStore disk read on every API call.

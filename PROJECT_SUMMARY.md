@@ -1,7 +1,7 @@
 # Couplet — Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-05-14 (branding + splash animation)
+**Last updated:** 2026-05-31 (real-time WebSocket notifications + Stage-1 ephemeral coupon relay)
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device — the server holds metadata only.
 
@@ -171,13 +171,27 @@ server/src/
     users.ts              — GET /users/search
 ```
 
+### Real-time Notifications & Coupon Relay (WebSocket)
+- [x] **API Gateway WebSocket API** served by the same Lambda (handler branches HTTP vs WS on `requestContext.connectionId`)
+- [x] `$connect` verifies the Cognito JWT (`?token=`) and stores the socket in **`Couplet-Connections`** (PK `connection_id`, GSI `user_id-index`); `$disconnect` removes it
+- [x] `notifyUser()` inserts a notification **and** pushes it live to the user's sockets, **code-stripped** (coupon_code never in a WS notification payload)
+- [x] Live delivery for `group_invite`, `group_share`, `coupon_revoked` — appears instantly while app is open, no refresh
+- [x] Client `NotificationsProvider` owns the socket (AppState reconnect, exp. backoff, 5-min ping keepalive), renders a global in-app **banner**, exposes `revision` (drives home-screen live refresh) + `sendCouponTransfer`
+- [x] **Clickable notifications** — tap a banner or panel row → deletes the notification + deep-links to `/group/[id]`
+- [x] **Local OS notifications (Tier 2, `expo-notifications`)** — in-app banner when the app is on-screen, real system/tray notification (sound) when backgrounded/not focused; works in Expo Go (no dev build)
+- [x] **Catch-up on resume** — returning to the app re-polls `GET /notifications`, fires OS notifications for items missed while suspended (capped 3 + summary), refreshes badge; cold-start baseline suppresses spam for pre-existing unread
+- [x] **OS-notification tap routing** — opens the app, deletes the notification, deep-links to the group (same handler Tier 3 will reuse)
+- [x] **Stage-1 coupon-code transfer** — code relayed device→device over the WS `coupon_transfer` action, authorized by group co-membership, **never persisted**; stored `coupon_code` kept only as TODO-marked offline fallback
+- [x] Resilient: with `EXPO_PUBLIC_WS_URL` unset the socket no-ops and the app falls back to poll-on-focus
+- Setup: create the `Couplet-Connections` table + GSI, a WebSocket API (routes `$connect`/`$disconnect`/`$default`, route selection `$request.body.action`) → same Lambda; set `DYNAMODB_CONNECTIONS_TABLE`, `WS_API_ID`/`WS_STAGE` (server) + `EXPO_PUBLIC_WS_URL` (client)
+
 ---
 
 ## Still To Do
 
 ### Core Features
 
-- [ ] **P2P coupon transfer** — Share the actual coupon code (and image) directly device-to-device via WebRTC. Currently group members only see *metadata* (store name, category, expiry). The secret code never leaves the owner's device. This is needed before sharing is truly useful end-to-end.
+- [ ] **True P2P coupon transfer (Stage 2)** — Stage 1 is done: the code is relayed ephemerally over the WebSocket (never stored), delivered live when both devices are online. Stage 2 replaces the relay with a **WebRTC data channel** so the code never transits the server at all (WS becomes signaling-only). Requires leaving Expo Go for a dev build (`react-native-webrtc` + STUN/TURN). Also still TODO: relay the coupon **image**, and offline store-and-forward.
 - [ ] **Expiration notifications** — Server should check expiration dates and fire push notifications before coupons expire via **AWS SNS** (Phase 3).
 - [ ] **Coupon code type selector** — When adding a coupon, let users specify: text code / barcode / QR code, so the detail screen can render it appropriately.
 - [ ] **Group admin transfer** — Allow admin to hand off the admin role to another member. Currently admin is fixed at creation.
@@ -201,4 +215,4 @@ server/src/
 - [ ] **Digital wallet integration** — Export to Apple Wallet / Google Wallet.
 - [ ] **Coupon history screen** — View past `used` and `expired` coupons separately from active ones.
 - [ ] **Group invite link / QR** — Join a group via shareable link or QR code (instead of admin-only invitation).
-- [ ] **Real-time group updates** — Groups currently refresh only on focus/pull. WebSocket or push-based updates would improve UX when multiple users are active.
+- [x] **Real-time group updates** — Live via the WebSocket API (notifications + coupon relay) while the app is open. Remaining: live group membership/coupon-list updates on the group screen itself, and background/closed-app push (needs a dev build — not possible in Expo Go).
