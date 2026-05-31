@@ -1,12 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { CognitoJwtVerifier } from 'aws-jwt-verify';
-
-// Verifier is created once at startup; env vars must be loaded before this module
-const verifier = CognitoJwtVerifier.create({
-  userPoolId: process.env.COGNITO_USER_POOL_ID!,
-  tokenUse: 'access',
-  clientId: process.env.COGNITO_CLIENT_ID!,
-});
+import { verifier } from '../lib/cognito';
 
 export interface AuthRequest extends Request {
   userId?: string;

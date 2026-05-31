@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createGroup, getGroupsByUser, getGroupById, removeMemberFromGroup, leaveGroup, addCouponToGroup, removeCouponFromGroup, removeCouponsByOwnerFromGroup, addPendingMemberToGroup, removePendingMemberFromGroup, acceptGroupInvitation, renameGroup, deleteGroup } from '../repositories/groups';
 import { findUserByEmail, findUserByPhone, findUserById, findUsersByQuery } from '../repositories/users';
 import { getCouponById } from '../repositories/coupons';
-import { insertNotification } from '../repositories/notifications';
+import { notifyUser } from '../repositories/notifications';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -130,7 +130,7 @@ router.post('/:id/members', async (req: AuthRequest, res: Response): Promise<voi
   // Notify the invited user
   const inviter = await findUserById(req.userId!);
   const inviterName = inviter?.username ?? 'Someone';
-  await insertNotification({
+  await notifyUser({
     user_id: target.user_id,
     type: 'group_invite',
     title: 'Group invitation',
@@ -263,7 +263,7 @@ router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): P
   const otherMembers = group.user_id_list.filter(uid => uid !== req.userId!);
   await Promise.all(
     otherMembers.map(uid =>
-      insertNotification({
+      notifyUser({
         user_id: uid,
         type: 'group_share',
         title: `New coupon in "${group.name}"`,
@@ -272,6 +272,12 @@ router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): P
         group_id: group.group_id,
         group_name: group.name,
         coupon_id: coupon.coupon_id,
+        // TODO(P2P): remove once WebRTC data-channel transfer (Stage 2) lands.
+        // Temporary server-stored bandage: the code is delivered live via the
+        // ephemeral WebSocket coupon_transfer relay; this stored copy is only an
+        // offline fallback for recipients who weren't connected at share time.
+        // It is NOT included in the live WS notification payload (notifyUser
+        // strips coupon_code before pushing).
         coupon_code: coupon_code ?? undefined,
       })
     )
@@ -307,7 +313,7 @@ router.delete('/:id/coupons/:couponId', async (req: AuthRequest, res: Response):
   const otherMembers = group.user_id_list.filter(uid => uid !== coupon.owner_id);
   await Promise.all(
     otherMembers.map(uid =>
-      insertNotification({
+      notifyUser({
         user_id: uid,
         type: 'coupon_revoked',
         title: `Coupon removed from "${group.name}"`,
