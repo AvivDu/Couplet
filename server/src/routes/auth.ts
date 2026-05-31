@@ -69,15 +69,6 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res: Response): Promi
   res.json({ userId: user.user_id, username: user.username, email: user.email, phone_number: user.phone_number });
 });
 
-// Resolve a phone number to an email (public — no auth required).
-router.get('/resolve', async (req: Request, res: Response): Promise<void> => {
-  const phone = (req.query.phone as string ?? '').trim();
-  if (!phone) { res.status(400).json({ error: 'phone is required' }); return; }
-  const user = await findUserByPhone(phone);
-  if (!user) { res.status(404).json({ error: 'No account found for that phone number' }); return; }
-  res.json({ email: user.email });
-});
-
 // Update the authenticated user's profile fields.
 router.patch('/me', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
   const { username, phone_number } = req.body;
