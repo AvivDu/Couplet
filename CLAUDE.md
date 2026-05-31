@@ -5,6 +5,7 @@ React Native coupon wallet — aggregates coupons from multiple sources, support
 Hybrid: client-server (auth/metadata/notifications) + P2P (coupon transfer).
 **Security invariant: coupon codes, QR codes, barcodes are NEVER stored on or transmitted through the server. Server holds metadata only. Enforce this in all code.**
 Server coordinates P2P sessions but never relays coupon data.
+**Coupon-code transfer staging:** Stage 1 (current) — code relayed ephemerally over the WebSocket (`coupon_transfer`, never persisted); a stored `coupon_code` on group_share notifications remains only as an offline fallback (TODO(P2P) in `server/src/routes/groups.ts`). Stage 2 (future, needs dev build) — WebRTC data channel, WS becomes signaling-only. Never add coupon_code to WS notification payloads (`notifyUser` strips it).
 
 ## Tech Stack
 | Layer | Tech |
@@ -13,8 +14,9 @@ Server coordinates P2P sessions but never relays coupon data.
 | Backend | Node.js + Express on **AWS Lambda** (serverless, via `serverless-http`) |
 | API Gateway | AWS API Gateway HTTP API — public URL, routes all requests to Lambda |
 | Auth | AWS Cognito (issues JWTs for all API calls) |
-| Notifications | AWS SNS |
-| P2P | WebRTC (TBD) — signaling via API Gateway WebSocket + Lambda |
+| Notifications | In-app + live via API Gateway **WebSocket** (push token / SNS not usable in Expo Go) |
+| Real-time | API Gateway **WebSocket API** + Lambda — live notifications + ephemeral coupon relay; `Couplet-Connections` table (PK `connection_id`, GSI `user_id-index`) |
+| P2P | WebRTC (Stage 2, TBD — needs dev build) — signaling reuses the WebSocket API |
 | Database | AWS DynamoDB |
 
 ## Data Model
@@ -27,9 +29,9 @@ Server coordinates P2P sessions but never relays coupon data.
 1. Auth — register/login via Cognito, JWT on all requests
 2. Coupon storage — codes stored locally, metadata synced to server
 3. Coupon management — add/view/update, filter by category or expiry, status: `active/expired/used`
-4. Expiry notifications — server monitors metadata, pushes via AWS SNS, never accesses codes
+4. Notifications — live over WebSocket while app open (group_invite/group_share/coupon_revoked pushed via `notifyUser`); in-app banner + clickable rows (tap deletes + deep-links to `/group/[id]`); fallback poll-on-focus. Expiry alerts still client-generated. Background/closed-app push needs a dev build (Expo Go limitation).
 5. Redemption — local only, client sends `used` status to server, notifies group if balance zero
-6. Groups & P2P sharing — server manages groups/permissions, coupon data goes device-to-device; invitation flow: admin invites → pending_user_ids → invitee accepts/declines via notification panel; admin can rename or delete the group (403 for non-admins)
+6. Groups & P2P sharing — server manages groups/permissions; coupon code delivered Stage-1 via ephemeral WebSocket `coupon_transfer` relay (authorized by group co-membership, never stored); invitation flow: admin invites → pending_user_ids → invitee accepts/declines via notification panel; admin can rename or delete the group (403 for non-admins)
 7. Search — client queries server by store → server returns coupon IDs → client filters locally
 
 ## Screens
