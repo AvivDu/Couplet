@@ -248,16 +248,6 @@ export const getNotifications = () => api.get<ServerNotification[]>('/notificati
 export const markNotificationsRead = () => api.patch('/notifications/read-all');
 export const deleteNotification = (notificationId: string) => api.delete(`/notifications/${notificationId}`);
 
-export async function resolvePhone(phone: string): Promise<string | null> {
-  try {
-    const { data } = await api.get<{ email: string }>(`/auth/resolve?phone=${encodeURIComponent(phone)}`);
-    return data.email;
-  } catch (err: any) {
-    if (err?.response?.status === 404) return null;
-    throw err;
-  }
-}
-
 export async function updateProfile(updates: { username?: string; phone_number?: string }) {
   const { data } = await api.patch<AuthUserData>('/auth/me', updates);
   return data;

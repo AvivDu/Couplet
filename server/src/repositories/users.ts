@@ -57,16 +57,6 @@ export async function findUsersByQuery(query: string): Promise<User[]> {
     .slice(0, 10);
 }
 
-const normalizePhone = (phone: string) => phone.replace(/\D/g, '');
-
-export async function findUserByPhone(phone: string): Promise<User | null> {
-  const target = normalizePhone(phone);
-  if (!target) return null;
-  const result = await ddb.send(new ScanCommand({ TableName: USERS_TABLE }));
-  return (result.Items as User[] ?? [])
-    .find(u => u.phone_number && normalizePhone(u.phone_number) === target) ?? null;
-}
-
 export async function findUsersByPhones(phones: string[]): Promise<User[]> {
   if (phones.length === 0) return [];
   const result = await ddb.send(new ScanCommand({ TableName: USERS_TABLE }));
