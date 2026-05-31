@@ -37,6 +37,7 @@ type ContactMatchWithName = ContactMatch & { contactName: string };
 import { saveGroupImage, getGroupImage } from '../../storage/groupStorage';
 import { getCouponCode, saveCouponCode } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
+import { useNotifications } from '../../context/NotificationsContext';
 import CouponDetail from '../../components/CouponDetail';
 import type { CouponWithCode } from '../../components/CouponDetail/types';
 
@@ -46,6 +47,7 @@ export default function GroupScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const groupId = typeof id === 'string' ? id : Array.isArray(id) ? id[0] : null;
   const { user } = useAuth();
+  const { sendCouponTransfer } = useNotifications();
 
   const [group, setGroup] = useState<GroupDetailType | null>(null);
   const [loading, setLoading] = useState(true);
@@ -266,8 +268,16 @@ export default function GroupScreen() {
     setSharingCouponId(couponId);
     try {
       const code = await getCouponCode(couponId);
-      console.log('[DEBUG share] couponId:', couponId, '| code:', code ? code.slice(0, 12) + '...' : 'NULL');
       await shareToGroup(groupId, couponId, code);
+      // Stage 1 P2P-style delivery: relay the code device→device over the
+      // WebSocket to the online members. The HTTP call above stays metadata-only
+      // (plus the TODO-marked bandage for offline members).
+      if (code) {
+        const otherMemberIds = (group?.members ?? [])
+          .map(m => m.user_id)
+          .filter(uid => uid !== user?.userId);
+        sendCouponTransfer(otherMemberIds, couponId, code);
+      }
       await fetchGroup();
       setCouponPickerVisible(false);
     } catch (err: any) {

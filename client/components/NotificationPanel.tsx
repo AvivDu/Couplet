@@ -14,6 +14,9 @@ export type NotificationItem = {
   actionType?: 'group_invite';
   actionGroupId?: string;
   actionGroupName?: string;
+  // Tap-to-navigate target + the server notification id to delete on tap.
+  navigateGroupId?: string;
+  serverId?: string;
 };
 
 interface Props {
@@ -23,6 +26,7 @@ interface Props {
   onAcceptInvite: (groupId: string) => Promise<void>;
   onDeclineInvite: (groupId: string) => Promise<void>;
   onDismissNotification: (id: string) => void;
+  onPressItem: (item: NotificationItem) => void;
 }
 
 function DeleteAction() {
@@ -33,11 +37,12 @@ function DeleteAction() {
   );
 }
 
-function NotifCard({ item, onAccept, onDecline, onDismiss }: {
+function NotifCard({ item, onAccept, onDecline, onDismiss, onPress }: {
   item: NotificationItem;
   onAccept: () => void;
   onDecline: () => void;
   onDismiss: () => void;
+  onPress: () => void;
 }) {
   const stripeColor =
     item.type === 'coupon'
@@ -46,6 +51,33 @@ function NotifCard({ item, onAccept, onDecline, onDismiss }: {
 
   const icon: keyof typeof Ionicons.glyphMap =
     item.type === 'coupon' ? 'time-outline' : 'people-outline';
+
+  // Invite cards use Accept/Decline; any other card with a group target taps to navigate.
+  const navigable = item.actionType !== 'group_invite' && !!item.navigateGroupId;
+
+  const cardInner = (
+    <View style={[styles.card, item.read && styles.cardRead]}>
+      <View style={[styles.stripe, { backgroundColor: stripeColor }]} />
+      <View style={styles.cardBody}>
+        <Ionicons name={icon} size={22} color="#E8604C" />
+        <View style={styles.textBlock}>
+          <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
+          <Text style={styles.cardSub}>{item.body}</Text>
+          {item.actionType === 'group_invite' && (
+            <View style={styles.actionRow}>
+              <TouchableOpacity style={styles.acceptBtn} onPress={onAccept}>
+                <Text style={styles.acceptBtnText}>Accept</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.declineBtn} onPress={onDecline}>
+                <Text style={styles.declineBtnText}>Decline</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+        {navigable && <Ionicons name="chevron-forward" size={18} color="#C4B8A0" />}
+      </View>
+    </View>
+  );
 
   return (
     <Swipeable
@@ -56,31 +88,16 @@ function NotifCard({ item, onAccept, onDecline, onDismiss }: {
       overshootRight={false}
       containerStyle={styles.swipeContainer}
     >
-      <View style={[styles.card, item.read && styles.cardRead]}>
-        <View style={[styles.stripe, { backgroundColor: stripeColor }]} />
-        <View style={styles.cardBody}>
-          <Ionicons name={icon} size={22} color="#E8604C" />
-          <View style={styles.textBlock}>
-            <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-            <Text style={styles.cardSub}>{item.body}</Text>
-            {item.actionType === 'group_invite' && (
-              <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.acceptBtn} onPress={onAccept}>
-                  <Text style={styles.acceptBtnText}>Accept</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.declineBtn} onPress={onDecline}>
-                  <Text style={styles.declineBtnText}>Decline</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        </View>
-      </View>
+      {navigable ? (
+        <TouchableOpacity activeOpacity={0.85} onPress={onPress}>{cardInner}</TouchableOpacity>
+      ) : (
+        cardInner
+      )}
     </Swipeable>
   );
 }
 
-export default function NotificationPanel({ visible, notifications, onClose, onAcceptInvite, onDeclineInvite, onDismissNotification }: Props) {
+export default function NotificationPanel({ visible, notifications, onClose, onAcceptInvite, onDeclineInvite, onDismissNotification, onPressItem }: Props) {
   return (
     <Modal
       visible={visible}
@@ -111,6 +128,7 @@ export default function NotificationPanel({ visible, notifications, onClose, onA
                 onAccept={() => item.actionGroupId && onAcceptInvite(item.actionGroupId)}
                 onDecline={() => item.actionGroupId && onDeclineInvite(item.actionGroupId)}
                 onDismiss={() => onDismissNotification(item.id)}
+                onPress={() => onPressItem(item)}
               />
             ))}
           </ScrollView>
