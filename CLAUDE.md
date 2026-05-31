@@ -29,7 +29,7 @@ Server coordinates P2P sessions but never relays coupon data.
 1. Auth — register/login via Cognito, JWT on all requests
 2. Coupon storage — codes stored locally, metadata synced to server
 3. Coupon management — add/view/update, filter by category or expiry, status: `active/expired/used`
-4. Notifications — live over WebSocket while app open (group_invite/group_share/coupon_revoked pushed via `notifyUser`); in-app banner + clickable rows (tap deletes + deep-links to `/group/[id]`); fallback poll-on-focus. Expiry alerts still client-generated. Background/closed-app push needs a dev build (Expo Go limitation).
+4. Notifications — live over WebSocket while app open (group_invite/group_share/coupon_revoked pushed via `notifyUser`); in-app banner when on-screen, **local OS notification** (`expo-notifications`, works in Expo Go) when app backgrounded/not focused; catch-up poll on resume fires OS notifications for items missed while suspended (baseline-suppressed on cold start); clickable rows + OS-notification taps delete + deep-link to `/group/[id]`. Expiry alerts still client-generated. True remote push when app closed needs a dev build (Tier 3 — foundations in place).
 5. Redemption — local only, client sends `used` status to server, notifies group if balance zero
 6. Groups & P2P sharing — server manages groups/permissions; coupon code delivered Stage-1 via ephemeral WebSocket `coupon_transfer` relay (authorized by group co-membership, never stored); invitation flow: admin invites → pending_user_ids → invitee accepts/declines via notification panel; admin can rename or delete the group (403 for non-admins)
 7. Search — client queries server by store → server returns coupon IDs → client filters locally

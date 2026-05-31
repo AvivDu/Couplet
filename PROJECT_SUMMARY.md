@@ -178,6 +178,9 @@ server/src/
 - [x] Live delivery for `group_invite`, `group_share`, `coupon_revoked` — appears instantly while app is open, no refresh
 - [x] Client `NotificationsProvider` owns the socket (AppState reconnect, exp. backoff, 5-min ping keepalive), renders a global in-app **banner**, exposes `revision` (drives home-screen live refresh) + `sendCouponTransfer`
 - [x] **Clickable notifications** — tap a banner or panel row → deletes the notification + deep-links to `/group/[id]`
+- [x] **Local OS notifications (Tier 2, `expo-notifications`)** — in-app banner when the app is on-screen, real system/tray notification (sound) when backgrounded/not focused; works in Expo Go (no dev build)
+- [x] **Catch-up on resume** — returning to the app re-polls `GET /notifications`, fires OS notifications for items missed while suspended (capped 3 + summary), refreshes badge; cold-start baseline suppresses spam for pre-existing unread
+- [x] **OS-notification tap routing** — opens the app, deletes the notification, deep-links to the group (same handler Tier 3 will reuse)
 - [x] **Stage-1 coupon-code transfer** — code relayed device→device over the WS `coupon_transfer` action, authorized by group co-membership, **never persisted**; stored `coupon_code` kept only as TODO-marked offline fallback
 - [x] Resilient: with `EXPO_PUBLIC_WS_URL` unset the socket no-ops and the app falls back to poll-on-focus
 - Setup: create the `Couplet-Connections` table + GSI, a WebSocket API (routes `$connect`/`$disconnect`/`$default`, route selection `$request.body.action`) → same Lambda; set `DYNAMODB_CONNECTIONS_TABLE`, `WS_API_ID`/`WS_STAGE` (server) + `EXPO_PUBLIC_WS_URL` (client)
