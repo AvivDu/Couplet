@@ -4,6 +4,8 @@ import { createGroup, getGroupsByUser, getGroupById, removeMemberFromGroup, leav
 import { findUserByEmail, findUserByPhone, findUserById, findUsersByQuery } from '../repositories/users';
 import { getCouponById } from '../repositories/coupons';
 import { notifyUser } from '../repositories/notifications';
+import { getConnectionsForUser } from '../repositories/connections';
+import { pushToUser } from '../lib/websocket';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -262,8 +264,14 @@ router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): P
   const sharerName = sharer?.username ?? 'A member';
   const otherMembers = group.user_id_list.filter(uid => uid !== req.userId!);
   await Promise.all(
-    otherMembers.map(uid =>
-      notifyUser({
+    otherMembers.map(async uid => {
+      // Per-recipient decision: online members get the code pushed live (never
+      // stored); offline members get it stored as a fallback for next app open.
+      const online = (await getConnectionsForUser(uid)).length > 0;
+      if (online && coupon_code) {
+        await pushToUser(uid, { event: 'coupon_transfer', coupon_id: coupon.coupon_id, code: coupon_code });
+      }
+      await notifyUser({
         user_id: uid,
         type: 'group_share',
         title: `New coupon in "${group.name}"`,
@@ -273,14 +281,13 @@ router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): P
         group_name: group.name,
         coupon_id: coupon.coupon_id,
         // TODO(P2P): remove once WebRTC data-channel transfer (Stage 2) lands.
-        // Temporary server-stored bandage: the code is delivered live via the
-        // ephemeral WebSocket coupon_transfer relay; this stored copy is only an
-        // offline fallback for recipients who weren't connected at share time.
-        // It is NOT included in the live WS notification payload (notifyUser
-        // strips coupon_code before pushing).
-        coupon_code: coupon_code ?? undefined,
-      })
-    )
+        // The code is delivered live via the WebSocket coupon_transfer relay; we
+        // persist it ONLY for recipients who were offline at share time, as a
+        // fallback they pick up on next fetch. Online recipients store nothing.
+        // Never included in the live WS notification payload (notifyUser strips it).
+        coupon_code: online ? undefined : (coupon_code ?? undefined),
+      });
+    })
   );
 
   res.json(updated);

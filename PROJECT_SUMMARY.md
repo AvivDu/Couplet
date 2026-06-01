@@ -181,7 +181,7 @@ server/src/
 - [x] **Local OS notifications (Tier 2, `expo-notifications`)** — in-app banner when the app is on-screen, real system/tray notification (sound) when backgrounded/not focused; works in Expo Go (no dev build)
 - [x] **Catch-up on resume** — returning to the app re-polls `GET /notifications`, fires OS notifications for items missed while suspended (capped 3 + summary), refreshes badge; cold-start baseline suppresses spam for pre-existing unread
 - [x] **OS-notification tap routing** — opens the app, deletes the notification, deep-links to the group (same handler Tier 3 will reuse)
-- [x] **Stage-1 coupon-code transfer** — code relayed device→device over the WS `coupon_transfer` action, authorized by group co-membership, **never persisted**; stored `coupon_code` kept only as TODO-marked offline fallback
+- [x] **Stage-1 coupon-code transfer** — code relayed live over the WS `coupon_transfer` action; on share the server checks each recipient's connections **per-recipient** and stores `coupon_code` **only for offline members** (online members store nothing), keeping the code off the server whenever the recipient is reachable. TODO-marked; removed entirely at Stage 2 (WebRTC)
 - [x] Resilient: with `EXPO_PUBLIC_WS_URL` unset the socket no-ops and the app falls back to poll-on-focus
 - Setup: create the `Couplet-Connections` table + GSI, a WebSocket API (routes `$connect`/`$disconnect`/`$default`, route selection `$request.body.action`) → same Lambda; set `DYNAMODB_CONNECTIONS_TABLE`, `WS_API_ID`/`WS_STAGE` (server) + `EXPO_PUBLIC_WS_URL` (client)
 

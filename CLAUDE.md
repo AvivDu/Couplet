@@ -5,7 +5,7 @@ React Native coupon wallet — aggregates coupons from multiple sources, support
 Hybrid: client-server (auth/metadata/notifications) + P2P (coupon transfer).
 **Security invariant: coupon codes, QR codes, barcodes are NEVER stored on or transmitted through the server. Server holds metadata only. Enforce this in all code.**
 Server coordinates P2P sessions but never relays coupon data.
-**Coupon-code transfer staging:** Stage 1 (current) — code relayed ephemerally over the WebSocket (`coupon_transfer`, never persisted); a stored `coupon_code` on group_share notifications remains only as an offline fallback (TODO(P2P) in `server/src/routes/groups.ts`). Stage 2 (future, needs dev build) — WebRTC data channel, WS becomes signaling-only. Never add coupon_code to WS notification payloads (`notifyUser` strips it).
+**Coupon-code transfer staging:** Stage 1 (current) — on share, the server checks each recipient's live connections: online members get the code pushed live via `pushToUser` (`coupon_transfer`, never persisted); the code is stored on the group_share notification ONLY for offline members, as a fallback (TODO(P2P) in `server/src/routes/groups.ts`). Stage 2 (future, needs dev build) — WebRTC data channel, WS becomes signaling-only. Never add coupon_code to WS notification payloads (`notifyUser` strips it).
 
 ## Tech Stack
 | Layer | Tech |
