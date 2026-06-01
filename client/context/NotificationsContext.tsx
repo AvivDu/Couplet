@@ -10,9 +10,6 @@ import NotificationBanner, { type BannerData } from '../components/NotificationB
 interface NotificationsContextType {
   // Bumped on every live event so screens can re-run their own load() to refresh.
   revision: number;
-  // Ephemeral coupon-code relay (Stage 1 toward P2P): sends the code device→device
-  // over the WebSocket. No-op if the socket isn't connected (HTTP bandage covers it).
-  sendCouponTransfer: (toUserIds: string[], couponId: string, code: string) => void;
 }
 
 const NotificationsContext = createContext<NotificationsContextType | null>(null);
@@ -87,15 +84,10 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     }
 
     if (msg.event === 'coupon_transfer' && msg.coupon_id && msg.code) {
-      // Ephemeral P2P-style delivery: persist the code to local storage only.
+      // Silent code delivery: persist to local storage and refresh, but raise NO
+      // alert of its own — the user is already told via the group_share
+      // notification, so the code landing in the wallet is an implementation detail.
       await saveCouponCode(msg.coupon_id, msg.code);
-      if (AppState.currentState === 'active') {
-        const bannerId = `transfer-${msg.coupon_id}-${Date.now()}`;
-        bannerNavRef.current[bannerId] = {};
-        setBanner({ id: bannerId, title: 'Coupon received', body: 'A shared coupon was added to your wallet.', icon: 'gift' });
-      } else {
-        presentLocalNotification({ title: 'Coupon received', body: 'A shared coupon was added to your wallet.' });
-      }
       bump();
       return;
     }
@@ -212,13 +204,6 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     return () => sub.remove();
   }, [dismissAndNavigate]);
 
-  const sendCouponTransfer = useCallback((toUserIds: string[], couponId: string, code: string) => {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    if (!toUserIds.length || !code) return;
-    ws.send(JSON.stringify({ action: 'coupon_transfer', toUserIds, coupon_id: couponId, code }));
-  }, []);
-
   const handleBannerPress = useCallback((data: BannerData) => {
     const nav = bannerNavRef.current[data.id];
     setBanner(null);
@@ -227,7 +212,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, [dismissAndNavigate]);
 
   return (
-    <NotificationsContext.Provider value={{ revision, sendCouponTransfer }}>
+    <NotificationsContext.Provider value={{ revision }}>
       {children}
       <NotificationBanner data={banner} onPress={handleBannerPress} onDismiss={() => setBanner(null)} />
     </NotificationsContext.Provider>
