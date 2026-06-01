@@ -20,8 +20,6 @@ import { getCouponImage, saveCouponImage } from '../../storage/couponStorage';
 import { getGroups, shareToGroup, getCouponLocations, updateCoupon } from '../../services/api';
 import type { GroupMeta, StoreLocation, CouponMeta } from '../../services/api';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants/categories';
-import { useAuth } from '../../context/AuthContext';
-import { useNotifications } from '../../context/NotificationsContext';
 import type { CouponWithCode } from './types';
 
 interface CouponDisplayProps {
@@ -34,8 +32,6 @@ interface CouponDisplayProps {
 }
 
 export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, onUpdate, onClose }: CouponDisplayProps) {
-  const { user } = useAuth();
-  const { sendCouponTransfer } = useNotifications();
   const [imageUri, setImageUri] = React.useState<string | null>(null);
   const [showTextCode, setShowTextCode] = React.useState(true);
   const [groupPickerVisible, setGroupPickerVisible] = React.useState(false);
@@ -72,12 +68,9 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
   async function handleShareToGroupConfirm(group: GroupMeta) {
     setSharingGroupId(group.group_id);
     try {
+      // The server relays the code live to online members and stores it for
+      // offline ones; recipients save it silently. We only send metadata here.
       await shareToGroup(group.group_id, coupon.coupon_id, coupon.code);
-      // Stage 1 P2P-style delivery: relay the code device→device to online members.
-      if (coupon.code) {
-        const otherMemberIds = (group.user_id_list ?? []).filter(uid => uid !== user?.userId);
-        sendCouponTransfer(otherMemberIds, coupon.coupon_id, coupon.code);
-      }
       setGroupPickerVisible(false);
       Alert.alert('Shared!', `Coupon shared to "${group.name}".`);
     } catch (err: any) {
