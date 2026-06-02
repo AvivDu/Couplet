@@ -13,6 +13,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { updateCoupon } from '../../services/api';
 import { saveCouponCode, saveCouponImage, getCouponImage, deleteCouponImage } from '../../storage/couponStorage';
+import ImageCropModal from '../ImageCropModal';
 import { DAYS, MONTHS, YEARS } from './constants';
 import DatePickerSheet from './DatePickerSheet';
 import type { CouponWithCode } from './types';
@@ -44,6 +45,8 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
     );
     const [datePickerField, setDatePickerField] = React.useState<DateField | null>(null);
     const [imageUri, setImageUri] = React.useState<string | null>(null);
+    const [cropUri, setCropUri] = React.useState<string | null>(null);
+    const [imageNatSize, setImageNatSize] = React.useState<{ w: number; h: number } | null>(null);
 
     React.useEffect(() => {
       getCouponImage(coupon.coupon_id).then(setImageUri);
@@ -116,12 +119,8 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
               Alert.alert('Permission needed', 'Please allow camera access in Settings.');
               return;
             }
-            const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.85 });
-            if (!result.canceled) {
-              const uri = result.assets[0].uri;
-              await saveCouponImage(coupon.coupon_id, uri);
-              setImageUri(uri);
-            }
+            const result = await ImagePicker.launchCameraAsync({ quality: 0.85 });
+            if (!result.canceled) setCropUri(result.assets[0].uri);
           },
         },
         {
@@ -132,12 +131,8 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
               Alert.alert('Permission needed', 'Please allow photo library access in Settings.');
               return;
             }
-            const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, quality: 0.85 });
-            if (!result.canceled) {
-              const uri = result.assets[0].uri;
-              await saveCouponImage(coupon.coupon_id, uri);
-              setImageUri(uri);
-            }
+            const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.85 });
+            if (!result.canceled) setCropUri(result.assets[0].uri);
           },
         },
         { text: 'Cancel', style: 'cancel' },
@@ -175,6 +170,17 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
 
     return (
       <>
+        {cropUri && (
+          <ImageCropModal
+            uri={cropUri}
+            onCrop={async uri => {
+              await saveCouponImage(coupon.coupon_id, uri);
+              setImageUri(uri);
+              setCropUri(null);
+            }}
+            onCancel={() => setCropUri(null)}
+          />
+        )}
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           <Text style={styles.editTitle}>Edit Coupon</Text>
 
@@ -201,10 +207,24 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
 
           <Text style={styles.dateLabel}>Barcode / QR Image (optional)</Text>
           <View style={styles.imagePickerWrap}>
-            <TouchableOpacity style={styles.imagePicker} onPress={pickImage} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={imageUri && imageNatSize
+                ? [styles.imagePickerBase, { aspectRatio: imageNatSize.w / imageNatSize.h }]
+                : styles.imagePicker}
+              onPress={pickImage}
+              activeOpacity={0.8}
+            >
               {imageUri ? (
                 <>
-                  <Image source={{ uri: imageUri }} style={styles.imagePreview} resizeMode="contain" />
+                  <Image
+                    source={{ uri: imageUri }}
+                    style={styles.imagePreview}
+                    resizeMode="contain"
+                    onLoad={e => {
+                      const { width: w, height: h } = e.nativeEvent.source;
+                      setImageNatSize({ w, h });
+                    }}
+                  />
                   <View style={styles.imageChangeOverlay}>
                     <Text style={styles.imageChangeText}>Tap to change</Text>
                   </View>
@@ -223,6 +243,7 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
                 onPress={async () => {
                   await deleteCouponImage(coupon.coupon_id);
                   setImageUri(null);
+                  setImageNatSize(null);
                 }}
                 hitSlop={8}
               >
@@ -337,6 +358,16 @@ const styles = StyleSheet.create({
   imagePickerWrap: {
     position: 'relative',
     marginBottom: 28,
+  },
+  imagePickerBase: {
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#C4B8A0',
+    borderStyle: 'dashed',
+    overflow: 'hidden',
+    backgroundColor: '#FDFAF4',
+    width: '100%',
+    maxHeight: 150,
   },
   imagePicker: {
     borderRadius: 14,

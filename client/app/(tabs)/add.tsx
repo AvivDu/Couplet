@@ -15,6 +15,7 @@ import {
   Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import ImageCropModal from '../../components/ImageCropModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -43,6 +44,8 @@ export default function AddCouponScreen() {
   const [loading, setLoading] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [cropUri, setCropUri] = useState<string | null>(null);
+  const [imageNatSize, setImageNatSize] = useState<{ w: number; h: number } | null>(null);
   const router = useRouter();
 
   useFocusEffect(
@@ -70,8 +73,8 @@ export default function AddCouponScreen() {
             Alert.alert('Permission needed', 'Please allow camera access in Settings.');
             return;
           }
-          const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.85 });
-          if (!result.canceled) setImageUri(result.assets[0].uri);
+          const result = await ImagePicker.launchCameraAsync({ quality: 0.85 });
+          if (!result.canceled) setCropUri(result.assets[0].uri);
         },
       },
       {
@@ -82,8 +85,8 @@ export default function AddCouponScreen() {
             Alert.alert('Permission needed', 'Please allow photo library access in Settings.');
             return;
           }
-          const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, quality: 0.85 });
-          if (!result.canceled) setImageUri(result.assets[0].uri);
+          const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.85 });
+          if (!result.canceled) setCropUri(result.assets[0].uri);
         },
       },
       { text: 'Cancel', style: 'cancel' },
@@ -122,6 +125,14 @@ export default function AddCouponScreen() {
   }
 
   return (
+    <>
+    {cropUri && (
+      <ImageCropModal
+        uri={cropUri}
+        onCrop={uri => { setImageUri(uri); setCropUri(null); }}
+        onCancel={() => setCropUri(null)}
+      />
+    )}
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         style={styles.container}
@@ -156,10 +167,24 @@ export default function AddCouponScreen() {
           {/* Barcode / QR Image (optional) */}
           <Text style={styles.sectionLabel}>Barcode / QR Image (optional)</Text>
           <View style={styles.imagePickerWrap}>
-            <TouchableOpacity style={styles.imagePicker} onPress={pickImage} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={imageUri && imageNatSize
+                ? [styles.imagePickerBase, { aspectRatio: imageNatSize.w / imageNatSize.h }]
+                : styles.imagePicker}
+              onPress={pickImage}
+              activeOpacity={0.8}
+            >
               {imageUri ? (
                 <>
-                  <Image source={{ uri: imageUri }} style={styles.imagePreview} resizeMode="contain" />
+                  <Image
+                    source={{ uri: imageUri }}
+                    style={styles.imagePreview}
+                    resizeMode="contain"
+                    onLoad={e => {
+                      const { width: w, height: h } = e.nativeEvent.source;
+                      setImageNatSize({ w, h });
+                    }}
+                  />
                   <View style={styles.imageChangeOverlay}>
                     <Text style={styles.imageChangeText}>Tap to change</Text>
                   </View>
@@ -173,7 +198,11 @@ export default function AddCouponScreen() {
               )}
             </TouchableOpacity>
             {imageUri && (
-              <TouchableOpacity style={styles.imageRemoveBtn} onPress={() => setImageUri(null)} hitSlop={8}>
+              <TouchableOpacity
+                style={styles.imageRemoveBtn}
+                onPress={() => { setImageUri(null); setImageNatSize(null); }}
+                hitSlop={8}
+              >
                 <Ionicons name="close-circle" size={22} color="#E8604C" />
               </TouchableOpacity>
             )}
@@ -309,6 +338,7 @@ export default function AddCouponScreen() {
         </Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
+    </>
   );
 }
 
@@ -452,6 +482,16 @@ const styles = StyleSheet.create({
   imagePickerWrap: {
     position: 'relative',
     marginBottom: 28,
+  },
+  imagePickerBase: {
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#C4B8A0',
+    borderStyle: 'dashed',
+    overflow: 'hidden',
+    backgroundColor: '#FDFAF4',
+    width: '100%',
+    maxHeight: 150,
   },
   imagePicker: {
     borderRadius: 14,
