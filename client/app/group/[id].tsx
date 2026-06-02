@@ -39,6 +39,7 @@ import { getCouponCode, saveCouponCode } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
 import CouponDetail from '../../components/CouponDetail';
 import type { CouponWithCode } from '../../components/CouponDetail/types';
+import { CATEGORY_DEFS, SORT_OPTIONS, sortCoupons, type SortOption } from '../../constants/categories';
 
 // ── Design tokens (group page redesign) ───────────────────────────
 // Reuses the app's established palette; handoff-specific values (sender
@@ -92,7 +93,8 @@ export default function GroupScreen() {
   // Filter sheet — by sender (member) and/or category.
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   const [filterMember, setFilterMember] = useState<string | null>(null);
-  const [filterCategory, setFilterCategory] = useState<string | null>(null);
+  const [filterCategory, setFilterCategory] = useState<string>('All');
+  const [filterSort, setFilterSort] = useState<SortOption | null>(null);
 
   const isAdmin = group?.admin_user_id === user?.userId;
 
@@ -404,22 +406,24 @@ export default function GroupScreen() {
     setSuggestions([]);
   }
 
-  // Derived: filtered coupon feed + the set of categories available to filter.
+  // Derived: filtered + sorted coupon feed (category + member filter, then sort).
   const filteredCoupons = useMemo(() => {
     if (!group) return [];
-    return group.coupons.filter(c => {
+    const filtered = group.coupons.filter(c => {
       if (filterMember && c.owner_id !== filterMember) return false;
-      if (filterCategory && c.category !== filterCategory) return false;
+      if (filterCategory !== 'All' && c.category !== filterCategory) return false;
       return true;
     });
-  }, [group, filterMember, filterCategory]);
+    return sortCoupons(filtered, filterSort);
+  }, [group, filterMember, filterCategory, filterSort]);
 
-  const categories = useMemo(
-    () => Array.from(new Set((group?.coupons ?? []).map(c => c.category).filter(Boolean))),
-    [group]
-  );
+  const hasFilter = filterMember !== null || filterCategory !== 'All' || filterSort !== null;
 
-  const hasFilter = !!(filterMember || filterCategory);
+  function clearFilters() {
+    setFilterMember(null);
+    setFilterCategory('All');
+    setFilterSort(null);
+  }
 
   if (!user) return null;
 
@@ -435,9 +439,11 @@ export default function GroupScreen() {
           <Ionicons name="chevron-back" size={24} color={COLORS.ink} />
         </TouchableOpacity>
 
+        {/* The group name is the single entry point to group settings. */}
         <TouchableOpacity
-          onPress={handlePickImage}
-          activeOpacity={isAdmin ? 0.75 : 1}
+          style={styles.headerCenter}
+          onPress={() => setSettingsSheetVisible(true)}
+          activeOpacity={0.7}
         >
           {imageUri ? (
             <Image source={{ uri: imageUri }} style={styles.headerAvatar} />
@@ -448,21 +454,12 @@ export default function GroupScreen() {
               </Text>
             </View>
           )}
-        </TouchableOpacity>
-
-        <View style={styles.headerTitleWrap}>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {group?.name ?? ''}
-          </Text>
-          {isAdmin && <Text style={styles.headerSubtitle}>Tap photo to edit</Text>}
-        </View>
-
-        <TouchableOpacity
-          onPress={() => setSettingsSheetVisible(true)}
-          style={styles.headerIconBtn}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Ionicons name="settings-outline" size={22} color={COLORS.ink} />
+          <View style={styles.headerTitleWrap}>
+            <Text style={styles.headerTitle} numberOfLines={1}>
+              {group?.name ?? ''}
+            </Text>
+          </View>
+          <Ionicons name="chevron-down" size={18} color={COLORS.muted} />
         </TouchableOpacity>
       </View>
 
@@ -657,59 +654,79 @@ export default function GroupScreen() {
           <View style={styles.sheet} onStartShouldSetResponder={() => true}>
             <View style={styles.sheetHandle} />
             <View style={styles.filterHeaderRow}>
-              <Text style={styles.sheetTitle}>Filter Coupons</Text>
+              <Text style={[styles.sheetTitle, { marginBottom: 0 }]}>Filter Coupons</Text>
               {hasFilter && (
-                <TouchableOpacity
-                  onPress={() => {
-                    setFilterMember(null);
-                    setFilterCategory(null);
-                  }}
-                >
+                <TouchableOpacity onPress={clearFilters}>
                   <Text style={styles.clearFilterText}>Clear</Text>
                 </TouchableOpacity>
               )}
             </View>
 
-            <Text style={styles.filterGroupLabel}>BY MEMBER</Text>
-            <View style={styles.chipWrap}>
-              {(group?.members ?? []).map(m => {
-                const active = filterMember === m.user_id;
-                const isYou = m.user_id === user.userId;
+            <ScrollView style={{ maxHeight: '78%' }} showsVerticalScrollIndicator={false}>
+              <Text style={styles.filterGroupLabel}>CATEGORY</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.categoryScroll}
+              >
+                {CATEGORY_DEFS.map(cat => {
+                  const active = filterCategory === cat.filter;
+                  return (
+                    <TouchableOpacity
+                      key={cat.filter}
+                      style={[styles.categoryCard, active && { backgroundColor: cat.color, borderColor: cat.color }]}
+                      onPress={() => setFilterCategory(cat.filter)}
+                      activeOpacity={0.75}
+                    >
+                      <Ionicons name={cat.icon} size={24} color={active ? '#444444' : COLORS.ink} />
+                      <Text style={[styles.categoryCardLabel, active && styles.categoryCardLabelActive]}>
+                        {cat.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              <Text style={styles.filterGroupLabel}>SORT BY</Text>
+              {SORT_OPTIONS.map(opt => {
+                const active = filterSort === opt.value;
                 return (
                   <TouchableOpacity
-                    key={m.user_id}
-                    style={[styles.filterChip, active && styles.filterChipActive]}
-                    onPress={() => setFilterMember(active ? null : m.user_id)}
+                    key={opt.value}
+                    style={[styles.sortOption, active && styles.sortOptionActive]}
+                    onPress={() => setFilterSort(active ? null : opt.value)}
+                    activeOpacity={0.75}
                   >
-                    <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                      {isYou ? 'You' : firstName(m.username)}
-                    </Text>
+                    <View style={styles.sortOptionLeft}>
+                      <Ionicons name={opt.icon} size={20} color={active ? COLORS.coral : COLORS.ink} />
+                      <Text style={[styles.sortOptionText, active && styles.sortOptionTextActive]}>
+                        {opt.label}
+                      </Text>
+                    </View>
+                    {active && <Ionicons name="checkmark" size={18} color={COLORS.coral} />}
                   </TouchableOpacity>
                 );
               })}
-            </View>
 
-            {categories.length > 0 && (
-              <>
-                <Text style={styles.filterGroupLabel}>BY CATEGORY</Text>
-                <View style={styles.chipWrap}>
-                  {categories.map(cat => {
-                    const active = filterCategory === cat;
-                    return (
-                      <TouchableOpacity
-                        key={cat}
-                        style={[styles.filterChip, active && styles.filterChipActive]}
-                        onPress={() => setFilterCategory(active ? null : cat)}
-                      >
-                        <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                          {cat}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </>
-            )}
+              <Text style={styles.filterGroupLabel}>MEMBER</Text>
+              <View style={styles.chipWrap}>
+                {(group?.members ?? []).map(m => {
+                  const active = filterMember === m.user_id;
+                  const isYou = m.user_id === user.userId;
+                  return (
+                    <TouchableOpacity
+                      key={m.user_id}
+                      style={[styles.filterChip, active && styles.filterChipActive]}
+                      onPress={() => setFilterMember(active ? null : m.user_id)}
+                    >
+                      <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
+                        {isYou ? 'You' : firstName(m.username)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
 
             <TouchableOpacity
               style={styles.filterDoneBtn}
@@ -739,24 +756,18 @@ export default function GroupScreen() {
             <View style={styles.sheetHandle} />
             <Text style={styles.sheetTitle}>Group Settings</Text>
 
-            <TouchableOpacity style={styles.settingsRow} onPress={handleOpenCouponPicker} activeOpacity={0.75}>
-              <Ionicons name="pricetag-outline" size={20} color={COLORS.coral} />
-              <Text style={styles.settingsRowText}>Share Coupon</Text>
-              <Ionicons name="chevron-forward" size={16} color="#C4B8A0" style={styles.settingsRowChevron} />
-            </TouchableOpacity>
-
             {isAdmin && (
               <>
                 <TouchableOpacity
                   style={styles.settingsRow}
                   onPress={() => {
                     setSettingsSheetVisible(false);
-                    setInviteSheetVisible(true);
+                    handlePickImage();
                   }}
                   activeOpacity={0.75}
                 >
-                  <Ionicons name="person-add-outline" size={20} color={COLORS.coral} />
-                  <Text style={styles.settingsRowText}>Add Member</Text>
+                  <Ionicons name="image-outline" size={20} color={COLORS.coral} />
+                  <Text style={styles.settingsRowText}>Change Group Photo</Text>
                   <Ionicons name="chevron-forward" size={16} color="#C4B8A0" style={styles.settingsRowChevron} />
                 </TouchableOpacity>
 
@@ -827,9 +838,24 @@ export default function GroupScreen() {
         >
           <View style={styles.sheet} onStartShouldSetResponder={() => true}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>
-              Members ({group?.members.length ?? 0})
-            </Text>
+            <View style={styles.membersSheetHeader}>
+              <Text style={[styles.sheetTitle, { marginBottom: 0 }]}>
+                Members ({group?.members.length ?? 0})
+              </Text>
+              {isAdmin && (
+                <TouchableOpacity
+                  style={styles.addMemberPill}
+                  onPress={() => {
+                    setMembersSheetVisible(false);
+                    setInviteSheetVisible(true);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="add" size={16} color="#fff" />
+                  <Text style={styles.addMemberPillText}>Add</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             <ScrollView
               keyboardShouldPersistTaps="handled"
               style={{ maxHeight: '80%' }}
@@ -1236,6 +1262,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   headerAvatar: { width: 44, height: 44, borderRadius: 22 },
   headerAvatarFallback: {
     width: 44,
@@ -1248,7 +1275,6 @@ const styles = StyleSheet.create({
   headerAvatarText: { fontSize: 16, fontWeight: '700', color: '#fff', letterSpacing: 0.3 },
   headerTitleWrap: { flex: 1, minWidth: 0 },
   headerTitle: { fontSize: 19, fontWeight: '700', color: COLORS.ink },
-  headerSubtitle: { fontSize: 13, color: COLORS.muted, marginTop: 2 },
 
   body: { paddingBottom: 48 },
 
@@ -1425,8 +1451,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 16,
   },
-  clearFilterText: { fontSize: 14, fontWeight: '600', color: COLORS.coral, marginBottom: 16 },
+  clearFilterText: { fontSize: 14, fontWeight: '600', color: COLORS.coral },
   filterGroupLabel: {
     fontSize: 12,
     fontWeight: '700',
@@ -1435,7 +1462,43 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginTop: 4,
   },
-  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  // Category cards (mirrors My Coupons filter)
+  categoryScroll: { gap: 10, paddingBottom: 4, paddingRight: 4, marginBottom: 8 },
+  categoryCard: {
+    width: 80,
+    height: 80,
+    borderRadius: 16,
+    backgroundColor: '#EDE8DC',
+    borderWidth: 1.5,
+    borderColor: '#E0D8CA',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+  },
+  categoryCardLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: COLORS.ink,
+    textAlign: 'center',
+    opacity: 0.7,
+    paddingHorizontal: 4,
+  },
+  categoryCardLabelActive: { color: '#444444', opacity: 1 },
+  // Sort rows (mirrors My Coupons sort sheet)
+  sortOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0D8CA',
+  },
+  sortOptionActive: { backgroundColor: 'rgba(232,96,76,0.06)', borderRadius: 12 },
+  sortOptionLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  sortOptionText: { fontSize: 15, fontWeight: '500', color: COLORS.ink },
+  sortOptionTextActive: { color: COLORS.coral, fontWeight: '700' },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16, marginTop: 4 },
   filterChip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -1492,6 +1555,23 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sheetTitle: { fontSize: 18, fontWeight: '800', color: COLORS.ink, marginBottom: 16 },
+
+  membersSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  addMemberPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: COLORS.coral,
+    borderRadius: 20,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+  },
+  addMemberPillText: { fontSize: 13, fontWeight: '700', color: '#fff' },
 
   // Member rows in sheet
   memberRow: {
