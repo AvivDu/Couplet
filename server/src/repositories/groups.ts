@@ -10,6 +10,7 @@ export interface Group {
   pending_user_ids: string[];
   coupon_id_list: string[];
   created_at: string;
+  image?: string; // small base64 data-URL avatar, shared with all members
 }
 
 export async function createGroup(group: Group): Promise<void> {
@@ -175,6 +176,18 @@ export async function renameGroup(groupId: string, newName: string): Promise<Gro
     UpdateExpression: 'SET #n = :name',
     ExpressionAttributeNames: { '#n': 'name' },
     ExpressionAttributeValues: { ':name': newName },
+    ReturnValues: 'ALL_NEW',
+  }));
+  return result.Attributes as Group;
+}
+
+export async function setGroupImage(groupId: string, image: string): Promise<Group | null> {
+  const result = await ddb.send(new UpdateCommand({
+    TableName: GROUPS_TABLE,
+    Key: { group_id: groupId },
+    UpdateExpression: 'SET #img = :img',
+    ExpressionAttributeNames: { '#img': 'image' },
+    ExpressionAttributeValues: { ':img': image },
     ReturnValues: 'ALL_NEW',
   }));
   return result.Attributes as Group;

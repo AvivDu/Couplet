@@ -22,7 +22,7 @@ Server coordinates P2P sessions but never relays coupon data.
 ## Data Model
 **Server — Users:** `user_id, email, user_name, password_hash, created_at, coupon_id_list`
 **Server — Coupon (metadata only):** `coupon_id, owner_id, category, redeemable_stores, expiration_date, balance, status`
-**Server — Group:** `group_id, name, user_id_list, pending_user_ids, coupon_id_list, admin_user_id`
+**Server — Group:** `group_id, name, user_id_list, pending_user_ids, coupon_id_list, admin_user_id, image` (image = small base64 data-URL avatar ~256px, shared with all members; admin-set via `PUT /groups/:id/photo`)
 **Client local storage:** coupon code / QR / barcode, owner identifier, sharing permissions
 
 ## Features

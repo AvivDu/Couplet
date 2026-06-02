@@ -10,10 +10,12 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as Contacts from 'expo-contacts';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -28,13 +30,13 @@ import {
   shareToGroup,
   getCoupons,
   renameGroup,
+  setGroupPhoto,
   deleteGroup,
   getNotifications,
 } from '../../services/api';
 import type { GroupDetail as GroupDetailType, GroupMember, CouponMeta, ContactMatch, GroupCoupon } from '../../services/api';
 
 type ContactMatchWithName = ContactMatch & { contactName: string };
-import { saveGroupImage, getGroupImage } from '../../storage/groupStorage';
 import { getCouponCode, saveCouponCode } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
 import CouponDetail from '../../components/CouponDetail';
@@ -67,7 +69,8 @@ export default function GroupScreen() {
 
   const [group, setGroup] = useState<GroupDetailType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [savingPhoto, setSavingPhoto] = useState(false);
+  const [pendingPhotoPick, setPendingPhotoPick] = useState(false);
 
   const [settingsSheetVisible, setSettingsSheetVisible] = useState(false);
   const [membersSheetVisible, setMembersSheetVisible] = useState(false);
@@ -111,9 +114,7 @@ export default function GroupScreen() {
   useEffect(() => {
     if (!groupId) return;
     setLoading(true);
-    Promise.all([fetchGroup(), getGroupImage(groupId).then(setImageUri)]).finally(() =>
-      setLoading(false)
-    );
+    fetchGroup().finally(() => setLoading(false));
   }, [groupId, fetchGroup]);
 
   useEffect(() => {
@@ -134,16 +135,50 @@ export default function GroupScreen() {
 
   async function handlePickImage() {
     if (!isAdmin || !groupId) return;
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.7,
-    });
-    if (!result.canceled && result.assets[0]) {
-      const uri = result.assets[0].uri;
-      await saveGroupImage(groupId, uri);
-      setImageUri(uri);
+    try {
+      // Match the rest of the app: request library permission explicitly first.
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.status !== 'granted') {
+        Alert.alert('Permission needed', 'Please allow photo library access in Settings.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 1,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      console.log('[group photo] picked', result.assets[0].uri);
+
+      setSavingPhoto(true);
+      const prevImage = group?.image ?? null;
+      try {
+        // Resize to a small square so the base64 stays tiny — well under DynamoDB's
+        // 400KB item limit — and is cheap for every member to fetch.
+        // Modern contextual API (manipulateAsync is deprecated in SDK 54).
+        const ctx = ImageManipulator.manipulate(result.assets[0].uri);
+        ctx.resize({ width: 256, height: 256 });
+        const ref = await ctx.renderAsync();
+        const out = await ref.saveAsync({ compress: 0.6, format: SaveFormat.JPEG, base64: true });
+        if (!out.base64) throw new Error('image encode produced no base64');
+        console.log('[group photo] resized, base64 length', out.base64.length);
+        const dataUrl = `data:image/jpeg;base64,${out.base64}`;
+        // Optimistic update so the new photo shows immediately.
+        setGroup(g => (g ? { ...g, image: dataUrl } : g));
+        await setGroupPhoto(groupId, dataUrl);
+        console.log('[group photo] uploaded ok');
+      } catch (err: any) {
+        console.error('[group photo] failed', err);
+        setGroup(g => (g ? { ...g, image: prevImage } : g));
+        const detail = err?.response?.data?.error ?? err?.message ?? 'Could not update group photo.';
+        // Defer so the alert isn't dropped while the picker is still dismissing (iOS).
+        setTimeout(() => Alert.alert('Error', detail), 400);
+      } finally {
+        setSavingPhoto(false);
+      }
+    } catch (err: any) {
+      console.error('[group photo] picker error', err);
+      setTimeout(() => Alert.alert('Error', err?.message ?? 'Could not open the photo library.'), 400);
     }
   }
 
@@ -445,13 +480,18 @@ export default function GroupScreen() {
           onPress={() => setSettingsSheetVisible(true)}
           activeOpacity={0.7}
         >
-          {imageUri ? (
-            <Image source={{ uri: imageUri }} style={styles.headerAvatar} />
+          {group?.image ? (
+            <Image source={{ uri: group.image }} style={styles.headerAvatar} />
           ) : (
             <View style={styles.headerAvatarFallback}>
               <Text style={styles.headerAvatarText}>
                 {group ? getInitials(group.name) : ''}
               </Text>
+            </View>
+          )}
+          {savingPhoto && (
+            <View style={styles.headerAvatarSaving}>
+              <ActivityIndicator size="small" color="#fff" />
             </View>
           )}
           <View style={styles.headerTitleWrap}>
@@ -746,6 +786,13 @@ export default function GroupScreen() {
         transparent
         animationType="slide"
         onRequestClose={() => setSettingsSheetVisible(false)}
+        onDismiss={() => {
+          // iOS: runs after the sheet has fully closed — safe to present the picker now.
+          if (pendingPhotoPick) {
+            setPendingPhotoPick(false);
+            handlePickImage();
+          }
+        }}
       >
         <TouchableOpacity
           style={styles.sheetOverlay}
@@ -761,8 +808,15 @@ export default function GroupScreen() {
                 <TouchableOpacity
                   style={styles.settingsRow}
                   onPress={() => {
+                    // iOS can't present the image picker while the settings Modal is still
+                    // on screen, so launch it only AFTER the Modal has fully dismissed
+                    // (via the Modal's onDismiss). Android has no such restriction.
                     setSettingsSheetVisible(false);
-                    handlePickImage();
+                    if (Platform.OS === 'ios') {
+                      setPendingPhotoPick(true);
+                    } else {
+                      setTimeout(() => handlePickImage(), 250);
+                    }
                   }}
                   activeOpacity={0.75}
                 >
@@ -1264,6 +1318,16 @@ const styles = StyleSheet.create({
   },
   headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   headerAvatar: { width: 44, height: 44, borderRadius: 22 },
+  headerAvatarSaving: {
+    position: 'absolute',
+    left: 0,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(26,35,50,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerAvatarFallback: {
     width: 44,
     height: 44,

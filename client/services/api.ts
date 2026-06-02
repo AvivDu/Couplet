@@ -179,6 +179,7 @@ export interface GroupMeta {
   user_id_list: string[];
   coupon_id_list: string[];
   created_at: string;
+  image?: string | null; // small base64 data-URL avatar, shared with all members
 }
 
 export interface GroupMember {
@@ -225,6 +226,8 @@ export const leaveGroup = (groupId: string) =>
   api.delete(`/groups/${groupId}/members/me`);
 export const renameGroup = (groupId: string, name: string) =>
   api.put<GroupMeta>(`/groups/${groupId}/name`, { name });
+export const setGroupPhoto = (groupId: string, image: string) =>
+  api.put<GroupMeta>(`/groups/${groupId}/photo`, { image });
 export const deleteGroup = (groupId: string) =>
   api.delete(`/groups/${groupId}`);
 export const searchUsers = (query: string) =>
