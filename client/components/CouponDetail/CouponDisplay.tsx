@@ -12,11 +12,13 @@ import {
   ActivityIndicator,
   Switch,
   TextInput,
+  StatusBar,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
-import { getCouponImage, saveCouponImage } from '../../storage/couponStorage';
+import { getCouponImage } from '../../storage/couponStorage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getGroups, shareToGroup, getCouponLocations, updateCoupon } from '../../services/api';
 import type { GroupMeta, StoreLocation, CouponMeta } from '../../services/api';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants/categories';
@@ -33,7 +35,10 @@ interface CouponDisplayProps {
 
 export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, onUpdate, onClose }: CouponDisplayProps) {
   const [imageUri, setImageUri] = React.useState<string | null>(null);
+  const [imageNatSize, setImageNatSize] = React.useState<{ w: number; h: number } | null>(null);
+  const [fullscreenVisible, setFullscreenVisible] = React.useState(false);
   const [showTextCode, setShowTextCode] = React.useState(true);
+  const insets = useSafeAreaInsets();
   const [groupPickerVisible, setGroupPickerVisible] = React.useState(false);
   const [groups, setGroups] = React.useState<GroupMeta[]>([]);
   const [sharingGroupId, setSharingGroupId] = React.useState<string | null>(null);
@@ -102,46 +107,6 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
     }
   }
 
-  async function pickImage() {
-    Alert.alert('Upload Coupon Image', 'Choose a source', [
-      {
-        text: 'Camera',
-        onPress: async () => {
-          const perm = await ImagePicker.requestCameraPermissionsAsync();
-          if (perm.status !== 'granted') {
-            Alert.alert('Permission needed', 'Please allow camera access in Settings.');
-            return;
-          }
-          const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.85 });
-          if (!result.canceled) {
-            const uri = result.assets[0].uri;
-            await saveCouponImage(coupon.coupon_id, uri);
-            setImageUri(uri);
-            setShowTextCode(false);
-          }
-        },
-      },
-      {
-        text: 'Photo Library',
-        onPress: async () => {
-          const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          if (perm.status !== 'granted') {
-            Alert.alert('Permission needed', 'Please allow photo library access in Settings.');
-            return;
-          }
-          const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, quality: 0.85 });
-          if (!result.canceled) {
-            const uri = result.assets[0].uri;
-            await saveCouponImage(coupon.coupon_id, uri);
-            setImageUri(uri);
-            setShowTextCode(false);
-          }
-        },
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }
-
   async function handlePartialRedeem() {
     const amount = parseFloat(partialAmount);
     const currentBalance = coupon.balance ?? 0;
@@ -185,6 +150,18 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
 
   return (
     <>
+    {/* Fullscreen barcode viewer */}
+    {imageUri && (
+      <Modal visible={fullscreenVisible} animationType="fade" statusBarTranslucent>
+        <View style={[styles.fullscreenRoot, { paddingTop: insets.top }]}>
+          <StatusBar barStyle="light-content" backgroundColor="#000" />
+          <TouchableOpacity style={styles.fullscreenClose} onPress={() => setFullscreenVisible(false)}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
+          <Image source={{ uri: imageUri }} style={styles.fullscreenImage} resizeMode="contain" />
+        </View>
+      </Modal>
+    )}
     <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
 
       {/* Coupon card */}
@@ -193,33 +170,57 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
         <Text style={styles.couponStore}>{coupon.store_name}</Text>
         <Text style={styles.couponCategory}>{coupon.category}</Text>
 
-        {imageUri !== null && !showTextCode && (
-          <TouchableOpacity style={styles.imageBox} onPress={pickImage} activeOpacity={0.8}>
-            <Image source={{ uri: imageUri }} style={styles.uploadedImage} resizeMode="contain" />
-            <View style={styles.changeOverlay}>
-              <Text style={styles.changeOverlayText}>Tap to change</Text>
-            </View>
+        {coupon.giftcard_url ? (
+          <TouchableOpacity
+            style={styles.giftCardButton}
+            onPress={() => WebBrowser.openBrowserAsync(coupon.giftcard_url!)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="link" size={22} color="#1A2332" style={{ marginRight: 8 }} />
+            <Text style={styles.giftCardButtonText}>Open Live Gift Card</Text>
           </TouchableOpacity>
-        )}
+        ) : (
+          <>
+            {imageUri !== null && !showTextCode && (
+              <TouchableOpacity
+                style={imageNatSize
+                  ? [styles.imageBoxBase, { aspectRatio: imageNatSize.w / imageNatSize.h }]
+                  : styles.imageBox}
+                onPress={() => setFullscreenVisible(true)}
+                activeOpacity={0.85}
+              >
+                <Image
+                  source={{ uri: imageUri }}
+                  style={styles.uploadedImage}
+                  resizeMode="contain"
+                  onLoad={e => {
+                    const { width: w, height: h } = e.nativeEvent.source;
+                    setImageNatSize({ w, h });
+                  }}
+                />
+              </TouchableOpacity>
+            )}
 
-        {(showTextCode || imageUri === null) && (
-          <View style={styles.codeLarge}>
-            <Text style={styles.codeLargeText}>{coupon.code ?? '—'}</Text>
-          </View>
-        )}
+            {(showTextCode || imageUri === null) && (
+              <View style={styles.codeLarge}>
+                <Text style={styles.codeLargeText}>{coupon.code ?? '—'}</Text>
+              </View>
+            )}
 
-        {imageUri !== null && (
-          <View style={styles.toggleRow}>
-            <Text style={styles.toggleLabel}>
-              {showTextCode ? 'Switch to QR Code' : 'Switch to Text Code'}
-            </Text>
-            <Switch
-              value={showTextCode}
-              onValueChange={setShowTextCode}
-              trackColor={{ false: 'rgba(26,35,50,0.18)', true: 'rgba(26,35,50,0.45)' }}
-              thumbColor="#fff"
-            />
-          </View>
+            {imageUri !== null && (
+              <View style={styles.toggleRow}>
+                <Text style={styles.toggleLabel}>
+                  {showTextCode ? 'Switch to QR Code' : 'Switch to Text Code'}
+                </Text>
+                <Switch
+                  value={showTextCode}
+                  onValueChange={setShowTextCode}
+                  trackColor={{ false: 'rgba(26,35,50,0.18)', true: 'rgba(26,35,50,0.45)' }}
+                  thumbColor="#fff"
+                />
+              </View>
+            )}
+          </>
         )}
       </View>
 
@@ -704,4 +705,56 @@ const styles = StyleSheet.create({
   locationOpenYes: { color: '#7DC99E' },
   locationOpenNo: { color: '#E8604C' },
   locationRating: { fontSize: 12, color: '#A8997A' },
+
+  // Image box — base (used when aspect ratio known)
+  imageBoxBase: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    width: '100%',
+    maxHeight: 150,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+
+  // Fullscreen barcode modal
+  fullscreenRoot: {
+    flex: 1,
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullscreenClose: {
+    position: 'absolute',
+    top: 52,
+    right: 20,
+    zIndex: 10,
+    padding: 8,
+  },
+  fullscreenImage: {
+    width: '100%',
+    height: '100%',
+  },
+
+  // Dynamic gift card URL button
+  giftCardButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F5EDD6',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    marginTop: 16,
+    marginBottom: 8,
+    shadowColor: '#1A2332',
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  giftCardButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1A2332',
+    letterSpacing: 0.3,
+  },
 });

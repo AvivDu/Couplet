@@ -1,7 +1,7 @@
 # Couplet — Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-06-02 (group page redesign — members strip, Share button, sender-attributed coupon cards, filter sheet)
+**Last updated:** 2026-06-02 (group page redesign + shared group photo; dynamic gift card URL support — BuyMe-style web-link coupons; barcode crop modal + fullscreen viewer)
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device — the server holds metadata only.
 
@@ -46,7 +46,7 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] "About" modal accessible from the Add screen (app version, team credits)
 
 ### Coupon Management (Server)
-- [x] Coupon metadata synced to **AWS DynamoDB** (category, store_name, expiration_date, balance, status)
+- [x] Coupon metadata synced to **AWS DynamoDB** (category, store_name, expiration_date, balance, status, giftcard_url)
 - [x] GET, POST, PATCH, DELETE endpoints for coupons (owner-only, auth-protected)
 - [x] Auth middleware protects all coupon routes
 
@@ -86,7 +86,10 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Bottom sheet modals (Create Group, Date Picker, Share to Group) — slide-up with drag handle
 - [x] Error messages — all forms show `Alert.alert` on failure (auth, coupon CRUD, group ops)
 - [x] Loading states — `LoadingOverlay` on auth, `ActivityIndicator` on coupon save, add member, share to group
-- [x] Image display in coupon detail — renders saved barcode/QR image; tap to change
+- [x] **Custom crop modal** (`ImageCropModal.tsx`) — full-screen free-form crop UI: draggable corner handles resize crop box to any dimension, center-drag moves it, rule-of-thirds grid overlay, `expo-image-manipulator` applies the crop in real image pixel coords; replaces the native fixed-square `allowsEditing` picker
+- [x] **Dynamic barcode container** — uses `onLoad` aspect ratio + `maxHeight: 150` so the container wraps the cropped image proportionally (wide barcodes render ~94px tall; square QR codes cap at 150px); no fixed-height letterboxing
+- [x] **Fullscreen barcode viewer** — tapping barcode in Coupon Detail opens a full-screen modal for easy store scanning; image editing restricted to Edit Coupon form only
+- [x] **Dynamic gift card URL** — optional `giftcard_url` field on coupons; Add/Edit forms accept a URL as an alternative to code/image; Coupon Detail shows "Open Live Gift Card" button (taps `expo-web-browser`) instead of static image block when URL is set; server stores URL as metadata (invariant preserved)
 - [x] Coupon search — live local filter by store name on home screen (search bar + clear button)
 - [x] Expired coupon auto-update — on load, active coupons past expiry date are patched to `expired`
 - [x] Token expiry handling — 401 interceptor in `api.ts` triggers `signOut` via `AuthContext`
