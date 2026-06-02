@@ -15,7 +15,7 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
 });
 
 router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
-  const { category, store_name, expiration_date, balance } = req.body;
+  const { category, store_name, expiration_date, balance, giftcard_url } = req.body;
 
   if (!category || !store_name) {
     res.status(400).json({ error: 'category and store_name are required' });
@@ -31,6 +31,7 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
     balance: balance ?? null,
     status: 'active',
     created_at: new Date().toISOString(),
+    giftcard_url: giftcard_url ?? null,
   };
 
   await insertCoupon(coupon);
@@ -48,7 +49,7 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
 const VALID_STATUSES = ['active', 'expired', 'used'];
 
 router.patch('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
-  const { category, store_name, expiration_date, balance, status } = req.body;
+  const { category, store_name, expiration_date, balance, status, giftcard_url } = req.body;
 
   if (status !== undefined && !VALID_STATUSES.includes(status)) {
     res.status(400).json({ error: `status must be one of: ${VALID_STATUSES.join(', ')}` });
@@ -61,6 +62,7 @@ router.patch('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   if (expiration_date !== undefined) fields.expiration_date = expiration_date;
   if (balance !== undefined) fields.balance = balance;
   if (status !== undefined) fields.status = status;
+  if (giftcard_url !== undefined) fields.giftcard_url = giftcard_url;
 
   const updated = await updateCoupon(req.params.id, req.userId!, fields);
   if (!updated) {

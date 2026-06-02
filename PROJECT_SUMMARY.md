@@ -1,7 +1,7 @@
 # Couplet — Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-05-31 (real-time WebSocket notifications + Stage-1 ephemeral coupon relay)
+**Last updated:** 2026-06-02 (group page redesign + shared group photo; dynamic gift card URL support — BuyMe-style web-link coupons; barcode crop modal + fullscreen viewer)
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device — the server holds metadata only.
 
@@ -46,7 +46,7 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] "About" modal accessible from the Add screen (app version, team credits)
 
 ### Coupon Management (Server)
-- [x] Coupon metadata synced to **AWS DynamoDB** (category, store_name, expiration_date, balance, status)
+- [x] Coupon metadata synced to **AWS DynamoDB** (category, store_name, expiration_date, balance, status, giftcard_url)
 - [x] GET, POST, PATCH, DELETE endpoints for coupons (owner-only, auth-protected)
 - [x] Auth middleware protects all coupon routes
 
@@ -66,6 +66,8 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] **Notification bell** — header bell icon on My Coupons with unread badge; slide-up panel shows expiry alerts (within 7 days) and group invite cards; swipe left/right to dismiss; `GET /invitations` polled on each load
 - [x] **Rename group** — admin-only; inline modal with current name pre-filled; `PUT /groups/:id/name`; updates local state on success; 403 for non-admins
 - [x] **Delete group** — admin-only; centered confirmation modal with permanent-action warning; `DELETE /groups/:id`; navigates back to groups list on success; 403 for non-admins
+- [x] **Group page redesign** (`app/group/[id].tsx`, WhatsApp-style) — header (group avatar + admin "Tap photo to edit"), `MEMBERS · n` label + horizontal members strip (admin-only "Add" chip, "You" ring, first names), prominent "Share a Coupon" button, "SHARED COUPONS (n)" header with filter button, and sender-attributed coupon cards (24px avatar + per-member accent-colored name; tag tile + brand/category/expiry; **Use coupon** reveals code via CouponDetail, **Revoke** for own coupons + admin trash on others'). Design handoff (spec + screenshots + reference) kept in `client/docs/design_handoff_group_page/`
+- [x] **Coupon filter sheet** — bottom sheet to filter the shared-coupon feed by member and/or category (categories derived from the group's coupons); filter button inverts to coral when active; Clear resets
 
 ### Users
 - [x] Search users by email or username — `GET /users/search?q=` (used for adding group members)
@@ -84,7 +86,10 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Bottom sheet modals (Create Group, Date Picker, Share to Group) — slide-up with drag handle
 - [x] Error messages — all forms show `Alert.alert` on failure (auth, coupon CRUD, group ops)
 - [x] Loading states — `LoadingOverlay` on auth, `ActivityIndicator` on coupon save, add member, share to group
-- [x] Image display in coupon detail — renders saved barcode/QR image; tap to change
+- [x] **Custom crop modal** (`ImageCropModal.tsx`) — full-screen free-form crop UI: draggable corner handles resize crop box to any dimension, center-drag moves it, rule-of-thirds grid overlay, `expo-image-manipulator` applies the crop in real image pixel coords; replaces the native fixed-square `allowsEditing` picker
+- [x] **Dynamic barcode container** — uses `onLoad` aspect ratio + `maxHeight: 150` so the container wraps the cropped image proportionally (wide barcodes render ~94px tall; square QR codes cap at 150px); no fixed-height letterboxing
+- [x] **Fullscreen barcode viewer** — tapping barcode in Coupon Detail opens a full-screen modal for easy store scanning; image editing restricted to Edit Coupon form only
+- [x] **Dynamic gift card URL** — optional `giftcard_url` field on coupons; Add/Edit forms accept a URL as an alternative to code/image; Coupon Detail shows "Open Live Gift Card" button (taps `expo-web-browser`) instead of static image block when URL is set; server stores URL as metadata (invariant preserved)
 - [x] Coupon search — live local filter by store name on home screen (search bar + clear button)
 - [x] Expired coupon auto-update — on load, active coupons past expiry date are patched to `expired`
 - [x] Token expiry handling — 401 interceptor in `api.ts` triggers `signOut` via `AuthContext`
@@ -141,6 +146,8 @@ client/
       index.tsx           — My Coupons: list, FAB, category filter, pull-to-refresh
       add.tsx             — Add Coupon: form + 3-pill date picker + About modal
       connections.tsx     — Groups: list, create group modal, opens GroupDetail
+    group/
+      [id].tsx            — Group page (redesigned): header, members strip, Share button, filter sheet, sender-attributed coupon cards
   components/
     CSymbol.tsx           — C icon from logo-c.png asset (size prop)
     CoupletLogo.tsx       — wordmark: CSymbol + "OUPLET" text, size/tagline props

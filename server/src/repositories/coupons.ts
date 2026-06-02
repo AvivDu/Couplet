@@ -11,6 +11,7 @@ export interface Coupon {
   status: string;
   created_at: string;
   redeemable_stores?: string[];
+  giftcard_url?: string | null;
 }
 
 export async function getCouponsByOwner(ownerId: string): Promise<Coupon[]> {

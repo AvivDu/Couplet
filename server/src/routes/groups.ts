@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { createGroup, getGroupsByUser, getGroupById, removeMemberFromGroup, leaveGroup, addCouponToGroup, removeCouponFromGroup, removeCouponsByOwnerFromGroup, addPendingMemberToGroup, removePendingMemberFromGroup, acceptGroupInvitation, renameGroup, deleteGroup } from '../repositories/groups';
+import { createGroup, getGroupsByUser, getGroupById, removeMemberFromGroup, leaveGroup, addCouponToGroup, removeCouponFromGroup, removeCouponsByOwnerFromGroup, addPendingMemberToGroup, removePendingMemberFromGroup, acceptGroupInvitation, renameGroup, setGroupImage, deleteGroup } from '../repositories/groups';
 import { findUserByEmail, findUserByPhone, findUserById, findUsersByQuery } from '../repositories/users';
 import { getCouponById } from '../repositories/coupons';
 import { notifyUser } from '../repositories/notifications';
@@ -353,6 +353,31 @@ router.put('/:id/name', async (req: AuthRequest, res: Response): Promise<void> =
     return;
   }
   const updated = await renameGroup(req.params.id, name.trim());
+  res.json(updated);
+});
+
+// PUT /groups/:id/photo — admin sets the shared group photo (small base64 data-URL)
+router.put('/:id/photo', async (req: AuthRequest, res: Response): Promise<void> => {
+  const { image } = req.body;
+  if (typeof image !== 'string' || !image.startsWith('data:image/')) {
+    res.status(400).json({ error: 'image must be a data-URL string' });
+    return;
+  }
+  // Keep well under DynamoDB's 400KB item limit; the client resizes to ~256px.
+  if (image.length > 400_000) {
+    res.status(413).json({ error: 'Image too large — please choose a smaller photo' });
+    return;
+  }
+  const group = await getGroupById(req.params.id);
+  if (!group) {
+    res.status(404).json({ error: 'Group not found' });
+    return;
+  }
+  if (group.admin_user_id !== req.userId!) {
+    res.status(403).json({ error: 'Only the admin can change the group photo' });
+    return;
+  }
+  const updated = await setGroupImage(req.params.id, image);
   res.json(updated);
 });
 

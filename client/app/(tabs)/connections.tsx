@@ -16,13 +16,11 @@ import { useFocusEffect, router } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { getGroups, createGroup } from '../../services/api';
 import type { GroupMeta } from '../../services/api';
-import { getGroupImage } from '../../storage/groupStorage';
 import GroupCard from '../../components/GroupCard';
 
 export default function ConnectionsScreen() {
   const { user } = useAuth();
   const [groups, setGroups] = useState<GroupMeta[]>([]);
-  const [groupImages, setGroupImages] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -36,11 +34,6 @@ export default function ConnectionsScreen() {
     try {
       const { data } = await getGroups();
       setGroups(data);
-      const images: Record<string, string | null> = {};
-      await Promise.all(data.map(async g => {
-        images[g.group_id] = await getGroupImage(g.group_id);
-      }));
-      setGroupImages(images);
     } catch {
       // silently fail on background refresh
     }
@@ -103,7 +96,7 @@ export default function ConnectionsScreen() {
             <GroupCard
               group={item}
               currentUserId={user.userId}
-              imageUri={groupImages[item.group_id]}
+              imageUri={item.image}
               onPress={() => router.push(`/group/${item.group_id}`)}
             />
           )}

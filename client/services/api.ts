@@ -142,6 +142,7 @@ export interface CouponMeta {
   status: string;
   created_at: string;
   redeemable_stores?: string[];
+  giftcard_url?: string | null;
 }
 
 export const getCoupons = () => api.get<CouponMeta[]>('/coupons');
@@ -151,6 +152,7 @@ export const createCoupon = (data: {
   store_name: string;
   expiration_date?: string;
   balance?: number;
+  giftcard_url?: string;
 }) => api.post<CouponMeta>('/coupons', data);
 
 export const updateCoupon = (id: string, data: Partial<CouponMeta>) =>
@@ -179,6 +181,7 @@ export interface GroupMeta {
   user_id_list: string[];
   coupon_id_list: string[];
   created_at: string;
+  image?: string | null; // small base64 data-URL avatar, shared with all members
 }
 
 export interface GroupMember {
@@ -225,6 +228,8 @@ export const leaveGroup = (groupId: string) =>
   api.delete(`/groups/${groupId}/members/me`);
 export const renameGroup = (groupId: string, name: string) =>
   api.put<GroupMeta>(`/groups/${groupId}/name`, { name });
+export const setGroupPhoto = (groupId: string, image: string) =>
+  api.put<GroupMeta>(`/groups/${groupId}/photo`, { image });
 export const deleteGroup = (groupId: string) =>
   api.delete(`/groups/${groupId}`);
 export const searchUsers = (query: string) =>
