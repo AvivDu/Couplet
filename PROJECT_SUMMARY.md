@@ -1,7 +1,7 @@
 # Couplet — Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-05-31 (real-time WebSocket notifications + Stage-1 ephemeral coupon relay)
+**Last updated:** 2026-06-02 (group page redesign — members strip, Share button, sender-attributed coupon cards, filter sheet)
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device — the server holds metadata only.
 
@@ -66,6 +66,8 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] **Notification bell** — header bell icon on My Coupons with unread badge; slide-up panel shows expiry alerts (within 7 days) and group invite cards; swipe left/right to dismiss; `GET /invitations` polled on each load
 - [x] **Rename group** — admin-only; inline modal with current name pre-filled; `PUT /groups/:id/name`; updates local state on success; 403 for non-admins
 - [x] **Delete group** — admin-only; centered confirmation modal with permanent-action warning; `DELETE /groups/:id`; navigates back to groups list on success; 403 for non-admins
+- [x] **Group page redesign** (`app/group/[id].tsx`, WhatsApp-style) — header (group avatar + admin "Tap photo to edit"), `MEMBERS · n` label + horizontal members strip (admin-only "Add" chip, "You" ring, first names), prominent "Share a Coupon" button, "SHARED COUPONS (n)" header with filter button, and sender-attributed coupon cards (24px avatar + per-member accent-colored name; tag tile + brand/category/expiry; **Use coupon** reveals code via CouponDetail, **Revoke** for own coupons + admin trash on others'). Design handoff (spec + screenshots + reference) kept in `client/docs/design_handoff_group_page/`
+- [x] **Coupon filter sheet** — bottom sheet to filter the shared-coupon feed by member and/or category (categories derived from the group's coupons); filter button inverts to coral when active; Clear resets
 
 ### Users
 - [x] Search users by email or username — `GET /users/search?q=` (used for adding group members)
@@ -141,6 +143,8 @@ client/
       index.tsx           — My Coupons: list, FAB, category filter, pull-to-refresh
       add.tsx             — Add Coupon: form + 3-pill date picker + About modal
       connections.tsx     — Groups: list, create group modal, opens GroupDetail
+    group/
+      [id].tsx            — Group page (redesigned): header, members strip, Share button, filter sheet, sender-attributed coupon cards
   components/
     CSymbol.tsx           — C icon from logo-c.png asset (size prop)
     CoupletLogo.tsx       — wordmark: CSymbol + "OUPLET" text, size/tagline props
