@@ -47,6 +47,7 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
     const [imageUri, setImageUri] = React.useState<string | null>(null);
     const [cropUri, setCropUri] = React.useState<string | null>(null);
     const [imageNatSize, setImageNatSize] = React.useState<{ w: number; h: number } | null>(null);
+    const [editGiftUrl, setEditGiftUrl] = React.useState(coupon.giftcard_url ?? '');
 
     React.useEffect(() => {
       getCouponImage(coupon.coupon_id).then(setImageUri);
@@ -56,6 +57,7 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
       setEditName(coupon.store_name);
       setEditCode(coupon.code ?? '');
       setEditBalance(coupon.balance != null ? String(coupon.balance) : '');
+      setEditGiftUrl(coupon.giftcard_url ?? '');
 
       if (coupon.expiration_date) {
         const d = new Date(coupon.expiration_date);
@@ -89,6 +91,7 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
           store_name: editName.trim(),
           expiration_date: expiryString ?? null,
           balance: editBalance ? parseFloat(editBalance) : null,
+          giftcard_url: editGiftUrl.trim() || null,
         });
 
         const newCode = editCode.trim();
@@ -202,6 +205,19 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
               autoCapitalize="characters"
               value={editCode}
               onChangeText={setEditCode}
+            />
+          </View>
+
+          <Text style={styles.dateLabel}>Dynamic Gift Card Link (optional)</Text>
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. https://www.buyme.co.il/..."
+              placeholderTextColor="#A8997A"
+              autoCapitalize="none"
+              keyboardType="url"
+              value={editGiftUrl}
+              onChangeText={setEditGiftUrl}
             />
           </View>
 

@@ -142,6 +142,7 @@ export interface CouponMeta {
   status: string;
   created_at: string;
   redeemable_stores?: string[];
+  giftcard_url?: string | null;
 }
 
 export const getCoupons = () => api.get<CouponMeta[]>('/coupons');
@@ -151,6 +152,7 @@ export const createCoupon = (data: {
   store_name: string;
   expiration_date?: string;
   balance?: number;
+  giftcard_url?: string;
 }) => api.post<CouponMeta>('/coupons', data);
 
 export const updateCoupon = (id: string, data: Partial<CouponMeta>) =>

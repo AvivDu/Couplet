@@ -21,14 +21,14 @@ Server coordinates P2P sessions but never relays coupon data.
 
 ## Data Model
 **Server — Users:** `user_id, email, user_name, password_hash, created_at, coupon_id_list`
-**Server — Coupon (metadata only):** `coupon_id, owner_id, category, redeemable_stores, expiration_date, balance, status`
+**Server — Coupon (metadata only):** `coupon_id, owner_id, category, redeemable_stores, expiration_date, balance, status, giftcard_url`
 **Server — Group:** `group_id, name, user_id_list, pending_user_ids, coupon_id_list, admin_user_id`
 **Client local storage:** coupon code / QR / barcode, owner identifier, sharing permissions
 
 ## Features
 1. Auth — register/login via Cognito, JWT on all requests
 2. Coupon storage — codes stored locally, metadata synced to server
-3. Coupon management — add/view/update, filter by category or expiry, status: `active/expired/used`
+3. Coupon management — add/view/update, filter by category or expiry, status: `active/expired/used`; optional `giftcard_url` for dynamic web-link gift cards (e.g. BuyMe) — opens in-app browser via `expo-web-browser`; server stores URL as metadata (not a coupon code — invariant preserved)
 4. Notifications — live over WebSocket while app open (group_invite/group_share/coupon_revoked pushed via `notifyUser`); in-app banner when on-screen, **local OS notification** (`expo-notifications`, works in Expo Go) when app backgrounded/not focused; catch-up poll on resume fires OS notifications for items missed while suspended (baseline-suppressed on cold start); clickable rows + OS-notification taps delete + deep-link to `/group/[id]`. Expiry alerts still client-generated. True remote push when app closed needs a dev build (Tier 3 — foundations in place).
 5. Redemption — local only, client sends `used` status to server, notifies group if balance zero
 6. Groups & P2P sharing — server manages groups/permissions; coupon code delivered Stage-1 via ephemeral WebSocket `coupon_transfer` relay (authorized by group co-membership, never stored); invitation flow: admin invites → pending_user_ids → invitee accepts/declines via notification panel; admin can rename or delete the group (403 for non-admins)

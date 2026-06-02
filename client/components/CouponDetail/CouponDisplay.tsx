@@ -15,6 +15,7 @@ import {
   StatusBar,
 } from 'react-native';
 import * as Location from 'expo-location';
+import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import { getCouponImage } from '../../storage/couponStorage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -169,44 +170,57 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
         <Text style={styles.couponStore}>{coupon.store_name}</Text>
         <Text style={styles.couponCategory}>{coupon.category}</Text>
 
-        {imageUri !== null && !showTextCode && (
+        {coupon.giftcard_url ? (
           <TouchableOpacity
-            style={imageNatSize
-              ? [styles.imageBoxBase, { aspectRatio: imageNatSize.w / imageNatSize.h }]
-              : styles.imageBox}
-            onPress={() => setFullscreenVisible(true)}
+            style={styles.giftCardButton}
+            onPress={() => WebBrowser.openBrowserAsync(coupon.giftcard_url!)}
             activeOpacity={0.85}
           >
-            <Image
-              source={{ uri: imageUri }}
-              style={styles.uploadedImage}
-              resizeMode="contain"
-              onLoad={e => {
-                const { width: w, height: h } = e.nativeEvent.source;
-                setImageNatSize({ w, h });
-              }}
-            />
+            <Ionicons name="link" size={22} color="#1A2332" style={{ marginRight: 8 }} />
+            <Text style={styles.giftCardButtonText}>Open Live Gift Card</Text>
           </TouchableOpacity>
-        )}
+        ) : (
+          <>
+            {imageUri !== null && !showTextCode && (
+              <TouchableOpacity
+                style={imageNatSize
+                  ? [styles.imageBoxBase, { aspectRatio: imageNatSize.w / imageNatSize.h }]
+                  : styles.imageBox}
+                onPress={() => setFullscreenVisible(true)}
+                activeOpacity={0.85}
+              >
+                <Image
+                  source={{ uri: imageUri }}
+                  style={styles.uploadedImage}
+                  resizeMode="contain"
+                  onLoad={e => {
+                    const { width: w, height: h } = e.nativeEvent.source;
+                    setImageNatSize({ w, h });
+                  }}
+                />
+              </TouchableOpacity>
+            )}
 
-        {(showTextCode || imageUri === null) && (
-          <View style={styles.codeLarge}>
-            <Text style={styles.codeLargeText}>{coupon.code ?? '—'}</Text>
-          </View>
-        )}
+            {(showTextCode || imageUri === null) && (
+              <View style={styles.codeLarge}>
+                <Text style={styles.codeLargeText}>{coupon.code ?? '—'}</Text>
+              </View>
+            )}
 
-        {imageUri !== null && (
-          <View style={styles.toggleRow}>
-            <Text style={styles.toggleLabel}>
-              {showTextCode ? 'Switch to QR Code' : 'Switch to Text Code'}
-            </Text>
-            <Switch
-              value={showTextCode}
-              onValueChange={setShowTextCode}
-              trackColor={{ false: 'rgba(26,35,50,0.18)', true: 'rgba(26,35,50,0.45)' }}
-              thumbColor="#fff"
-            />
-          </View>
+            {imageUri !== null && (
+              <View style={styles.toggleRow}>
+                <Text style={styles.toggleLabel}>
+                  {showTextCode ? 'Switch to QR Code' : 'Switch to Text Code'}
+                </Text>
+                <Switch
+                  value={showTextCode}
+                  onValueChange={setShowTextCode}
+                  trackColor={{ false: 'rgba(26,35,50,0.18)', true: 'rgba(26,35,50,0.45)' }}
+                  thumbColor="#fff"
+                />
+              </View>
+            )}
+          </>
         )}
       </View>
 
@@ -719,5 +733,28 @@ const styles = StyleSheet.create({
   fullscreenImage: {
     width: '100%',
     height: '100%',
+  },
+
+  // Dynamic gift card URL button
+  giftCardButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F5EDD6',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    marginTop: 16,
+    marginBottom: 8,
+    shadowColor: '#1A2332',
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  giftCardButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1A2332',
+    letterSpacing: 0.3,
   },
 });

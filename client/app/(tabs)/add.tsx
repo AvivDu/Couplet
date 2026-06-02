@@ -46,6 +46,7 @@ export default function AddCouponScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [cropUri, setCropUri] = useState<string | null>(null);
   const [imageNatSize, setImageNatSize] = useState<{ w: number; h: number } | null>(null);
+  const [giftUrl, setGiftUrl] = useState('');
   const router = useRouter();
 
   useFocusEffect(
@@ -56,6 +57,7 @@ export default function AddCouponScreen() {
       setExpiryDate(null);
       setBalance('');
       setImageUri(null);
+      setGiftUrl('');
     }, [])
   );
 
@@ -94,8 +96,12 @@ export default function AddCouponScreen() {
   }
 
   async function handleAdd() {
-    if (!code.trim() || !couponName.trim() || !category) {
-      Alert.alert('Missing fields', 'Please fill in coupon name, code, and category.');
+    const hasCode = code.trim().length > 0;
+    const hasImage = !!imageUri;
+    const hasGiftUrl = giftUrl.trim().length > 0;
+
+    if (!couponName.trim() || !category || (!hasCode && !hasImage && !hasGiftUrl)) {
+      Alert.alert('Missing fields', 'Please fill in coupon name, category, and at least one of: coupon code, barcode image, or gift card URL.');
       return;
     }
 
@@ -106,9 +112,10 @@ export default function AddCouponScreen() {
         store_name: couponName.trim(),
         expiration_date: expiryString,
         balance: balance ? parseFloat(balance) : undefined,
+        giftcard_url: hasGiftUrl ? giftUrl.trim() : undefined,
       });
 
-      await saveCouponCode(data.coupon_id, code.trim());
+      if (hasCode) await saveCouponCode(data.coupon_id, code.trim());
       if (imageUri) {
         await saveCouponImage(data.coupon_id, imageUri);
       }
@@ -161,6 +168,20 @@ export default function AddCouponScreen() {
               autoCapitalize="characters"
               value={code}
               onChangeText={setCode}
+            />
+          </View>
+
+          {/* Dynamic Gift Card Link */}
+          <Text style={styles.sectionLabel}>Dynamic Gift Card Link (optional)</Text>
+          <View style={styles.inputWrap}>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. https://www.buyme.co.il/..."
+              placeholderTextColor="#A8997A"
+              autoCapitalize="none"
+              keyboardType="url"
+              value={giftUrl}
+              onChangeText={setGiftUrl}
             />
           </View>
 
