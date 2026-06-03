@@ -2,8 +2,6 @@ import { useRouter, Link } from 'expo-router';
 import { useState } from 'react';
 import {
   View,
-  Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
@@ -11,6 +9,7 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
+import { Text, TextInput } from '../../components/rn';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { register } from '../../services/api';

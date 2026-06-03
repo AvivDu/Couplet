@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
-  Text,
   TouchableOpacity,
   StyleSheet,
   Animated,
 } from 'react-native';
+import { Text } from '../../components/rn';
 import { useRouter } from 'expo-router';
 import CSymbol from '../../components/CSymbol';
 

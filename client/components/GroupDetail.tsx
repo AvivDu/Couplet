@@ -1,16 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   View,
-  Text,
   Modal,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  TextInput,
   ActivityIndicator,
   Alert,
   Image,
 } from 'react-native';
+import { Text, TextInput } from './rn';
 import * as ImagePicker from 'expo-image-picker';
 import * as Contacts from 'expo-contacts';
 import { Ionicons } from '@expo/vector-icons';

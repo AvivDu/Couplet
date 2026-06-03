@@ -80,7 +80,9 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Pill-shaped buttons (`borderRadius: 30`, coral fill)
 - [x] Category-colored solid cards for coupons (`borderRadius: 16`)
 - [x] Bottom tab bar with 3 tabs: My Coupons · Add · Groups (cream bg, coral active)
-- [x] Safe area handling, no native headers (all screens manage their own top area with `SafeAreaView`)
+- [x] Safe area handling — all screens use `SafeAreaView` from `react-native-safe-area-context` with `edges={['top']}` (fixes status bar overlap on Android punch-hole devices)
+- [x] **Font scaling locked** — `components/rn.tsx` wrapper exports `Text`/`TextInput` with `allowFontScaling={false}` + `maxFontSizeMultiplier={1}`; all screens import from wrapper (React 19 compatible)
+- [x] Category card labels use `numberOfLines={1}` to prevent wrapping at any font scale
 - [x] **Branded C logo** — `logo-c.png` (transparent PNG) rendered via `CSymbol`; `CoupletLogo` composes C + "OUPLET" wordmark at small/medium/large sizes with optional tagline
 - [x] **4-phase welcome animation** — Phase 1: large C centered (scale 2×); Phase 2: slides left + scales to 1× (550 ms); Phase 3: "OUPLET" types out letter-by-letter via `Animated.stagger`; Phase 4: tagline fades in → CTA button fades in
 - [x] Welcome splash screen with ticket logo

@@ -1,9 +1,7 @@
 import React from 'react';
 import {
   ScrollView,
-  Text,
   View,
-  TextInput,
   StyleSheet,
   Alert,
   TouchableOpacity,
@@ -13,6 +11,7 @@ import {
   Platform,
   Image,
 } from 'react-native';
+import { Text, TextInput } from '../rn';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { updateCoupon } from '../../services/api';
