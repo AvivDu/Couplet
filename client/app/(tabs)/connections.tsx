@@ -1,17 +1,16 @@
 import { useState, useCallback } from 'react';
 import {
   View,
-  Text,
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   Modal,
-  TextInput,
   ActivityIndicator,
   Alert,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text, TextInput } from '../../components/rn';
 import { useFocusEffect, router } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { getGroups, createGroup } from '../../services/api';
@@ -73,7 +72,7 @@ export default function ConnectionsScreen() {
   if (!user) return null;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Groups</Text>

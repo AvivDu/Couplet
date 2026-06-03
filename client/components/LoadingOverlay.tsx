@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet, Modal } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Modal } from 'react-native';
+import { Text } from './rn';
 
 const PHRASES = [
   'Hunting for the best deals...',

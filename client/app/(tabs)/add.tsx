@@ -1,8 +1,6 @@
 import { useState, useCallback } from 'react';
 import {
   View,
-  Text,
-  TextInput,
   TouchableOpacity,
   TouchableWithoutFeedback,
   StyleSheet,
@@ -13,9 +11,10 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
-  SafeAreaView,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text, TextInput } from '../../components/rn';
 import * as ImagePicker from 'expo-image-picker';
 import ImageCropModal from '../../components/ImageCropModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -142,7 +141,7 @@ export default function AddCouponScreen() {
         onCancel={() => setCropUri(null)}
       />
     )}
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <KeyboardAvoidingView
           style={styles.container}

@@ -6,10 +6,10 @@ import {
   StyleSheet,
   PanResponder,
   TouchableOpacity,
-  Text,
   ActivityIndicator,
   StatusBar,
 } from 'react-native';
+import { Text } from './rn';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 

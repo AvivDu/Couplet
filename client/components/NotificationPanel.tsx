@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, Modal, ScrollView, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Modal, ScrollView, TouchableOpacity } from 'react-native';
+import { Text } from './rn';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';

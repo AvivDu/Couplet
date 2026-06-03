@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Text } from './rn';
 import type { CouponMeta } from '../services/api';
 import { CATEGORY_COLORS } from '../constants/categories';
 import { formatBalance } from '../utils/format';

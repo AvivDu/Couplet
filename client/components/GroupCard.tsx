@@ -1,4 +1,5 @@
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { Text } from './rn';
 import type { GroupMeta } from '../services/api';
 
 interface Props {

@@ -1,4 +1,5 @@
-import { View, TouchableOpacity, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import { Text } from '../rn';
 
 interface CouponHeaderProps {
   isEditing: boolean;
