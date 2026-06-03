@@ -1,7 +1,7 @@
 # Couplet — Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-06-02 (group page redesign + shared group photo; dynamic gift card URL support — BuyMe-style web-link coupons; barcode crop modal + fullscreen viewer)
+**Last updated:** 2026-06-03 (Android UI polish — SafeAreaView + font scaling fix; cross-device profile image sync on startup)
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device — the server holds metadata only.
 
@@ -27,6 +27,7 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Auth guard: unauthenticated users redirected to Welcome screen
 - [x] Logout clears token and redirects to auth flow
 - [x] Password strength validation (8+ chars, uppercase, lowercase, number, symbol) with real-time match indicator
+- [x] **Cross-device profile image sync** — on app startup, `AuthContext` background-fetches `GET /auth/me` so profile photos set on another device appear without re-login (stale-while-revalidate: cached avatar shown immediately, server value applied silently)
 
 ### Coupon Management (Client)
 - [x] Add new coupon — name, code, category, expiration date, balance
