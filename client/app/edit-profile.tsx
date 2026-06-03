@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -11,23 +11,21 @@ import {
   Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
-import { updateProfile, resolvePhone } from '../services/api';
-import { saveUserAvatar, getUserAvatar } from '../storage/couponStorage';
+import { updateProfile, resolvePhone, uploadProfileImage } from '../services/api';
 
 export default function EditProfileScreen() {
   const router = useRouter();
   const { user, updateUser } = useAuth();
   const [username, setUsername] = useState(user?.username ?? '');
   const [phone, setPhone] = useState(user?.phone_number ?? '');
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [newImageUri, setNewImageUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    getUserAvatar().then(setAvatarUri);
-  }, []);
+  const avatarUri = newImageUri ?? user?.profile_image ?? null;
 
   async function pickAvatar() {
     Alert.alert('Profile Photo', 'Choose a source', [
@@ -40,7 +38,7 @@ export default function EditProfileScreen() {
             return;
           }
           const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.85 });
-          if (!result.canceled) setAvatarUri(result.assets[0].uri);
+          if (!result.canceled) setNewImageUri(result.assets[0].uri);
         },
       },
       {
@@ -52,7 +50,7 @@ export default function EditProfileScreen() {
             return;
           }
           const result = await ImagePicker.launchImageLibraryAsync({ allowsEditing: true, aspect: [1, 1], quality: 0.85 });
-          if (!result.canceled) setAvatarUri(result.assets[0].uri);
+          if (!result.canceled) setNewImageUri(result.assets[0].uri);
         },
       },
       { text: 'Cancel', style: 'cancel' },
@@ -87,7 +85,18 @@ export default function EditProfileScreen() {
         phone_number: phone.trim() ? stripped : undefined,
       });
       updateUser({ username: username.trim(), phone_number: phone.trim() ? stripped : undefined });
-      if (avatarUri) await saveUserAvatar(avatarUri);
+
+      if (newImageUri) {
+        const resized = await ImageManipulator.manipulateAsync(
+          newImageUri,
+          [{ resize: { width: 256, height: 256 } }],
+          { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        );
+        const dataUrl = `data:image/jpeg;base64,${resized.base64}`;
+        await uploadProfileImage(dataUrl);
+        updateUser({ profile_image: dataUrl });
+      }
+
       router.back();
     } catch (err: any) {
       const msg = err?.response?.data?.error ?? 'Could not save changes.';

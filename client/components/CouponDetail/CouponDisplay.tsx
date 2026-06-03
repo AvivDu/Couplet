@@ -5,6 +5,8 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
   Image,
   Alert,
   FlatList,
@@ -23,6 +25,7 @@ import { getGroups, shareToGroup, getCouponLocations, updateCoupon } from '../..
 import type { GroupMeta, StoreLocation, CouponMeta } from '../../services/api';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants/categories';
 import type { CouponWithCode } from './types';
+import { formatBalance, maskBalanceInput } from '../../utils/format';
 
 interface CouponDisplayProps {
   coupon: CouponWithCode;
@@ -115,7 +118,7 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
       return;
     }
     if (amount > currentBalance) {
-      Alert.alert('Amount too large', `Cannot exceed ₪${currentBalance.toFixed(2)}.`);
+      Alert.alert('Amount too large', `Cannot exceed ₪${formatBalance(currentBalance)}.`);
       return;
     }
     const newBalance = parseFloat((currentBalance - amount).toFixed(2));
@@ -132,7 +135,7 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
         Alert.alert('Fully Redeemed', 'Balance is now zero.');
         onClose();
       } else {
-        Alert.alert('Success', `₪${amount.toFixed(2)} redeemed. Remaining: ₪${newBalance.toFixed(2)}.`);
+        Alert.alert('Success', `₪${formatBalance(amount)} redeemed. Remaining: ₪${formatBalance(newBalance)}.`);
       }
     } catch (err: any) {
       Alert.alert('Error', err?.response?.data?.error ?? 'Could not redeem.');
@@ -146,7 +149,7 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
   const expiry = coupon.expiration_date
     ? new Date(coupon.expiration_date).toLocaleDateString()
     : 'No expiry';
-  const balance = coupon.balance != null ? `₪${coupon.balance.toFixed(2)}` : '—';
+  const balance = coupon.balance != null ? `₪${formatBalance(coupon.balance)}` : '—';
 
   return (
     <>
@@ -298,8 +301,14 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
       transparent
       onRequestClose={() => { setRedeemModalVisible(false); setPartialAmount(''); }}
     >
-      <View style={styles.confirmOverlay}>
-        <View style={styles.confirmBox}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      <TouchableOpacity
+        style={styles.confirmOverlay}
+        activeOpacity={1}
+        onPress={() => { setRedeemModalVisible(false); setPartialAmount(''); }}
+      >
+        <View style={styles.confirmBox} onStartShouldSetResponder={() => true}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Text style={styles.confirmTitle}>How would you like to redeem?</Text>
 
           <TouchableOpacity
@@ -322,11 +331,11 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
 
           <TextInput
             style={styles.partialInput}
-            placeholder={`Enter amount  (max ₪${(coupon.balance ?? 0).toFixed(2)})`}
+            placeholder={`Enter amount  (max ₪${formatBalance(coupon.balance ?? 0)})`}
             placeholderTextColor="#A8997A"
             keyboardType="numeric"
-            value={partialAmount}
-            onChangeText={setPartialAmount}
+            value={maskBalanceInput(partialAmount)}
+            onChangeText={text => setPartialAmount(text.replace(/,/g, ''))}
           />
           <TouchableOpacity
             style={styles.redeemPartialConfirmBtn}
@@ -344,8 +353,10 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
           >
             <Text style={styles.cancelLinkText}>Cancel</Text>
           </TouchableOpacity>
+          </ScrollView>
         </View>
-      </View>
+      </TouchableOpacity>
+      </KeyboardAvoidingView>
     </Modal>
 
     {/* Group picker modal */}

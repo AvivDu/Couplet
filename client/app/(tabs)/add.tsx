@@ -4,9 +4,11 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ActivityIndicator,
   Alert,
@@ -22,6 +24,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { createCoupon } from '../../services/api';
 import { saveCouponCode, saveCouponImage } from '../../storage/couponStorage';
 import { CATEGORY_COLORS } from '../../constants/categories';
+import { maskBalanceInput } from '../../utils/format';
 
 const ADD_CATEGORIES: { label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { label: 'Food',        icon: 'restaurant-outline'          },
@@ -42,7 +45,6 @@ export default function AddCouponScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [balance, setBalance] = useState('');
   const [loading, setLoading] = useState(false);
-  const [aboutVisible, setAboutVisible] = useState(false);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [cropUri, setCropUri] = useState<string | null>(null);
   const [imageNatSize, setImageNatSize] = useState<{ w: number; h: number } | null>(null);
@@ -141,11 +143,12 @@ export default function AddCouponScreen() {
       />
     )}
     <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <KeyboardAvoidingView
+          style={styles.container}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
           <Text style={styles.screenTitle}>Add New Coupon</Text>
 
           {/* Coupon Name */}
@@ -250,8 +253,8 @@ export default function AddCouponScreen() {
               style={styles.input}
               placeholder="Balance (optional)"
               placeholderTextColor="#A8997A"
-              value={balance}
-              onChangeText={setBalance}
+              value={maskBalanceInput(balance)}
+              onChangeText={text => setBalance(text.replace(/,/g, ''))}
               keyboardType="decimal-pad"
             />
           </View>
@@ -284,9 +287,6 @@ export default function AddCouponScreen() {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.aboutBtn} onPress={() => setAboutVisible(true)}>
-            <Text style={styles.aboutBtnText}>About</Text>
-          </TouchableOpacity>
         </ScrollView>
 
         {/* Android: native date picker dialog */}
@@ -337,27 +337,8 @@ export default function AddCouponScreen() {
           </TouchableOpacity>
         </Modal>
 
-        {/* About Modal */}
-        <Modal visible={aboutVisible} animationType="fade" transparent onRequestClose={() => setAboutVisible(false)}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Couplet</Text>
-              <Text style={styles.modalVersion}>Version 1.0.0</Text>
-              <Text style={styles.modalDesc}>
-                Your personal coupon wallet — store, manage, and share coupons securely. Coupon codes never leave your device.
-              </Text>
-              <View style={styles.divider} />
-              <Text style={styles.modalTeamLabel}>BUILT BY</Text>
-              <Text style={styles.modalTeam}>Aviv Duzy</Text>
-              <Text style={styles.modalTeam}>Roni Kenigsberg</Text>
-              <Text style={styles.modalTeam}>Doron Shen-Tzur</Text>
-              <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setAboutVisible(false)}>
-                <Text style={styles.modalCloseBtnText}>Close</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </TouchableWithoutFeedback>
     </SafeAreaView>
     </>
   );
@@ -447,12 +428,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  aboutBtn: {
-    alignItems: 'center',
-    marginTop: 20,
-    paddingVertical: 10,
-  },
-  aboutBtnText: { color: '#1A2332', fontSize: 14, opacity: 0.4 },
   pickerSheet: {
     backgroundColor: '#F5F0E6',
     borderTopLeftRadius: 24,
@@ -479,27 +454,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(26,35,50,0.5)',
     justifyContent: 'flex-end',
   },
-  modalCard: {
-    backgroundColor: '#F5F0E6',
-    borderRadius: 24,
-    padding: 28,
-    margin: 24,
-    alignItems: 'center',
-  },
-  modalTitle: { fontSize: 28, fontWeight: '800', color: '#E8604C', marginBottom: 4 },
-  modalVersion: { fontSize: 13, color: '#1A2332', opacity: 0.4, marginBottom: 16 },
-  modalDesc: { fontSize: 14, color: '#1A2332', opacity: 0.6, textAlign: 'center', lineHeight: 20 },
-  divider: { height: 1, backgroundColor: '#C4B8A0', width: '100%', marginVertical: 20 },
-  modalTeamLabel: { fontSize: 11, fontWeight: '700', color: '#1A2332', opacity: 0.4, letterSpacing: 1, marginBottom: 10 },
-  modalTeam: { fontSize: 15, color: '#1A2332', fontWeight: '500', marginBottom: 4 },
-  modalCloseBtn: {
-    marginTop: 24,
-    backgroundColor: '#E8604C',
-    borderRadius: 24,
-    paddingVertical: 12,
-    paddingHorizontal: 40,
-  },
-  modalCloseBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   imagePickerWrap: {
     position: 'relative',
     marginBottom: 28,

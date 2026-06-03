@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import type { CouponMeta } from '../services/api';
 import { CATEGORY_COLORS } from '../constants/categories';
+import { formatBalance } from '../utils/format';
 
 interface Props {
   coupon: CouponMeta;
@@ -21,7 +22,7 @@ export default function CouponCard({ coupon, onPress }: Props) {
         {coupon.store_name}
       </Text>
       {coupon.balance != null && (
-        <Text style={styles.balance}>₪{coupon.balance.toFixed(2)} remaining</Text>
+        <Text style={styles.balance}>₪{formatBalance(coupon.balance)} remaining</Text>
       )}
       {isUsed && (
         <View style={styles.usedBadge}>

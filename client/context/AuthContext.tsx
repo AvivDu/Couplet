@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { setTokenCache, setUnauthorizedHandler } from '../services/api';
+import { saveUserAvatar, getUserAvatar } from '../storage/couponStorage';
 
 interface AuthUser {
   userId: string;
   email: string;
   username: string;
   phone_number?: string;
+  profile_image?: string | null;
 }
 
 interface AuthContextType {
@@ -32,14 +34,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const [storedToken, storedUser] = await Promise.all([
+        const [storedToken, storedUser, cachedAvatar] = await Promise.all([
           SecureStore.getItemAsync('authToken'),
           SecureStore.getItemAsync('authUser'),
+          getUserAvatar(),
         ]);
         if (storedToken && storedUser) {
           setTokenCache(storedToken);
           setToken(storedToken);
-          setUser(JSON.parse(storedUser) as AuthUser);
+          const parsed = JSON.parse(storedUser) as AuthUser;
+          setUser({ ...parsed, profile_image: cachedAvatar ?? null });
         }
       } finally {
         setIsLoading(false);
@@ -48,9 +52,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   async function signIn(newToken: string, newUser: AuthUser) {
+    const { profile_image, ...secureFields } = newUser;
     await Promise.all([
       SecureStore.setItemAsync('authToken', newToken),
-      SecureStore.setItemAsync('authUser', JSON.stringify(newUser)),
+      SecureStore.setItemAsync('authUser', JSON.stringify(secureFields)),
+      profile_image ? saveUserAvatar(profile_image) : Promise.resolve(),
     ]);
     setToken(newToken);
     setUser(newUser);
@@ -68,12 +74,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   function updateUser(updates: Partial<AuthUser>) {
     setUser(prev => prev ? { ...prev, ...updates } : prev);
-    SecureStore.getItemAsync('authUser').then(raw => {
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        SecureStore.setItemAsync('authUser', JSON.stringify({ ...parsed, ...updates }));
-      }
-    });
+    if (updates.profile_image !== undefined) {
+      if (updates.profile_image) saveUserAvatar(updates.profile_image);
+    }
+    const { profile_image: _pi, ...secureUpdates } = updates;
+    if (Object.keys(secureUpdates).length > 0) {
+      SecureStore.getItemAsync('authUser').then(raw => {
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          SecureStore.setItemAsync('authUser', JSON.stringify({ ...parsed, ...secureUpdates }));
+        }
+      });
+    }
   }
 
   return (
