@@ -12,10 +12,11 @@ A mobile coupon wallet app. Users store, manage, and share coupons — coupon co
 |---|---|
 | Mobile client | React Native (Expo) |
 | Backend | Node.js + Express, deployed on AWS Lambda via `serverless-http` |
-| API Gateway | AWS API Gateway HTTP API |
+| API Gateway | AWS API Gateway HTTP API (REST) + WebSocket API (real-time) |
 | Database | AWS DynamoDB |
 | Auth | AWS Cognito |
-| Notifications | AWS SNS |
+| Notifications | Live over the API Gateway **WebSocket API** while the app is open + **local OS notifications** (`expo-notifications`); remote push when closed (AWS SNS) is planned (needs a dev build) |
+| Store locator | Google Places API ("Where to use") |
 
 ---
 
@@ -27,7 +28,8 @@ Couplet/
 ├── server/                                      # Node.js + Express backend (runs on AWS Lambda)
 ├── Specification & Design Document - Couplet.pdf
 ├── CLAUDE.md                                    # Architecture, data model, feature spec (for contributors)
-└── PROJECT_SUMMARY.md                           # Progress log and feature status
+├── PROJECT_SUMMARY.md                           # Progress log and feature status
+└── TRACK_B_GROUPS_FEATURE.md                    # Groups feature design + developer handoff
 ```
 
 ---
@@ -51,9 +53,10 @@ Couplet/
    Fill in the following values in `client/.env`:
    | Variable | Description |
    |---|---|
-   | `EXPO_PUBLIC_API_URL` | Base URL of the deployed backend |
+   | `EXPO_PUBLIC_API_URL` | Base URL of the deployed backend (HTTP API) |
    | `EXPO_PUBLIC_COGNITO_USER_POOL_ID` | AWS Cognito User Pool ID |
    | `EXPO_PUBLIC_COGNITO_CLIENT_ID` | AWS Cognito App Client ID |
+   | `EXPO_PUBLIC_WS_URL` | WebSocket API URL for live notifications + coupon relay (optional — app falls back to poll-on-focus if unset) |
 
 3. Start the development server:
    ```bash
@@ -92,6 +95,8 @@ The production server runs on **AWS Lambda** — no instance to manage. After co
    | `DYNAMODB_COUPONS_TABLE` | DynamoDB table name for coupons |
    | `DYNAMODB_GROUPS_TABLE` | DynamoDB table name for groups |
    | `DYNAMODB_NOTIFICATIONS_TABLE` | DynamoDB table name for notifications |
+   | `DYNAMODB_CONNECTIONS_TABLE` | DynamoDB table for WebSocket connections (PK `connection_id`, GSI `user_id-index`) |
+   | `WS_API_ID` + `WS_STAGE` | WebSocket API ID + stage (used to build the push endpoint); or set `WS_API_ENDPOINT` directly |
    | `PORT` | Local server port (default: `3000`) |
    | `GOOGLE_PLACES_API_KEY` | Google Places API key (for store locator) |
 
