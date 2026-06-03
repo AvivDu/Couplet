@@ -19,7 +19,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { CATEGORY_COLORS } from '../../constants/categories';
 import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, type CouponMeta } from '../../services/api';
-import { getCouponCode, saveCouponCode, deleteCouponCode, deleteCouponImage, getUserAvatar } from '../../storage/couponStorage';
+import { getCouponCode, saveCouponCode, deleteCouponCode, deleteCouponImage } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationsContext';
 import CouponCard from '../../components/CouponCard';
@@ -74,7 +74,7 @@ export default function HomeScreen() {
   const [joinedGroupName, setJoinedGroupName] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
-  const [drawerAvatarUri, setDrawerAvatarUri] = useState<string | null>(null);
+
   const drawerAnim = useRef(new Animated.Value(0)).current;
 
   const load = useCallback(async () => {
@@ -321,7 +321,6 @@ export default function HomeScreen() {
   }
 
   function openDrawer() {
-    getUserAvatar().then(setDrawerAvatarUri);
     setDrawerOpen(true);
     Animated.timing(drawerAnim, { toValue: 1, duration: 260, useNativeDriver: true }).start();
   }
@@ -523,8 +522,8 @@ export default function HomeScreen() {
             >
               <View style={styles.drawerHeader}>
                 <View style={styles.avatarCircle}>
-                  {drawerAvatarUri
-                    ? <Image source={{ uri: drawerAvatarUri }} style={styles.avatarImage} />
+                  {user?.profile_image
+                    ? <Image source={{ uri: user.profile_image }} style={styles.avatarImage} />
                     : <Ionicons name="person-outline" size={32} color="#A8997A" />}
                 </View>
                 <Text style={styles.drawerUsername}>{user?.username}</Text>

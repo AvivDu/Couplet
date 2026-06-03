@@ -73,7 +73,7 @@ api.interceptors.response.use(
 );
 
 // Auth
-type AuthUserData = { userId: string; username: string; email: string; phone_number?: string };
+type AuthUserData = { userId: string; username: string; email: string; phone_number?: string; profile_image?: string | null };
 
 const syncUser = (email: string, username: string, phone_number: string) =>
   api.post<AuthUserData>('/auth/sync', { email, username, phone_number });
@@ -189,6 +189,7 @@ export interface GroupMember {
   username: string;
   email: string;
   phone_number?: string;
+  image?: string | null;
 }
 
 export interface GroupCoupon {
@@ -267,6 +268,11 @@ export const deleteNotification = (notificationId: string) => api.delete(`/notif
 
 export async function updateProfile(updates: { username?: string; phone_number?: string }) {
   const { data } = await api.patch<AuthUserData>('/auth/me', updates);
+  return data;
+}
+
+export async function uploadProfileImage(dataUrl: string) {
+  const { data } = await api.put<AuthUserData>('/auth/me/photo', { image: dataUrl });
   return data;
 }
 

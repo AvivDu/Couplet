@@ -554,7 +554,9 @@ export default function GroupScreen() {
                       isYou && styles.stripAvatarRing,
                     ]}
                   >
-                    <Text style={styles.stripAvatarText}>{getInitials(member.username)}</Text>
+                    {member.image
+                      ? <Image source={{ uri: member.image }} style={styles.stripAvatar} />
+                      : <Text style={styles.stripAvatarText}>{getInitials(member.username)}</Text>}
                   </View>
                   <Text style={styles.stripName} numberOfLines={1}>
                     {isYou ? 'You' : firstName(member.username)}
@@ -623,7 +625,9 @@ export default function GroupScreen() {
                         { backgroundColor: isOwn ? COLORS.coral : COLORS.otherAvatar },
                       ]}
                     >
-                      <Text style={styles.senderAvatarText}>{senderInitials}</Text>
+                      {sender?.image
+                        ? <Image source={{ uri: sender.image }} style={styles.senderAvatar} />
+                        : <Text style={styles.senderAvatarText}>{senderInitials}</Text>}
                     </View>
                     <Text style={[styles.senderName, { color: accent }]}>{senderLabel}</Text>
                     {/* Admins may remove others' coupons (own coupons use the Revoke CTA). */}
@@ -920,9 +924,9 @@ export default function GroupScreen() {
                 return (
                   <View key={member.user_id} style={styles.memberRow}>
                     <View style={styles.memberAvatar}>
-                      <Text style={styles.memberAvatarText}>
-                        {getInitials(member.username)}
-                      </Text>
+                      {member.image
+                        ? <Image source={{ uri: member.image }} style={styles.memberAvatar} />
+                        : <Text style={styles.memberAvatarText}>{getInitials(member.username)}</Text>}
                     </View>
                     <View style={styles.memberInfo}>
                       <Text style={styles.memberName}>
@@ -956,9 +960,9 @@ export default function GroupScreen() {
                   {group?.pending_members.map(member => (
                     <View key={member.user_id} style={styles.memberRow}>
                       <View style={[styles.memberAvatar, { opacity: 0.5 }]}>
-                        <Text style={styles.memberAvatarText}>
-                          {getInitials(member.username)}
-                        </Text>
+                        {member.image
+                          ? <Image source={{ uri: member.image }} style={styles.memberAvatar} />
+                          : <Text style={styles.memberAvatarText}>{getInitials(member.username)}</Text>}
                       </View>
                       <View style={[styles.memberInfo, { opacity: 0.5 }]}>
                         <Text style={styles.memberName}>{member.username}</Text>

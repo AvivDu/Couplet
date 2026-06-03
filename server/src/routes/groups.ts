@@ -60,11 +60,11 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
 
   const members = memberDocs
     .filter(Boolean)
-    .map(u => ({ user_id: u!.user_id, username: u!.username, email: u!.email, phone_number: u!.phone_number }));
+    .map(u => ({ user_id: u!.user_id, username: u!.username, email: u!.email, phone_number: u!.phone_number, image: u!.profile_image ?? null }));
 
   const pending_members = pendingDocs
     .filter(Boolean)
-    .map(u => ({ user_id: u!.user_id, username: u!.username, email: u!.email, phone_number: u!.phone_number }));
+    .map(u => ({ user_id: u!.user_id, username: u!.username, email: u!.email, phone_number: u!.phone_number, image: u!.profile_image ?? null }));
 
   const coupons = couponDocs
     .filter(Boolean)

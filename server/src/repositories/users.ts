@@ -8,6 +8,7 @@ export interface User {
   password_hash: string;
   created_at: string;
   phone_number?: string;
+  profile_image?: string;
 }
 
 // Strip everything except digits so "050-123 4567" and "0501234567" compare equal.
@@ -63,6 +64,17 @@ export async function findUsersByPhones(phones: string[]): Promise<User[]> {
   const allUsers = result.Items as User[] ?? [];
   const targets = new Set(phones.map(p => p.replace(/\D/g, '')).filter(Boolean));
   return allUsers.filter(u => u.phone_number && targets.has(u.phone_number.replace(/\D/g, '')));
+}
+
+export async function setUserProfileImage(userId: string, image: string): Promise<User | null> {
+  await ddb.send(new UpdateCommand({
+    TableName: USERS_TABLE,
+    Key: { user_id: userId },
+    UpdateExpression: 'SET #img = :img',
+    ExpressionAttributeNames: { '#img': 'profile_image' },
+    ExpressionAttributeValues: { ':img': image },
+  }));
+  return findUserById(userId);
 }
 
 export async function updateUserById(

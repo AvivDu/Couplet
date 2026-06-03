@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { findUserById, findUserByPhone, insertUser, updateUserById } from '../repositories/users';
+import { findUserById, findUserByPhone, insertUser, updateUserById, setUserProfileImage } from '../repositories/users';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -66,7 +66,7 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res: Response): Promi
     res.status(404).json({ error: 'User not found' });
     return;
   }
-  res.json({ userId: user.user_id, username: user.username, email: user.email, phone_number: user.phone_number });
+  res.json({ userId: user.user_id, username: user.username, email: user.email, phone_number: user.phone_number, profile_image: user.profile_image ?? null });
 });
 
 // Update the authenticated user's profile fields.
@@ -80,7 +80,23 @@ router.patch('/me', authMiddleware, async (req: AuthRequest, res: Response): Pro
   }
   const updated = await updateUserById(req.userId!, { username, phone_number });
   if (!updated) { res.status(404).json({ error: 'User not found' }); return; }
-  res.json({ userId: updated.user_id, username: updated.username, email: updated.email, phone_number: updated.phone_number });
+  res.json({ userId: updated.user_id, username: updated.username, email: updated.email, phone_number: updated.phone_number, profile_image: updated.profile_image ?? null });
+});
+
+// Upload or replace the authenticated user's profile photo.
+router.put('/me/photo', authMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
+  const { image } = req.body;
+  if (!image || typeof image !== 'string' || !image.startsWith('data:image/')) {
+    res.status(400).json({ error: 'image must be a data:image/ string' });
+    return;
+  }
+  if (image.length > 400_000) {
+    res.status(400).json({ error: 'Image too large (max ~400 KB base64)' });
+    return;
+  }
+  const updated = await setUserProfileImage(req.userId!, image);
+  if (!updated) { res.status(404).json({ error: 'User not found' }); return; }
+  res.json({ userId: updated.user_id, username: updated.username, email: updated.email, phone_number: updated.phone_number, profile_image: updated.profile_image ?? null });
 });
 
 export default router;
