@@ -7,6 +7,10 @@ import {
   StyleSheet,
   Alert,
   TouchableOpacity,
+  TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  Keyboard,
+  Platform,
   Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -185,7 +189,9 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
             onCancel={() => setCropUri(null)}
           />
         )}
-        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+            <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           <Text style={styles.editTitle}>Edit Coupon</Text>
 
           <View style={styles.inputWrap}>
@@ -304,7 +310,9 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
               keyboardType="decimal-pad"
             />
           </View>
-        </ScrollView>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
 
         <DatePickerSheet
           visible={datePickerField !== null}
