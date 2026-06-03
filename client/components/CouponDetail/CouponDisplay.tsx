@@ -5,6 +5,8 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
   Image,
   Alert,
   FlatList,
@@ -23,7 +25,7 @@ import { getGroups, shareToGroup, getCouponLocations, updateCoupon } from '../..
 import type { GroupMeta, StoreLocation, CouponMeta } from '../../services/api';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants/categories';
 import type { CouponWithCode } from './types';
-import { formatBalance } from '../../utils/format';
+import { formatBalance, maskBalanceInput } from '../../utils/format';
 
 interface CouponDisplayProps {
   coupon: CouponWithCode;
@@ -299,8 +301,14 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
       transparent
       onRequestClose={() => { setRedeemModalVisible(false); setPartialAmount(''); }}
     >
-      <View style={styles.confirmOverlay}>
-        <View style={styles.confirmBox}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      <TouchableOpacity
+        style={styles.confirmOverlay}
+        activeOpacity={1}
+        onPress={() => { setRedeemModalVisible(false); setPartialAmount(''); }}
+      >
+        <View style={styles.confirmBox} onStartShouldSetResponder={() => true}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <Text style={styles.confirmTitle}>How would you like to redeem?</Text>
 
           <TouchableOpacity
@@ -326,8 +334,8 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
             placeholder={`Enter amount  (max ₪${formatBalance(coupon.balance ?? 0)})`}
             placeholderTextColor="#A8997A"
             keyboardType="numeric"
-            value={partialAmount}
-            onChangeText={setPartialAmount}
+            value={maskBalanceInput(partialAmount)}
+            onChangeText={text => setPartialAmount(text.replace(/,/g, ''))}
           />
           <TouchableOpacity
             style={styles.redeemPartialConfirmBtn}
@@ -345,8 +353,10 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
           >
             <Text style={styles.cancelLinkText}>Cancel</Text>
           </TouchableOpacity>
+          </ScrollView>
         </View>
-      </View>
+      </TouchableOpacity>
+      </KeyboardAvoidingView>
     </Modal>
 
     {/* Group picker modal */}
