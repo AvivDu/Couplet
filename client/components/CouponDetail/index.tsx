@@ -21,18 +21,8 @@ export default function CouponDetail({
     return null;
   }
 
-  function handleClosePress() {
-    if (isEditing) {
-      setIsEditing(false);
-      return;
-    }
-    onClose();
-  }
-
   async function handleSavePress() {
-    if (!editFormRef.current) {
-      return;
-    }
+    if (!editFormRef.current) return;
     await editFormRef.current.submit();
   }
 
@@ -40,22 +30,34 @@ export default function CouponDetail({
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.container}>
         <CouponHeader
-          isEditing={isEditing}
-          saving={saving}
-          onClosePress={handleClosePress}
-          onSavePress={handleSavePress}
+          isEditing={false}
+          saving={false}
+          onClosePress={onClose}
+          onSavePress={() => {}}
         />
+        <CouponDisplay
+          coupon={coupon}
+          onEdit={() => setIsEditing(true)}
+          onDelete={onDelete}
+          onMarkUsed={onMarkUsed}
+          onUpdate={onUpdate}
+          onClose={onClose}
+        />
+      </View>
 
-        {!isEditing ? (
-          <CouponDisplay
-            coupon={coupon}
-            onEdit={() => setIsEditing(true)}
-            onDelete={onDelete}
-            onMarkUsed={onMarkUsed}
-            onUpdate={onUpdate}
-            onClose={onClose}
+      <Modal
+        visible={isEditing}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setIsEditing(false)}
+      >
+        <View style={styles.container}>
+          <CouponHeader
+            isEditing={true}
+            saving={saving}
+            onClosePress={() => setIsEditing(false)}
+            onSavePress={handleSavePress}
           />
-        ) : (
           <CouponEditForm
             ref={editFormRef}
             coupon={coupon}
@@ -65,8 +67,8 @@ export default function CouponDetail({
               setIsEditing(false);
             }}
           />
-        )}
-      </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }
