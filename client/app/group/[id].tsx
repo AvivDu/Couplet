@@ -257,7 +257,7 @@ export default function GroupScreen() {
     try {
       await deleteGroup(groupId);
       setDeleteConfirmVisible(false);
-      router.back();
+      router.replace('/(tabs)/connections');
     } catch (err: any) {
       Alert.alert('Error', err?.response?.data?.error ?? 'Could not delete group.');
     } finally {
@@ -278,7 +278,7 @@ export default function GroupScreen() {
           onPress: async () => {
             try {
               await leaveGroup(groupId);
-              router.back();
+              router.replace('/(tabs)/connections');
             } catch (err: any) {
               Alert.alert('Error', err?.response?.data?.error ?? 'Could not leave group.');
             }
@@ -467,7 +467,7 @@ export default function GroupScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => router.replace('/(tabs)/connections')}
           style={styles.headerIconBtn}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
