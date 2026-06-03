@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
+import { Text } from './rn';
 import CSymbol from './CSymbol';
 
 type LogoSize = 'small' | 'medium' | 'large';

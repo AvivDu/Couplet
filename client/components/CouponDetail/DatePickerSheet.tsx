@@ -1,4 +1,5 @@
-import { Modal, TouchableOpacity, View, Text, FlatList, StyleSheet } from 'react-native';
+import { Modal, TouchableOpacity, View, FlatList, StyleSheet } from 'react-native';
+import { Text } from '../rn';
 
 interface PickerItem {
   label: string;

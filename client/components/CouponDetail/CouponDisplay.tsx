@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -13,9 +12,9 @@ import {
   Modal,
   ActivityIndicator,
   Switch,
-  TextInput,
   StatusBar,
 } from 'react-native';
+import { Text, TextInput } from '../rn';
 import * as Location from 'expo-location';
 import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
@@ -308,7 +307,7 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
         onPress={() => { setRedeemModalVisible(false); setPartialAmount(''); }}
       >
         <View style={styles.confirmBox} onStartShouldSetResponder={() => true}>
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
           <Text style={styles.confirmTitle}>How would you like to redeem?</Text>
 
           <TouchableOpacity
@@ -329,9 +328,10 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
             <View style={styles.orLine} />
           </View>
 
+          <Text style={styles.partialLabel}>Enter partial amount</Text>
           <TextInput
             style={styles.partialInput}
-            placeholder={`Enter amount  (max ₪${formatBalance(coupon.balance ?? 0)})`}
+            placeholder={`max ₪${formatBalance(coupon.balance ?? 0)}`}
             placeholderTextColor="#A8997A"
             keyboardType="numeric"
             value={maskBalanceInput(partialAmount)}
@@ -636,6 +636,14 @@ const styles = StyleSheet.create({
   },
   orLine: { flex: 1, height: 1, backgroundColor: '#E0D8CA' },
   orText: { fontSize: 12, fontWeight: '700', color: '#A8997A', letterSpacing: 1 },
+  partialLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#A8997A',
+    letterSpacing: 0.5,
+    alignSelf: 'flex-start',
+    marginBottom: 4,
+  },
   partialInput: {
     width: '100%',
     borderBottomWidth: 1.5,

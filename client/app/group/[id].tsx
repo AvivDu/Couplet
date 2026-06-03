@@ -1,17 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
   Modal,
-  TextInput,
   ActivityIndicator,
   Alert,
   Image,
   Platform,
 } from 'react-native';
+import { Text, TextInput } from '../../components/rn';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -463,7 +462,7 @@ export default function GroupScreen() {
   if (!user) return null;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity

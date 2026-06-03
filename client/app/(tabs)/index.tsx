@@ -5,7 +5,6 @@ import {
   Dimensions,
   Image,
   View,
-  Text,
   StyleSheet,
   FlatList,
   ScrollView,
@@ -13,9 +12,9 @@ import {
   RefreshControl,
   TouchableOpacity,
   Alert,
-  SafeAreaView,
-  TextInput,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text, TextInput } from '../../components/rn';
 import { Ionicons } from '@expo/vector-icons';
 import { CATEGORY_COLORS } from '../../constants/categories';
 import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, type CouponMeta } from '../../services/api';
@@ -333,7 +332,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
@@ -392,7 +391,7 @@ export default function HomeScreen() {
                 activeOpacity={0.75}
               >
                 <Ionicons name={cat.icon} size={26} color={active ? '#444444' : '#1A2332'} />
-                <Text style={[styles.categoryCardLabel, active && styles.categoryCardLabelActive]}>
+                <Text style={[styles.categoryCardLabel, active && styles.categoryCardLabelActive]} numberOfLines={1}>
                   {cat.label}
                 </Text>
               </TouchableOpacity>
