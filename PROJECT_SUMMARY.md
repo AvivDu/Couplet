@@ -12,7 +12,6 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 | Doc | Purpose |
 |---|---|
 | `CLAUDE.md` | Architecture, feature spec, DB schema, user flows |
-| `TRACK_B_GROUPS_FEATURE.md` | Full Groups feature design + developer handoff (server routes, client screens, build order, verification checklist) |
 
 ---
 

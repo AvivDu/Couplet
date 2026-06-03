@@ -28,8 +28,7 @@ Couplet/
 ├── server/                                      # Node.js + Express backend (runs on AWS Lambda)
 ├── Specification & Design Document - Couplet.pdf
 ├── CLAUDE.md                                    # Architecture, data model, feature spec (for contributors)
-├── PROJECT_SUMMARY.md                           # Progress log and feature status
-└── TRACK_B_GROUPS_FEATURE.md                    # Groups feature design + developer handoff
+└── PROJECT_SUMMARY.md                           # Progress log and feature status
 ```
 
 ---
