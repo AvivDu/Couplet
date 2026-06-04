@@ -1,7 +1,7 @@
 # Couplet — Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-06-03 (Server-side profile photos + group avatar sync, balance thousand-separator formatting with live input masking, redeem/add/edit modal keyboard avoidance + tap-to-dismiss, group back-button + swipe-down navigation fixes, Android UI polish)
+**Last updated:** 2026-06-03 (Server-side profile photos + group avatar sync, cross-device profile image sync on startup, balance thousand-separator formatting with live input masking, redeem/add/edit modal keyboard avoidance + tap-to-dismiss, group back-button + swipe-down navigation fixes, Android UI polish — SafeAreaView + font scaling fix)
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device — the server holds metadata only.
 
@@ -26,6 +26,7 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Auth guard: unauthenticated users redirected to Welcome screen
 - [x] Logout clears token and redirects to auth flow
 - [x] Password strength validation (8+ chars, uppercase, lowercase, number, symbol) with real-time match indicator
+- [x] **Cross-device profile image sync** — on app startup, `AuthContext` background-fetches `GET /auth/me` so profile photos set on another device appear without re-login (stale-while-revalidate: cached avatar shown immediately, server value applied silently)
 
 ### Coupon Management (Client)
 - [x] Add new coupon — name, code, category, expiration date, balance
