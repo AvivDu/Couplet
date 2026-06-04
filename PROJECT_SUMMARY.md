@@ -1,7 +1,7 @@
 # Couplet — Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-06-03 (Android UI polish — SafeAreaView + font scaling fix; cross-device profile image sync on startup)
+**Last updated:** 2026-06-03 (Server-side profile photos + group avatar sync, cross-device profile image sync on startup, balance thousand-separator formatting with live input masking, redeem/add/edit modal keyboard avoidance + tap-to-dismiss, group back-button + swipe-down navigation fixes, Android UI polish — SafeAreaView + font scaling fix)
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device — the server holds metadata only.
 
@@ -12,7 +12,6 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 | Doc | Purpose |
 |---|---|
 | `CLAUDE.md` | Architecture, feature spec, DB schema, user flows |
-| `TRACK_B_GROUPS_FEATURE.md` | Full Groups feature design + developer handoff (server routes, client screens, build order, verification checklist) |
 
 ---
 
@@ -44,7 +43,8 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Delete coupon (removes metadata from server + code/image from local storage)
 - [x] Redeem button marks coupon as `used`
 - [x] Badge on card for `used` and `expired` coupons
-- [x] "About" modal accessible from the Add screen (app version, team credits)
+- [x] **Balance formatting** — amounts shown with thousand separators (`₪1,500.00`) everywhere via `client/utils/format.ts`; Add/Edit/Redeem amount inputs apply live comma masking as the user types (raw value kept for parsing)
+- [x] **Redeem modal UX** — tap-outside-to-dismiss + `KeyboardAvoidingView` so the keyboard never covers the amount field; same keyboard-avoidance + tap-to-dismiss applied to Add and Edit coupon forms; swipe-down on Edit returns to the detail screen
 
 ### Coupon Management (Server)
 - [x] Coupon metadata synced to **AWS DynamoDB** (category, store_name, expiration_date, balance, status, giftcard_url)
@@ -69,9 +69,13 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] **Delete group** — admin-only; centered confirmation modal with permanent-action warning; `DELETE /groups/:id`; navigates back to groups list on success; 403 for non-admins
 - [x] **Group page redesign** (`app/group/[id].tsx`, WhatsApp-style) — header (group avatar + admin "Tap photo to edit"), `MEMBERS · n` label + horizontal members strip (admin-only "Add" chip, "You" ring, first names), prominent "Share a Coupon" button, "SHARED COUPONS (n)" header with filter button, and sender-attributed coupon cards (24px avatar + per-member accent-colored name; tag tile + brand/category/expiry; **Use coupon** reveals code via CouponDetail, **Revoke** for own coupons + admin trash on others'). Design handoff (spec + screenshots + reference) kept in `client/docs/design_handoff_group_page/`
 - [x] **Coupon filter sheet** — bottom sheet to filter the shared-coupon feed by member and/or category (categories derived from the group's coupons); filter button inverts to coral when active; Clear resets
+- [x] Group back button reliably returns to the Groups list (`router.replace('/(tabs)/connections')`) even when the screen was opened via a notification deep-link with no back stack
 
-### Users
+### Users / Profile
 - [x] Search users by email or username — `GET /users/search?q=` (used for adding group members)
+- [x] Editable profile (Edit Profile screen) — change username + phone number via `PATCH /auth/me` (phone uniqueness enforced, 409 on conflict)
+- [x] **Server-side profile photo** — pick from camera/library, resized to 256×256 + JPEG-compressed client-side (`expo-image-manipulator`), uploaded as base64 data-URL via `PUT /auth/me/photo` (≤~400 KB) and stored on the User as `profile_image`; `GET /auth/me` returns it so it persists across devices/reinstalls (local AsyncStorage kept as offline fallback)
+- [x] **Group member avatar sync** — group endpoints expose each member's `profile_image` as `image`; the group page renders real photos in the members strip, coupon sender rows, and members sheet (falls back to initials when unset)
 
 ### Design System
 - [x] Pastel category color system — centralized in `client/constants/categories.ts`; applied to category cards, Add Coupon selector, and coupon card backgrounds
@@ -147,38 +151,55 @@ client/
     (tabs)/
       _layout.tsx         — tab bar config (3 tabs: index, add, connections)
       index.tsx           — My Coupons: list, FAB, category filter, pull-to-refresh
-      add.tsx             — Add Coupon: form + 3-pill date picker + About modal
+      add.tsx             — Add Coupon: form + native date picker + live-masked balance input
       connections.tsx     — Groups: list, create group modal, opens GroupDetail
     group/
       [id].tsx            — Group page (redesigned): header, members strip, Share button, filter sheet, sender-attributed coupon cards
+    edit-profile.tsx      — Edit Profile: username + phone + profile photo (resize/upload via PUT /auth/me/photo)
   components/
     CSymbol.tsx           — C icon from logo-c.png asset (size prop)
     CoupletLogo.tsx       — wordmark: CSymbol + "OUPLET" text, size/tagline props
     SplashScreen.tsx      — reusable fade-in/scale splash overlay (isLoading + onComplete)
     CouponCard.tsx        — solid-color card with badge for used/expired
-    CouponDetail.tsx      — detail/edit modal + image picker + Share to Group picker
+    CouponDetail/         — coupon detail/edit (index + CouponDisplay, CouponEditForm, CouponHeader, DatePickerSheet); image picker, Share to Group, redeem modal
     GroupCard.tsx         — group summary card (name, member count, admin badge)
     GroupDetail.tsx       — members list + shared coupons + add/remove/revoke + pending invites
     NotificationPanel.tsx — slide-up notification panel (expiry alerts + group invite cards)
+    rn.tsx                — Text/TextInput wrappers with font scaling locked (allowFontScaling=false)
   context/
     AuthContext.tsx       — token storage, user state, login/logout
   services/
     api.ts                — all HTTP calls (coupons + groups + user search + auth sync)
     cognito.ts            — Cognito signUp/signIn via amazon-cognito-identity-js
   storage/
-    couponStorage.ts      — AsyncStorage helpers for codes and images
+    couponStorage.ts      — AsyncStorage helpers for codes, images, and local avatar fallback
+  utils/
+    format.ts             — money formatting: formatBalance + live input masking (formatAmountDisplay / parseAmountInput)
 
 server/src/
-  index.ts                — Express app setup, route registration
-  db.ts                   — DynamoDB Document Client + all db helper functions
+  app.ts                  — Express app setup + route registration (shared by local + Lambda)
+  index.ts                — local dev entry (listens on PORT via ts-node-dev)
+  lambda.ts               — AWS Lambda entry; branches HTTP (serverless-http) vs WebSocket on requestContext
+  lib/
+    dynamo.ts             — DynamoDB Document Client + table-name config
+    cognito.ts            — Cognito JWT verifier setup
+    websocket.ts          — API Gateway Management client; pushToUser / code-stripping notify helpers
   middleware/
     auth.ts               — Cognito JWT verification via aws-jwt-verify
+  repositories/           — per-entity DynamoDB data access (split from the old db.ts)
+    users.ts              — users incl. phone_number + profile_image (setUserProfileImage)
+    coupons.ts · groups.ts · notifications.ts · connections.ts
   routes/
-    auth.ts               — POST /auth/sync, GET /auth/me
+    auth.ts               — POST /auth/sync, GET /auth/me, PATCH /auth/me (profile), PUT /auth/me/photo (profile image)
     coupons.ts            — CRUD for coupon metadata (auth-protected)
-    groups.ts             — CRUD for groups + members + coupon sharing + invitation routes (auth-protected)
+    groups.ts             — CRUD for groups + members + coupon sharing + invitations + PUT /groups/:id/photo (auth-protected)
     invitations.ts        — GET /invitations (pending invites for current user)
+    notifications.ts      — GET /notifications, mark-read, delete
     users.ts              — GET /users/search
+  ws/
+    handler.ts            — WebSocket $connect / $disconnect / $default (JWT auth, connection store, coupon relay)
+  services/
+    crawler.ts            — store/coupon metadata crawler
 ```
 
 ### Real-time Notifications & Coupon Relay (WebSocket)
