@@ -40,6 +40,7 @@ export default function LoginScreen() {
         email: data.email,
         username: data.username,
         phone_number: data.phone_number,
+        profile_image: data.profile_image ?? null,
       });
       router.replace('/(tabs)');
     } catch (err: any) {

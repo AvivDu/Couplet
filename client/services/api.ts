@@ -131,6 +131,8 @@ export async function login(identifier: string, password: string) {
   return { data: { token, ...data } };
 }
 
+export const getMe = () => api.get<AuthUserData>('/auth/me');
+
 // Coupons (metadata only)
 export interface CouponMeta {
   coupon_id: string;

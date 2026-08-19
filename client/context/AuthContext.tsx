@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { setTokenCache, setUnauthorizedHandler } from '../services/api';
+import { getMe, setTokenCache, setUnauthorizedHandler } from '../services/api';
 import { saveUserAvatar, getUserAvatar } from '../storage/couponStorage';
 
 interface AuthUser {
@@ -44,6 +44,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setToken(storedToken);
           const parsed = JSON.parse(storedUser) as AuthUser;
           setUser({ ...parsed, profile_image: cachedAvatar ?? null });
+
+          // Background-sync from server so profile changes made on another device
+          // (e.g. a new profile photo) are reflected without requiring a re-login.
+          getMe().then(({ data }) => {
+            if (data.profile_image) saveUserAvatar(data.profile_image);
+            setUser(prev => prev ? { ...prev, ...data } : prev);
+          }).catch(() => {});
         }
       } finally {
         setIsLoading(false);
