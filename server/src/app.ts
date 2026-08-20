@@ -7,6 +7,7 @@ import groupsRouter from './routes/groups';
 import invitationsRouter from './routes/invitations';
 import usersRouter from './routes/users';
 import notificationsRouter from './routes/notifications';
+import gmailRouter from './routes/gmail';
 
 const app = express();
 
@@ -20,5 +21,6 @@ app.use('/groups', groupsRouter);
 app.use('/invitations', invitationsRouter);
 app.use('/users', usersRouter);
 app.use('/notifications', notificationsRouter);
+app.use('/gmail', gmailRouter);
 
 export default app;

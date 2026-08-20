@@ -2,7 +2,14 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { cognitoSignUp, cognitoSignIn } from './cognito';
+import {
+  cognitoSignUp,
+  cognitoSignIn,
+  cognitoConfirmSignUp,
+  cognitoResendConfirmationCode,
+  cognitoForgotPassword,
+  cognitoConfirmPassword,
+} from './cognito';
 
 function resolveBaseUrl() {
   if (process.env.EXPO_PUBLIC_API_URL) {
@@ -41,7 +48,7 @@ export function buildNotificationsSocketUrl(token: string): string | null {
   return `${WS_URL}${sep}token=${encodeURIComponent(token)}`;
 }
 
-const api = axios.create({ baseURL: BASE_URL });
+export const api = axios.create({ baseURL: BASE_URL });
 
 // In-memory token cache — avoids a SecureStore disk read on every API call.
 // Populated on first interceptor miss, explicitly set on login/register, cleared on signOut.
@@ -78,6 +85,14 @@ type AuthUserData = { userId: string; username: string; email: string; phone_num
 const syncUser = (email: string, username: string, phone_number: string) =>
   api.post<AuthUserData>('/auth/sync', { email, username, phone_number });
 
+// Creates the user metadata record after a Cognito signup is confirmed.
+// Exported as its own step so the login-time confirmation-recovery flow can
+// retry it independently of confirming the signup code.
+export async function finishSync(email: string, username: string, phone_number: string) {
+  const { data } = await syncUser(email, username, phone_number);
+  return data;
+}
+
 // Resolves a phone number to its account email via the public endpoint.
 // Returns null if no account owns that phone (404).
 export async function resolvePhone(phone: string): Promise<string | null> {
@@ -92,6 +107,9 @@ export async function resolvePhone(phone: string): Promise<string | null> {
   }
 }
 
+// Creates the Cognito account only. The account is left UNCONFIRMED — the
+// caller must confirm the emailed code (confirmAndSignIn) before the user
+// can sign in or be synced to our DB.
 export async function register(email: string, username: string, password: string, phone: string) {
   // Phone uniqueness isn't enforced by Cognito (it's our own field), so check
   // before creating the Cognito user to avoid an orphaned account.
@@ -99,11 +117,22 @@ export async function register(email: string, username: string, password: string
   if (existingEmail) {
     throw new Error('That phone number is already in use.');
   }
-  const token = await cognitoSignUp(email, password, username);
+  await cognitoSignUp(email, password, username);
+}
+
+export async function resendConfirmationCode(email: string): Promise<void> {
+  await cognitoResendConfirmationCode(email);
+}
+
+// Confirms a Cognito signup code and signs the now-confirmed user in.
+// Does not touch our DB — call finishSync separately to create/fetch the
+// user metadata record.
+export async function confirmAndSignIn(email: string, code: string, password: string) {
+  await cognitoConfirmSignUp(email, code);
+  const { token, username } = await cognitoSignIn(email, password);
   setTokenCache(token);
   await SecureStore.setItemAsync('authToken', token);
-  const { data } = await syncUser(email, username, phone);
-  return { data: { token, ...data } };
+  return { token, username };
 }
 
 export async function login(identifier: string, password: string) {
@@ -118,7 +147,7 @@ export async function login(identifier: string, password: string) {
     email = resolved;
   }
 
-  const token = await cognitoSignIn(email, password);
+  const { token } = await cognitoSignIn(email, password);
   setTokenCache(token);
   // Persist token and fetch user metadata in parallel — the network call
   // uses the token directly so it doesn't depend on the disk write completing.
@@ -129,6 +158,14 @@ export async function login(identifier: string, password: string) {
     ),
   ]);
   return { data: { token, ...data } };
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  await cognitoForgotPassword(email);
+}
+
+export async function confirmPasswordReset(email: string, code: string, newPassword: string): Promise<void> {
+  await cognitoConfirmPassword(email, code, newPassword);
 }
 
 export const getMe = () => api.get<AuthUserData>('/auth/me');

@@ -537,6 +537,13 @@ export default function HomeScreen() {
               <View style={styles.drawerBody}>
                 <TouchableOpacity
                   style={styles.drawerItem}
+                  onPress={() => closeDrawer(() => router.push('/gmail-scan'))}
+                >
+                  <Ionicons name="mail-outline" size={20} color="#1A2332" />
+                  <Text style={styles.drawerItemText}>Scan Gmail for Coupons</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.drawerItem}
                   onPress={() => { closeDrawer(); setTimeout(() => setAboutVisible(true), 250); }}
                 >
                   <Ionicons name="information-circle-outline" size={20} color="#1A2332" />

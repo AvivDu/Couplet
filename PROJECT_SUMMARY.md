@@ -1,7 +1,7 @@
 # Couplet — Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-06-03 (Server-side profile photos + group avatar sync, cross-device profile image sync on startup, balance thousand-separator formatting with live input masking, redeem/add/edit modal keyboard avoidance + tap-to-dismiss, group back-button + swipe-down navigation fixes, Android UI polish — SafeAreaView + font scaling fix)
+**Last updated:** 2026-08-21 (Gmail Coupon Scanner — added an Expo-Go-compatible browser-bridge OAuth flow alongside the original native/Dev-Client one, so Gmail connect works without a native build)
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device — the server holds metadata only.
 
@@ -27,6 +27,7 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Logout clears token and redirects to auth flow
 - [x] Password strength validation (8+ chars, uppercase, lowercase, number, symbol) with real-time match indicator
 - [x] **Cross-device profile image sync** — on app startup, `AuthContext` background-fetches `GET /auth/me` so profile photos set on another device appear without re-login (stale-while-revalidate: cached avatar shown immediately, server value applied silently)
+- [x] **Email verification at signup** — Cognito confirm-signup flow (client-direct, `amazon-cognito-identity-js`); account stays `UNCONFIRMED` until the emailed code is entered on the register screen; logging in on an unconfirmed account auto-resends the code and recovers into the same confirm step instead of dead-ending (`client/app/(auth)/login.tsx`, `register.tsx`, `client/components/ConfirmCodeStep.tsx`)
 
 ### Coupon Management (Client)
 - [x] Add new coupon — name, code, category, expiration date, balance
@@ -239,6 +240,17 @@ server/src/
 - [ ] **Rate limiting** — Add `express-rate-limit` to auth endpoints to prevent brute-force.
 - [ ] **Input validation on server** — Some routes lack validation (balance should be ≥ 0, status should be enum-checked). Add `zod` or `express-validator`.
 - [x] **Production deploy** — Server running on Lambda via API Gateway at `https://ij27gn1sg9.execute-api.us-east-1.amazonaws.com`, client `EXPO_PUBLIC_API_URL` set.
+
+### Gmail Coupon Scanner (Phase 1 — MVP)
+- [x] `POST /gmail/scan` — refreshes the access token, runs `users.messages.list` with a keyword `q` filter (Hebrew + English coupon/voucher/promo/discount terms, `newer_than:30d` on first run then `after:<last_scan>`), fetches From/Subject/Date only for matches, upserts keyed by `user_id + message_id` so re-scans don't duplicate
+- [x] `GET /gmail/candidates` — returns the stored list
+- [x] Client: "Scan Gmail for Coupons" in the settings drawer → `client/app/gmail-scan.tsx` (Connect Gmail / Scan now / candidate list, each row: sender, subject, date)
+- [x] **Two coexisting connect flows**, both landing on the same `Couplet-GmailConnections` table (candidates live as a list field on the same row — simpler than a second table for the small volumes this feature sees; `oauth_client: 'native' | 'web'` records which Google OAuth client issued each stored refresh token, since Google rejects refreshing it with the other client's credentials):
+  - **Browser bridge (works in plain Expo Go)** — `POST /gmail/connect/start` (`server/src/lib/oauthState.ts`) mints a signed, 10-min state token (HMAC-SHA256, reuses `GMAIL_TOKEN_ENCRYPTION_KEY`) and returns a ready-to-open Google consent URL; the client opens it via `WebBrowser.openBrowserAsync` (`client/services/gmail.ts` → `connectGmailViaBrowser`). Google redirects to the public `GET /gmail/callback` (registered before `router.use(authMiddleware)` in `server/src/routes/gmail.ts` so it stays unauthenticated — identifies the user via the state token instead of a session), which does the full token exchange server-side and renders a plain HTML result page (`server/src/lib/oauthResultPage.ts`). The client has no synchronous success signal, so `client/app/gmail-scan.tsx` re-checks `GET /gmail/status` on `useFocusEffect` *and* on an `AppState` `'active'` listener (mirroring the pattern in `NotificationsContext.tsx`) — covers both "tapped Done in the browser" and "switched back via the app-switcher."
+  - **Native (needs a Dev Client build)** — the original PKCE flow, `POST /gmail/connect` with a custom `cuplet://oauth2redirect` scheme straight back into the app; unusable from Expo Go (can't own a custom URL scheme), kept for later. `client/eas.json` has a `development` build profile (`eas build --profile development --platform android`, cloud build, no local Android Studio/Xcode needed).
+  - Requires a **second Google OAuth client** (Web application type — the existing Desktop-app client can't register a plain `https://` redirect URI) with its own `GOOGLE_WEB_CLIENT_ID`/`GOOGLE_WEB_CLIENT_SECRET`/`GOOGLE_WEB_REDIRECT_URI` env vars, alongside the existing native `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`. `server/src/lib/googleOAuth.ts` now takes a `ClientCredentials` param (`credentialsFor('native' | 'web')`) instead of hardcoding one client.
+- [ ] Phase 2: AI-based coupon-code extraction from the candidate emails
+- [ ] Phase 3: push notifications for new candidates found
 
 ### Future / Optional
 

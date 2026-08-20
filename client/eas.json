@@ -1,0 +1,21 @@
+{
+  "cli": {
+    "version": ">= 12.0.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://ij27gn1sg9.execute-api.us-east-1.amazonaws.com",
+        "EXPO_PUBLIC_COGNITO_USER_POOL_ID": "us-east-1_gVgsfA5EG",
+        "EXPO_PUBLIC_COGNITO_CLIENT_ID": "2e87nv9kl9psnludeim1i1f355",
+        "EXPO_PUBLIC_WS_URL": "wss://699dyq8ji4.execute-api.us-east-1.amazonaws.com/prod",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "727251533426-76daplrr58paecn0nfm4mapr5ktkmi10.apps.googleusercontent.com"
+      }
+    }
+  }
+}
