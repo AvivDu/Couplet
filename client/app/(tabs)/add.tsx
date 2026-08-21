@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   View,
   TouchableOpacity,
@@ -23,9 +23,11 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { createCoupon } from '../../services/api';
 import { saveCouponCode, saveCouponImage } from '../../storage/couponStorage';
 import { CATEGORY_COLORS } from '../../constants/categories';
+import { matchGeneralGiftCard, type GeneralGiftCard } from '../../constants/generalGiftCards';
 import { maskBalanceInput } from '../../utils/format';
 
 const ADD_CATEGORIES: { label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { label: 'General',     icon: 'gift-outline'                },
   { label: 'Food',        icon: 'restaurant-outline'          },
   { label: 'Groceries',   icon: 'cart-outline'                },
   { label: 'Fashion',     icon: 'shirt-outline'               },
@@ -48,6 +50,8 @@ export default function AddCouponScreen() {
   const [cropUri, setCropUri] = useState<string | null>(null);
   const [imageNatSize, setImageNatSize] = useState<{ w: number; h: number } | null>(null);
   const [giftUrl, setGiftUrl] = useState('');
+  const [matchedGeneralCard, setMatchedGeneralCard] = useState<GeneralGiftCard | null>(null);
+  const categoryTouchedRef = useRef(false);
   const router = useRouter();
 
   useFocusEffect(
@@ -59,8 +63,24 @@ export default function AddCouponScreen() {
       setBalance('');
       setImageUri(null);
       setGiftUrl('');
+      setMatchedGeneralCard(null);
+      categoryTouchedRef.current = false;
     }, [])
   );
+
+  function handleCouponNameChange(text: string) {
+    setCouponName(text);
+    const match = matchGeneralGiftCard(text);
+    setMatchedGeneralCard(match);
+    if (match && !categoryTouchedRef.current) {
+      setCategory('General');
+    }
+  }
+
+  function handleCategoryPress(label: string) {
+    categoryTouchedRef.current = true;
+    setCategory(label);
+  }
 
   const expiryString = expiryDate
     ? expiryDate.toISOString().split('T')[0]
@@ -157,9 +177,14 @@ export default function AddCouponScreen() {
               placeholder="Coupon Name"
               placeholderTextColor="#A8997A"
               value={couponName}
-              onChangeText={setCouponName}
+              onChangeText={handleCouponNameChange}
             />
           </View>
+          {matchedGeneralCard && (
+            <Text style={styles.matchHint}>
+              Recognized as {matchedGeneralCard.canonicalName} → classified as General
+            </Text>
+          )}
 
           {/* Coupon Code */}
           <View style={styles.inputWrap}>
@@ -268,7 +293,7 @@ export default function AddCouponScreen() {
                 <TouchableOpacity
                   key={cat.label}
                   style={[styles.categoryCard, { borderColor: color }, active && { backgroundColor: color }]}
-                  onPress={() => setCategory(cat.label)}
+                  onPress={() => handleCategoryPress(cat.label)}
                   activeOpacity={0.75}
                 >
                   <Ionicons name={cat.icon} size={24} color="#444444" />
@@ -371,6 +396,12 @@ const styles = StyleSheet.create({
     color: '#A8997A',
     letterSpacing: 0.5,
     marginBottom: 10,
+  },
+  matchHint: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#E8604C',
+    marginBottom: 20,
   },
   dateRow: {
     marginBottom: 28,
