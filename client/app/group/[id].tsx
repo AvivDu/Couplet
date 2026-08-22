@@ -27,17 +27,21 @@ import {
   searchUsers,
   cancelInvitation,
   shareToGroup,
+  rescueCode,
   getCoupons,
   renameGroup,
   setGroupPhoto,
   deleteGroup,
   getNotifications,
+  clearNotificationCode,
 } from '../../services/api';
 import type { GroupDetail as GroupDetailType, GroupMember, CouponMeta, ContactMatch, GroupCoupon } from '../../services/api';
 
 type ContactMatchWithName = ContactMatch & { contactName: string };
 import { getCouponCode, saveCouponCode } from '../../storage/couponStorage';
+import { startShareSession } from '../../services/webrtc';
 import { useAuth } from '../../context/AuthContext';
+import { useNotifications } from '../../context/NotificationsContext';
 import CouponDetail from '../../components/CouponDetail';
 import type { CouponWithCode } from '../../components/CouponDetail/types';
 import { CATEGORY_DEFS, SORT_OPTIONS, sortCoupons, type SortOption } from '../../constants/categories';
@@ -65,6 +69,7 @@ export default function GroupScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const groupId = typeof id === 'string' ? id : Array.isArray(id) ? id[0] : null;
   const { user } = useAuth();
+  const { sendSignal } = useNotifications();
 
   const [group, setGroup] = useState<GroupDetailType | null>(null);
   const [loading, setLoading] = useState(true);
@@ -322,9 +327,24 @@ export default function GroupScreen() {
     setSharingCouponId(couponId);
     try {
       const code = await getCouponCode(couponId);
-      // The server relays the code live to online members and stores it for
-      // offline ones; recipients save it silently. We only send metadata here.
-      await shareToGroup(groupId, couponId, code);
+      // Offline members get the code stored server-side as a fallback; online
+      // members get it via a direct WebRTC data channel negotiated below —
+      // the server never sees the code for them.
+      const { data } = await shareToGroup(groupId, couponId, code);
+      console.log(
+        '[share] online recipients:', data.online_recipient_ids ?? [],
+        '— offline members get the encrypted DB fallback instead'
+      );
+      if (code) {
+        // Tolerate a server that predates online_recipient_ids: the share
+        // itself already succeeded, so degrade to "no P2P targets" rather
+        // than throwing and reporting a failed share to the user.
+        (data.online_recipient_ids ?? []).forEach(uid =>
+          startShareSession(sendSignal, uid, couponId, code, () => {
+            rescueCode(groupId, couponId, uid, code).catch(() => {});
+          })
+        );
+      }
       await fetchGroup();
       setCouponPickerVisible(false);
     } catch (err: any) {
@@ -409,6 +429,8 @@ export default function GroupScreen() {
           if (delivery?.coupon_code) {
             await saveCouponCode(coupon.coupon_id, delivery.coupon_code);
             code = delivery.coupon_code;
+            // Clear the fallback code server-side now that it's been consumed locally.
+            await clearNotificationCode(delivery.notification_id).catch(() => {});
           }
         } catch {
           // network failure — open modal with null code rather than crashing

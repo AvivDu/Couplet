@@ -20,11 +20,13 @@ import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import { getCouponImage } from '../../storage/couponStorage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getGroups, shareToGroup, getCouponLocations, updateCoupon } from '../../services/api';
+import { getGroups, shareToGroup, rescueCode, getCouponLocations, updateCoupon } from '../../services/api';
 import type { GroupMeta, StoreLocation, CouponMeta } from '../../services/api';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants/categories';
 import type { CouponWithCode } from './types';
 import { formatBalance, maskBalanceInput } from '../../utils/format';
+import { startShareSession } from '../../services/webrtc';
+import { useNotifications } from '../../context/NotificationsContext';
 
 interface CouponDisplayProps {
   coupon: CouponWithCode;
@@ -50,6 +52,7 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
   const [redeemModalVisible, setRedeemModalVisible] = React.useState(false);
   const [partialAmount, setPartialAmount] = React.useState('');
   const [partialLoading, setPartialLoading] = React.useState(false);
+  const { sendSignal } = useNotifications();
 
   React.useEffect(() => {
     getCouponImage(coupon.coupon_id).then(uri => {
@@ -75,9 +78,24 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
   async function handleShareToGroupConfirm(group: GroupMeta) {
     setSharingGroupId(group.group_id);
     try {
-      // The server relays the code live to online members and stores it for
-      // offline ones; recipients save it silently. We only send metadata here.
-      await shareToGroup(group.group_id, coupon.coupon_id, coupon.code);
+      // Offline members get the code stored server-side as a fallback; online
+      // members get it via a direct WebRTC data channel negotiated below —
+      // the server never sees the code for them.
+      const { data } = await shareToGroup(group.group_id, coupon.coupon_id, coupon.code);
+      console.log(
+        '[share] online recipients:', data.online_recipient_ids ?? [],
+        '— offline members get the encrypted DB fallback instead'
+      );
+      if (coupon.code) {
+        // Tolerate a server that predates online_recipient_ids: the share
+        // itself already succeeded, so degrade to "no P2P targets" rather
+        // than throwing and reporting a failed share to the user.
+        (data.online_recipient_ids ?? []).forEach(uid =>
+          startShareSession(sendSignal, uid, coupon.coupon_id, coupon.code!, () => {
+            rescueCode(group.group_id, coupon.coupon_id, uid, coupon.code!).catch(() => {});
+          })
+        );
+      }
       setGroupPickerVisible(false);
       Alert.alert('Shared!', `Coupon shared to "${group.name}".`);
     } catch (err: any) {

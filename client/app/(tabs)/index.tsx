@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, TextInput } from '../../components/rn';
 import { Ionicons } from '@expo/vector-icons';
 import { CATEGORY_COLORS } from '../../constants/categories';
-import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, type CouponMeta } from '../../services/api';
+import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, clearNotificationCode, type CouponMeta } from '../../services/api';
 import { getCouponCode, saveCouponCode, deleteCouponCode, deleteCouponImage } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationsContext';
@@ -140,7 +140,12 @@ export default function HomeScreen() {
       const codeDeliveries = groupShareNotifs.filter(n => n.coupon_id && n.coupon_code);
       if (codeDeliveries.length > 0) {
         await Promise.all(
-          codeDeliveries.map(n => saveCouponCode(n.coupon_id!, n.coupon_code!))
+          codeDeliveries.map(async n => {
+            await saveCouponCode(n.coupon_id!, n.coupon_code!);
+            // Clear the fallback code server-side now that it's been consumed
+            // locally — faster and more precise than waiting on the 72h TTL.
+            await clearNotificationCode(n.notification_id).catch(() => {});
+          })
         );
         console.log('[DEBUG notif] saved codes for coupon_ids:', codeDeliveries.map(n => n.coupon_id));
       }

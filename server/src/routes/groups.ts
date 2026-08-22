@@ -3,9 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { createGroup, getGroupsByUser, getGroupById, removeMemberFromGroup, leaveGroup, addCouponToGroup, removeCouponFromGroup, removeCouponsByOwnerFromGroup, addPendingMemberToGroup, removePendingMemberFromGroup, acceptGroupInvitation, renameGroup, setGroupImage, deleteGroup } from '../repositories/groups';
 import { findUserByEmail, findUserByPhone, findUserById, findUsersByQuery } from '../repositories/users';
 import { getCouponById } from '../repositories/coupons';
-import { notifyUser } from '../repositories/notifications';
+import { notifyUser, rescueCode } from '../repositories/notifications';
 import { getConnectionsForUser } from '../repositories/connections';
-import { pushToUser } from '../lib/websocket';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -263,34 +262,87 @@ router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): P
   const sharer = await findUserById(req.userId!);
   const sharerName = sharer?.username ?? 'A member';
   const otherMembers = group.user_id_list.filter(uid => uid !== req.userId!);
-  await Promise.all(
-    otherMembers.map(async uid => {
-      // Per-recipient decision: online members get the code pushed live (never
-      // stored); offline members get it stored as a fallback for next app open.
-      const online = (await getConnectionsForUser(uid)).length > 0;
-      if (online && coupon_code) {
-        await pushToUser(uid, { event: 'coupon_transfer', coupon_id: coupon.coupon_id, code: coupon_code });
-      }
-      await notifyUser({
-        user_id: uid,
-        type: 'group_share',
-        title: `New coupon in "${group.name}"`,
-        body: `${sharerName} shared a ${coupon.store_name} coupon`,
-        read: false,
-        group_id: group.group_id,
-        group_name: group.name,
-        coupon_id: coupon.coupon_id,
-        // TODO(P2P): remove once WebRTC data-channel transfer (Stage 2) lands.
-        // The code is delivered live via the WebSocket coupon_transfer relay; we
-        // persist it ONLY for recipients who were offline at share time, as a
-        // fallback they pick up on next fetch. Online recipients store nothing.
-        // Never included in the live WS notification payload (notifyUser strips it).
-        coupon_code: online ? undefined : (coupon_code ?? undefined),
-      });
-    })
-  );
+  const online_recipient_ids: string[] = [];
+  try {
+    await Promise.all(
+      otherMembers.map(async uid => {
+        // Per-recipient decision: online members get the code via a WebRTC data
+        // channel, negotiated client-side after this response (see
+        // online_recipient_ids below) — the code never touches this request.
+        // Offline members get it stored as a fallback for next app open.
+        const online = (await getConnectionsForUser(uid)).length > 0;
+        if (online) online_recipient_ids.push(uid);
+        console.log('[share] recipient=%s online=%s persisting_code=%s', uid, online, !online && !!coupon_code);
+        await notifyUser({
+          user_id: uid,
+          type: 'group_share',
+          title: `New coupon in "${group.name}"`,
+          body: `${sharerName} shared a ${coupon.store_name} coupon`,
+          read: false,
+          group_id: group.group_id,
+          group_name: group.name,
+          coupon_id: coupon.coupon_id,
+          // Persisted (encrypted, TTL'd) only for recipients who were offline
+          // at share time. Online recipients get it via RTCDataChannel — never
+          // included here, and never sent over the live WebSocket.
+          coupon_code: online ? undefined : (coupon_code ?? undefined),
+        });
+      })
+    );
+  } catch (err: any) {
+    // Without this the rejection escapes an async handler, and Express 4
+    // leaves the request hanging with no response and nothing logged.
+    // Most likely cause: NOTIFICATION_CODE_KEY missing/invalid.
+    console.error('[share] notifying recipients failed:', err?.stack ?? err);
+    res.status(500).json({ error: `Coupon shared, but notifying members failed: ${err?.message ?? err}` });
+    return;
+  }
 
-  res.json(updated);
+  console.log('[share] coupon=%s group=%s online_recipients=%j', coupon.coupon_id, group.group_id, online_recipient_ids);
+  res.json({ ...updated, online_recipient_ids });
+});
+
+// POST /groups/:id/coupons/:couponId/rescue-code — sharer-triggered fallback
+// when a WebRTC P2P negotiation to an online recipient failed. Persists the
+// code (encrypted, TTL'd) onto that recipient's existing group_share
+// notification, same mechanism as the offline-fallback path.
+router.post('/:id/coupons/:couponId/rescue-code', async (req: AuthRequest, res: Response): Promise<void> => {
+  const { recipient_user_id, coupon_code } = req.body;
+  if (!recipient_user_id || !coupon_code) {
+    res.status(400).json({ error: 'recipient_user_id and coupon_code are required' });
+    return;
+  }
+
+  const group = await getGroupById(req.params.id);
+  if (!group) {
+    res.status(404).json({ error: 'Group not found' });
+    return;
+  }
+  if (!group.user_id_list.includes(req.userId!)) {
+    res.status(403).json({ error: 'You are not a member of this group' });
+    return;
+  }
+  if (!group.user_id_list.includes(recipient_user_id)) {
+    res.status(400).json({ error: 'recipient is not a member of this group' });
+    return;
+  }
+
+  const coupon = await getCouponById(req.params.couponId);
+  if (!coupon) {
+    res.status(404).json({ error: 'Coupon not found' });
+    return;
+  }
+  if (coupon.owner_id !== req.userId!) {
+    res.status(403).json({ error: 'You do not own this coupon' });
+    return;
+  }
+
+  const rescued = await rescueCode(recipient_user_id, group.group_id, coupon.coupon_id, coupon_code);
+  if (!rescued) {
+    res.status(404).json({ error: 'No matching group_share notification to rescue' });
+    return;
+  }
+  res.status(204).send();
 });
 
 // DELETE /groups/:id/coupons/:couponId — revoke a coupon from a group

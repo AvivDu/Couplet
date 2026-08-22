@@ -1,4 +1,4 @@
-import { PutCommand, DeleteCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { PutCommand, DeleteCommand, QueryCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb, CONNECTIONS_TABLE } from '../lib/dynamo';
 
 // Maps an open WebSocket connection to the authenticated user. PK is
@@ -26,6 +26,16 @@ export async function removeConnection(connectionId: string): Promise<void> {
     TableName: CONNECTIONS_TABLE,
     Key: { connection_id: connectionId },
   }));
+}
+
+// Reverse lookup used by the WebRTC signaling relay ($default route), which
+// only has the sender's connection_id and needs to know who they are.
+export async function getUserIdByConnectionId(connectionId: string): Promise<string | null> {
+  const result = await ddb.send(new GetCommand({
+    TableName: CONNECTIONS_TABLE,
+    Key: { connection_id: connectionId },
+  }));
+  return (result.Item as Connection | undefined)?.user_id ?? null;
 }
 
 export async function getConnectionsForUser(userId: string): Promise<string[]> {

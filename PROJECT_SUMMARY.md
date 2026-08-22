@@ -1,7 +1,7 @@
 # Couplet — Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-06-03 (Server-side profile photos + group avatar sync, cross-device profile image sync on startup, balance thousand-separator formatting with live input masking, redeem/add/edit modal keyboard avoidance + tap-to-dismiss, group back-button + swipe-down navigation fixes, Android UI polish — SafeAreaView + font scaling fix)
+**Last updated:** 2026-08-20 (Stage 2 P2P coupon transfer — true WebRTC data channel for online recipients via a hidden-WebView bridge that keeps the app running in plain Expo Go, WS `$default` route upgraded to a signaling relay, encrypted + TTL'd DB fallback/rescue path)
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device — the server holds metadata only.
 
@@ -133,9 +133,14 @@ Then go to **Lambda → couplet-server → Upload from → .zip file** and uploa
 ### Run the Client (Development)
 ```bash
 cd client
-npx expo start
+npm start
 ```
 Scan the QR code with Expo Go. The app talks to the Lambda backend (via API Gateway) using `EXPO_PUBLIC_API_URL` in `client/.env` (gitignored).
+
+P2P coupon transfer deliberately uses browser WebRTC inside a hidden WebView rather than `react-native-webrtc`, specifically so the project keeps running in Expo Go — the native module would force a custom dev client, which on iOS needs a Mac or a paid Apple Developer account. Verified on-device: `react-native-webview` is in Expo SDK 54's `bundledNativeModules.json` (13.15.0), and WebRTC works inside it (secure context via `baseUrl: 'https://localhost'`, SDP + ICE gathering confirmed). Install WebView with `npx expo install react-native-webview`, never plain `npm install`, so the SDK-pinned version is kept.
+
+### Server env var for the coupon-code encryption key
+`NOTIFICATION_CODE_KEY` — 32-byte base64 key used by `server/src/lib/codeCrypto.ts` to encrypt coupon codes at rest (offline-fallback + P2P-rescue notification rows). Generate once with `openssl rand -base64 32` and set it manually in the Lambda's environment variables (no IaC in this repo). Also enable DynamoDB TTL on the Notifications table for the `code_expires_at` attribute (manual console step) so unaccepted fallback codes expire after 72h.
 
 ---
 
@@ -166,11 +171,14 @@ client/
     GroupDetail.tsx       — members list + shared coupons + add/remove/revoke + pending invites
     NotificationPanel.tsx — slide-up notification panel (expiry alerts + group invite cards)
     rn.tsx                — Text/TextInput wrappers with font scaling locked (allowFontScaling=false)
+    WebRTCBridge.tsx      — hidden 1x1 WebView hosting the P2P peer connections (root-mounted, crash-remounting)
   context/
     AuthContext.tsx       — token storage, user state, login/logout
   services/
     api.ts                — all HTTP calls (coupons + groups + user search + auth sync)
     cognito.ts            — Cognito signUp/signIn via amazon-cognito-identity-js
+    webrtc.ts             — Stage-2 P2P bridge driver: session/callback map, injectJavaScript command channel
+    webrtcBridgeHtml.ts   — inline WebView page holding the real RTCPeerConnections (ICE buffering, ack/timeout)
   storage/
     couponStorage.ts      — AsyncStorage helpers for codes, images, and local avatar fallback
   utils/
@@ -184,6 +192,7 @@ server/src/
     dynamo.ts             — DynamoDB Document Client + table-name config
     cognito.ts            — Cognito JWT verifier setup
     websocket.ts          — API Gateway Management client; pushToUser / code-stripping notify helpers
+    codeCrypto.ts         — AES-256-GCM encrypt/decrypt for at-rest coupon codes (NOTIFICATION_CODE_KEY)
   middleware/
     auth.ts               — Cognito JWT verification via aws-jwt-verify
   repositories/           — per-entity DynamoDB data access (split from the old db.ts)
@@ -197,7 +206,7 @@ server/src/
     notifications.ts      — GET /notifications, mark-read, delete
     users.ts              — GET /users/search
   ws/
-    handler.ts            — WebSocket $connect / $disconnect / $default (JWT auth, connection store, coupon relay)
+    handler.ts            — WebSocket $connect / $disconnect / $default (JWT auth, connection store, WebRTC signaling relay)
   services/
     crawler.ts            — store/coupon metadata crawler
 ```
@@ -212,7 +221,7 @@ server/src/
 - [x] **Local OS notifications (Tier 2, `expo-notifications`)** — in-app banner when the app is on-screen, real system/tray notification (sound) when backgrounded/not focused; works in Expo Go (no dev build)
 - [x] **Catch-up on resume** — returning to the app re-polls `GET /notifications`, fires OS notifications for items missed while suspended (capped 3 + summary), refreshes badge; cold-start baseline suppresses spam for pre-existing unread
 - [x] **OS-notification tap routing** — opens the app, deletes the notification, deep-links to the group (same handler Tier 3 will reuse)
-- [x] **Stage-1 coupon-code transfer** — the **server** relays the code on share: per-recipient it pushes `coupon_transfer` live to online members (stored nothing) and persists `coupon_code` **only for offline members** (TODO-marked fallback). The recipient saves the code **silently** — a single `group_share` notification is the only user-facing alert per shared coupon. Removed entirely at Stage 2 (WebRTC)
+- [x] **Stage-2 coupon-code transfer (WebRTC)** — the share response includes `online_recipient_ids`; the sharer's client negotiates an `RTCPeerConnection`/`RTCDataChannel` per online recipient (`client/services/webrtc.ts`), with the server relaying only opaque SDP offer/answer + ICE candidates via the WS `$default` route (`webrtc-offer`/`webrtc-answer`/`webrtc-ice-candidate`/`webrtc-cancel`, `server/src/ws/handler.ts`) — the code itself never touches the server for online recipients. Offline recipients still get `coupon_code` persisted on their `group_share` notification, now AES-256-GCM encrypted at rest (`server/src/lib/codeCrypto.ts`) with a 72h TTL (`code_expires_at`); the same persistence path doubles as a rescue fallback (`POST /groups/:id/coupons/:couponId/rescue-code`) when a P2P negotiation to an online recipient fails (no TURN server — STUN only). Consumed codes are cleared immediately via `DELETE /notifications/:id/code`. The recipient saves the code **silently** — a single `group_share` notification is the only user-facing alert per shared coupon. The peer connections run inside a hidden 1×1 WebView mounted at the app root (`client/components/WebRTCBridge.tsx` + `client/services/webrtcBridgeHtml.ts`), driven over an `injectJavaScript`/`postMessage` bridge — this keeps the whole app on plain Expo Go, no native build required
 - [x] Resilient: with `EXPO_PUBLIC_WS_URL` unset the socket no-ops and the app falls back to poll-on-focus
 - Setup: create the `Couplet-Connections` table + GSI, a WebSocket API (routes `$connect`/`$disconnect`/`$default`, route selection `$request.body.action`) → same Lambda; set `DYNAMODB_CONNECTIONS_TABLE`, `WS_API_ID`/`WS_STAGE` (server) + `EXPO_PUBLIC_WS_URL` (client)
 
@@ -222,7 +231,7 @@ server/src/
 
 ### Core Features
 
-- [ ] **True P2P coupon transfer (Stage 2)** — Stage 1 is done: the code is relayed ephemerally over the WebSocket (never stored), delivered live when both devices are online. Stage 2 replaces the relay with a **WebRTC data channel** so the code never transits the server at all (WS becomes signaling-only). Requires leaving Expo Go for a dev build (`react-native-webrtc` + STUN/TURN). Also still TODO: relay the coupon **image**, and offline store-and-forward.
+- [x] **True P2P coupon transfer (Stage 2)** — done: WS is signaling-only, code travels via `RTCDataChannel`. Still TODO: relay the coupon **image** over the same channel; a TURN server (currently STUN-only, so P2P can fail behind symmetric/carrier-grade NAT — mitigated by the encrypted rescue-code fallback, not solved).
 - [ ] **Expiration notifications** — Server should check expiration dates and fire push notifications before coupons expire via **AWS SNS** (Phase 3).
 - [ ] **Coupon code type selector** — When adding a coupon, let users specify: text code / barcode / QR code, so the detail screen can render it appropriately.
 - [ ] **Group admin transfer** — Allow admin to hand off the admin role to another member. Currently admin is fixed at creation.

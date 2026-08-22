@@ -223,8 +223,24 @@ export const addMember = (groupId: string, identifier: string) =>
   api.post<GroupMeta>(`/groups/${groupId}/members`, { identifier });
 export const removeMember = (groupId: string, userId: string) =>
   api.delete(`/groups/${groupId}/members/${userId}`);
+export interface ShareResult extends GroupMeta {
+  // Recipients who were connected at share time — the sharer's client should
+  // negotiate a WebRTC data channel with each of these to deliver the code
+  // directly; offline recipients get it via the DB fallback instead.
+  online_recipient_ids: string[];
+}
+
 export const shareToGroup = (groupId: string, couponId: string, code?: string | null) =>
-  api.post<GroupMeta>(`/groups/${groupId}/coupons/${couponId}`, code ? { coupon_code: code } : {});
+  api.post<ShareResult>(`/groups/${groupId}/coupons/${couponId}`, code ? { coupon_code: code } : {});
+
+// Sharer-triggered fallback when a WebRTC P2P negotiation to an online
+// recipient failed — persists the code (encrypted, TTL'd) server-side, same
+// mechanism as the offline fallback.
+export const rescueCode = (groupId: string, couponId: string, recipientUserId: string, code: string) =>
+  api.post(`/groups/${groupId}/coupons/${couponId}/rescue-code`, {
+    recipient_user_id: recipientUserId,
+    coupon_code: code,
+  });
 export const revokeFromGroup = (groupId: string, couponId: string) =>
   api.delete(`/groups/${groupId}/coupons/${couponId}`);
 export const leaveGroup = (groupId: string) =>
@@ -267,6 +283,8 @@ export interface ServerNotification {
 export const getNotifications = () => api.get<ServerNotification[]>('/notifications');
 export const markNotificationsRead = () => api.patch('/notifications/read-all');
 export const deleteNotification = (notificationId: string) => api.delete(`/notifications/${notificationId}`);
+// Clears a consumed fallback code (offline delivery or P2P rescue) once saved locally.
+export const clearNotificationCode = (notificationId: string) => api.delete(`/notifications/${notificationId}/code`);
 
 export async function updateProfile(updates: { username?: string; phone_number?: string }) {
   const { data } = await api.patch<AuthUserData>('/auth/me', updates);

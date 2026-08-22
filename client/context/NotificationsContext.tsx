@@ -3,13 +3,15 @@ import { AppState, AppStateStatus } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from './AuthContext';
 import { buildNotificationsSocketUrl, deleteNotification, getNotifications } from '../services/api';
-import { saveCouponCode } from '../storage/couponStorage';
 import { configureNotifications, presentLocalNotification, Notifications } from '../services/notifications';
 import NotificationBanner, { type BannerData } from '../components/NotificationBanner';
+import { handleOffer, handleAnswer, handleIceCandidate, handleCancel, type SendSignal } from '../services/webrtc';
 
 interface NotificationsContextType {
   // Bumped on every live event so screens can re-run their own load() to refresh.
   revision: number;
+  // Sends a signaling/keepalive payload over the live socket; no-ops if closed.
+  sendSignal: SendSignal;
 }
 
 const NotificationsContext = createContext<NotificationsContextType | null>(null);
@@ -39,6 +41,11 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const baselineSetRef = useRef(false);
 
   const bump = useCallback(() => setRevision(r => r + 1), []);
+
+  const sendSignal = useCallback<SendSignal>((payload) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+  }, []);
 
   const clearTimers = useCallback(() => {
     if (pingRef.current) { clearInterval(pingRef.current); pingRef.current = null; }
@@ -83,15 +90,29 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       return;
     }
 
-    if (msg.event === 'coupon_transfer' && msg.coupon_id && msg.code) {
-      // Silent code delivery: persist to local storage and refresh, but raise NO
-      // alert of its own — the user is already told via the group_share
-      // notification, so the code landing in the wallet is an implementation detail.
-      await saveCouponCode(msg.coupon_id, msg.code);
-      bump();
+    // WebRTC signaling relay — the actual coupon code never appears in any of
+    // these frames, only opaque SDP/ICE payloads; the code itself is exchanged
+    // directly between devices once the RTCDataChannel opens (see services/webrtc.ts).
+    if (msg.event === 'webrtc-offer' && msg.session_id && msg.from_user_id && msg.sdp) {
+      // Silent on receipt — the user is already told via the accompanying
+      // group_share notification, so the code landing in the wallet is an
+      // implementation detail (matches the old coupon_transfer behavior).
+      await handleOffer(sendSignal, msg, bump);
       return;
     }
-  }, [dispatchServerNotification, bump]);
+    if (msg.event === 'webrtc-answer' && msg.session_id && msg.sdp) {
+      await handleAnswer(msg);
+      return;
+    }
+    if (msg.event === 'webrtc-ice-candidate' && msg.session_id) {
+      await handleIceCandidate(msg);
+      return;
+    }
+    if (msg.event === 'webrtc-cancel' && msg.session_id) {
+      handleCancel(msg);
+      return;
+    }
+  }, [dispatchServerNotification, bump, sendSignal]);
 
   // Poll the server for anything missed while the socket was down/suspended.
   // First run establishes a baseline (no OS notifications); later runs fire OS
@@ -212,7 +233,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, [dismissAndNavigate]);
 
   return (
-    <NotificationsContext.Provider value={{ revision }}>
+    <NotificationsContext.Provider value={{ revision, sendSignal }}>
       {children}
       <NotificationBanner data={banner} onPress={handleBannerPress} onDismiss={() => setBanner(null)} />
     </NotificationsContext.Provider>

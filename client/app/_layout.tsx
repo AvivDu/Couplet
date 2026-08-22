@@ -4,6 +4,7 @@ import { View, ActivityIndicator } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { NotificationsProvider } from '../context/NotificationsContext';
+import WebRTCBridge from '../components/WebRTCBridge';
 
 function RootGuard() {
   const { user, isLoading } = useAuth();
@@ -37,6 +38,7 @@ export default function RootLayout() {
       <AuthProvider>
         <NotificationsProvider>
           <RootGuard />
+          <WebRTCBridge />
         </NotificationsProvider>
       </AuthProvider>
     </GestureHandlerRootView>
