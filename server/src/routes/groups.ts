@@ -270,6 +270,9 @@ router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): P
         // channel, negotiated client-side after this response (see
         // online_recipient_ids below) — the code never touches this request.
         // Offline members get it stored as a fallback for next app open.
+        // A force-quit leaves its connection row behind until a push to it
+        // 410s and prunes it, so "online" can be optimistic. That is safe:
+        // the P2P attempt fails and the sharer's rescue write covers it.
         const online = (await getConnectionsForUser(uid)).length > 0;
         if (online) online_recipient_ids.push(uid);
         console.log('[share] recipient=%s online=%s persisting_code=%s', uid, online, !online && !!coupon_code);

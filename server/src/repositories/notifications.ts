@@ -70,6 +70,12 @@ export async function clearNotificationCode(userId: string, notificationId: stri
 // Rescue path: called when a P2P negotiation to an online recipient failed.
 // Finds that recipient's group_share notification for this coupon and writes
 // the code onto it (encrypted, TTL'd), same as the offline fallback.
+//
+// TODO: getNotificationsForUser only returns the 50 newest notifications, so a
+// recipient with heavy notification traffic could have the target group_share
+// pushed out of that window between the share and the rescue — the rescue then
+// returns false and that recipient never gets the code. Fix by querying for the
+// specific group_id/coupon_id instead of scanning the recent page.
 export async function rescueCode(
   userId: string,
   groupId: string,

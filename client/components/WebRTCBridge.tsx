@@ -30,7 +30,11 @@ export default function WebRTCBridge() {
       // is what makes it a secure context (verified on-device — WebRTC is
       // unavailable from an opaque origin on some engines).
       source={{ html: WEBRTC_BRIDGE_HTML, baseUrl: 'https://localhost' }}
-      originWhitelist={['*']}
+      // The page is self-contained and never navigates, so nothing beyond its
+      // own origin should ever load. Coupon codes pass through this WebView;
+      // keeping it sealed means a stray navigation can't carry one off-device.
+      originWhitelist={['https://localhost']}
+      onShouldStartLoadWithRequest={req => req.url.startsWith('https://localhost')}
       javaScriptEnabled
       domStorageEnabled
       // Required: without an onMessage handler react-native-webview does not

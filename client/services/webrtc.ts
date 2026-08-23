@@ -26,11 +26,42 @@ export interface BridgeHandle {
 
 interface SessionCallbacks {
   sendSignal: SendSignal;
+  peerId: string;
   onFailure?: () => void;
   onReceived?: () => void;
+  watchdog?: ReturnType<typeof setTimeout>;
 }
 
+// Longer than the page's own 15s negotiation timeout, so in normal operation
+// the page always reports first and this never fires. It exists for the cases
+// the page CANNOT report: commands still queued because the bridge never
+// became ready, a silently dead renderer, or JS suspended by backgrounding.
+// Without it a stalled session would never fail, so the rescue fallback would
+// never run and the recipient would silently never receive the code.
+const WATCHDOG_MS = 25000;
+
 const sessions = new Map<string, SessionCallbacks>();
+
+// Removes a session and disarms its watchdog. Returns it so callers can run
+// whatever callback the terminal state calls for.
+function clearSession(sessionId: string): SessionCallbacks | undefined {
+  const cb = sessions.get(sessionId);
+  if (cb?.watchdog) clearTimeout(cb.watchdog);
+  sessions.delete(sessionId);
+  return cb;
+}
+
+// Terminal failure for one session: tell the peer to stop waiting, then hand
+// the caller its fallback (the encrypted rescue-code write).
+function failSession(sessionId: string, reason: string) {
+  const cb = clearSession(sessionId);
+  if (!cb) return;
+  console.log(`[p2p] session failed (${reason})`, cb.onFailure ? '— falling back to encrypted rescue code' : '');
+  if (cb.peerId) {
+    cb.sendSignal({ action: 'webrtc-cancel', session_id: sessionId, to_user_id: cb.peerId });
+  }
+  cb.onFailure?.();
+}
 
 let bridge: BridgeHandle | null = null;
 let bridgeReady = false;
@@ -74,9 +105,7 @@ export function setBridgeReady(ready: boolean) {
 export function resetBridge() {
   bridgeReady = false;
   queued = [];
-  const inFlight = Array.from(sessions.values());
-  sessions.clear();
-  inFlight.forEach(cb => cb.onFailure?.());
+  Array.from(sessions.keys()).forEach(id => failSession(id, 'bridge reset'));
 }
 
 // Messages coming back out of the WebView page.
@@ -104,28 +133,23 @@ export async function handleBridgeMessage(raw: string): Promise<void> {
     }
 
     case 'received': {
-      const cb = sessions.get(msg.sessionId);
+      const cb = clearSession(msg.sessionId);
       if (msg.couponId && msg.code) {
         await saveCouponCode(msg.couponId, msg.code);
         console.log('[p2p] code saved locally for coupon', msg.couponId, '(never touched the server)');
         cb?.onReceived?.();
       }
-      sessions.delete(msg.sessionId);
       return;
     }
 
     case 'delivered':
     case 'closed':
-      sessions.delete(msg.sessionId);
+      clearSession(msg.sessionId);
       return;
 
-    case 'failed': {
-      console.log('[p2p] session failed, falling back to encrypted rescue code');
-      const cb = sessions.get(msg.sessionId);
-      sessions.delete(msg.sessionId);
-      cb?.onFailure?.();
+    case 'failed':
+      failSession(msg.sessionId, 'peer connection failed');
       return;
-    }
 
     case 'log':
       // WebView console output doesn't reach Metro, so the page routes it here.
@@ -145,7 +169,12 @@ export async function startShareSession(
 ): Promise<void> {
   const sessionId = `${couponId}:${toUserId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
   console.log('[p2p] opening P2P session to', toUserId, 'for coupon', couponId);
-  sessions.set(sessionId, { sendSignal, onFailure });
+  sessions.set(sessionId, {
+    sendSignal,
+    peerId: toUserId,
+    onFailure,
+    watchdog: setTimeout(() => failSession(sessionId, 'bridge never reported back'), WATCHDOG_MS),
+  });
   send({ type: 'start', sessionId, toUserId, couponId, code });
 }
 
@@ -154,7 +183,14 @@ export async function handleOffer(
   msg: { session_id: string; from_user_id: string; sdp: any },
   onReceived: () => void
 ): Promise<void> {
-  sessions.set(msg.session_id, { sendSignal, onReceived });
+  // No onFailure here: only the sharer holds the code, so only the sharer can
+  // fall back to the rescue write. The watchdog just reclaims the map entry.
+  sessions.set(msg.session_id, {
+    sendSignal,
+    peerId: msg.from_user_id,
+    onReceived,
+    watchdog: setTimeout(() => clearSession(msg.session_id), WATCHDOG_MS),
+  });
   send({ type: 'offer', sessionId: msg.session_id, fromUserId: msg.from_user_id, sdp: msg.sdp });
 }
 
@@ -166,7 +202,10 @@ export async function handleIceCandidate(msg: { session_id: string; candidate: a
   send({ type: 'ice', sessionId: msg.session_id, candidate: msg.candidate });
 }
 
+// Peer gave up on this negotiation (see failSession, which emits it). Tear the
+// local half down immediately instead of holding a dead RTCPeerConnection
+// until its own timeout expires.
 export function handleCancel(msg: { session_id: string }): void {
-  sessions.delete(msg.session_id);
+  clearSession(msg.session_id);
   send({ type: 'cancel', sessionId: msg.session_id });
 }
