@@ -20,7 +20,7 @@ import { CATEGORY_COLORS } from '../../constants/categories';
 import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, clearNotificationCode, type CouponMeta } from '../../services/api';
 import { getCouponCode, saveCouponCode, deleteCouponCode, deleteCouponImage } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
-import { useNotifications } from '../../context/NotificationsContext';
+import { useRefreshOnNotification } from '../../hooks/useRefreshOnNotification';
 import CouponCard from '../../components/CouponCard';
 import CouponDetail from '../../components/CouponDetail';
 import NotificationPanel, { type NotificationItem } from '../../components/NotificationPanel';
@@ -58,7 +58,6 @@ const DRAWER_WIDTH = Dimensions.get('window').width * 0.48;
 
 export default function HomeScreen() {
   const { user, signOut } = useAuth();
-  const { revision } = useNotifications();
   const router = useRouter();
   const [coupons, setCoupons] = useState<CouponMeta[]>([]);
   const [couponCodes, setCouponCodes] = useState<Record<string, string | null>>({});
@@ -134,9 +133,11 @@ export default function HomeScreen() {
 
       // Save coupon codes delivered through group_share notifications
       const groupShareNotifs = serverNotifData.filter(n => n.type === 'group_share');
-      console.log('[DEBUG notif] group_share count:', groupShareNotifs.length,
-        '| with code:', groupShareNotifs.filter(n => n.coupon_code).length,
-        '| sample:', JSON.stringify(groupShareNotifs[0] ?? null));
+      // Counts only — never log the notification object itself: the server
+      // returns coupon_code decrypted, so dumping it would put plaintext
+      // coupon codes in the device log.
+      console.log('[notif] group_share:', groupShareNotifs.length,
+        '| carrying a fallback code:', groupShareNotifs.filter(n => n.coupon_code).length);
       const codeDeliveries = groupShareNotifs.filter(n => n.coupon_id && n.coupon_code);
       if (codeDeliveries.length > 0) {
         await Promise.all(
@@ -147,7 +148,7 @@ export default function HomeScreen() {
             await clearNotificationCode(n.notification_id).catch(() => {});
           })
         );
-        console.log('[DEBUG notif] saved codes for coupon_ids:', codeDeliveries.map(n => n.coupon_id));
+        console.log('[notif] saved fallback codes for coupon_ids:', codeDeliveries.map(n => n.coupon_id));
       }
 
       // Delete local coupon codes for any revoked coupons
@@ -209,11 +210,9 @@ export default function HomeScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // Live refresh: the WebSocket provider bumps `revision` on every incoming
-  // event so the list updates instantly without a manual screen refresh.
-  useEffect(() => {
-    if (revision > 0) load();
-  }, [revision, load]);
+  // Live refresh: re-runs load() on every incoming notification/WebRTC event
+  // so the list updates instantly without a manual screen refresh.
+  useRefreshOnNotification(load);
 
   const onRefresh = async () => {
     setRefreshing(true);

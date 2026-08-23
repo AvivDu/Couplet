@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Text, TextInput } from '../../components/rn';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import * as Contacts from 'expo-contacts';
@@ -42,6 +42,7 @@ import { getCouponCode, saveCouponCode } from '../../storage/couponStorage';
 import { startShareSession } from '../../services/webrtc';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationsContext';
+import { useRefreshOnNotification } from '../../hooks/useRefreshOnNotification';
 import CouponDetail from '../../components/CouponDetail';
 import type { CouponWithCode } from '../../components/CouponDetail/types';
 import { CATEGORY_DEFS, SORT_OPTIONS, sortCoupons, type SortOption } from '../../constants/categories';
@@ -105,21 +106,45 @@ export default function GroupScreen() {
 
   const isAdmin = group?.admin_user_id === user?.userId;
 
-  const fetchGroup = useCallback(async () => {
+  // `silent` skips the error alert for background refreshes (live-notification
+  // updates, refocusing an already-loaded screen) where the user isn't
+  // actively waiting on this call and a transient failure shouldn't interrupt
+  // them — they'll just see stale data until the next successful refresh.
+  // Explicit user actions (rename, share, invite, ...) call this with the
+  // default so a real failure still surfaces.
+  const fetchGroup = useCallback(async (opts?: { silent?: boolean }) => {
     if (!groupId) return;
     try {
       const { data } = await getGroup(groupId);
       setGroup(data);
     } catch {
-      Alert.alert('Error', 'Could not load group details.');
+      if (!opts?.silent) Alert.alert('Error', 'Could not load group details.');
     }
   }, [groupId]);
+
+  const refreshGroupSilently = useCallback(() => {
+    fetchGroup({ silent: true });
+  }, [fetchGroup]);
 
   useEffect(() => {
     if (!groupId) return;
     setLoading(true);
     fetchGroup().finally(() => setLoading(false));
   }, [groupId, fetchGroup]);
+
+  // Refetching on focus (no spinner) fixes the group page being mount-only —
+  // returning to an already-open group after data changed elsewhere left it
+  // stale until fully remounted. Skips the initial focus (mount), which the
+  // effect above already covers with its own spinner + error alert.
+  const hasMountedRef = useRef(false);
+  useFocusEffect(useCallback(() => {
+    if (!hasMountedRef.current) { hasMountedRef.current = true; return; }
+    refreshGroupSilently();
+  }, [refreshGroupSilently]));
+
+  // Live refresh: a group_invite/group_share/coupon_revoked notification can
+  // change this group's member list or coupon list while the page is open.
+  useRefreshOnNotification(refreshGroupSilently);
 
   useEffect(() => {
     if (!memberQuery.trim()) {

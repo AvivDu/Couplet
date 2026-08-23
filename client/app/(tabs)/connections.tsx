@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useRefreshOnNotification } from '../../hooks/useRefreshOnNotification';
 import {
   View,
   FlatList,
@@ -29,21 +30,25 @@ export default function ConnectionsScreen() {
   const [creating, setCreating] = useState(false);
 
 
-  async function fetchGroups() {
+  const fetchGroups = useCallback(async () => {
     try {
       const { data } = await getGroups();
       setGroups(data);
     } catch {
       // silently fail on background refresh
     }
-  }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
       fetchGroups().finally(() => setLoading(false));
-    }, [])
+    }, [fetchGroups])
   );
+
+  // Live refresh: a group_invite/group_share/coupon_revoked notification can
+  // change what this list should show (new group, updated coupon count).
+  useRefreshOnNotification(fetchGroups);
 
   async function handleRefresh() {
     setRefreshing(true);
