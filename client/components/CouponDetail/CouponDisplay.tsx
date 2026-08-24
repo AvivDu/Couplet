@@ -26,6 +26,7 @@ import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants/categories';
 import type { CouponWithCode } from './types';
 import { formatBalance, maskBalanceInput } from '../../utils/format';
 import { startShareSession } from '../../services/webrtc';
+import { inspectShareable, unusableShareMessage } from '../../services/couponSharing';
 import { useNotifications } from '../../context/NotificationsContext';
 
 interface CouponDisplayProps {
@@ -76,6 +77,20 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
   }
 
   async function handleShareToGroupConfirm(group: GroupMeta) {
+    // Nothing to send for this coupon? Say so before sharing, rather than
+    // letting the recipient open an empty coupon with no explanation.
+    const info = await inspectShareable(coupon.coupon_id, coupon.giftcard_url);
+    if (!info.willBeUsable) {
+      Alert.alert('Share anyway?', unusableShareMessage(info), [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Share anyway', onPress: () => shareToGroupNow(group) },
+      ]);
+      return;
+    }
+    await shareToGroupNow(group);
+  }
+
+  async function shareToGroupNow(group: GroupMeta) {
     setSharingGroupId(group.group_id);
     try {
       // Offline members get the code stored server-side as a fallback; online
@@ -92,7 +107,11 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
         // than throwing and reporting a failed share to the user.
         (data.online_recipient_ids ?? []).forEach(uid =>
           startShareSession(sendSignal, uid, coupon.coupon_id, coupon.code!, () => {
-            rescueCode(group.group_id, coupon.coupon_id, uid, coupon.code!).catch(() => {});
+            // Last line of defence: P2P already failed, so if this also fails
+            // the code reaches nobody. Log it rather than swallowing silently.
+            rescueCode(group.group_id, coupon.coupon_id, uid, coupon.code!).catch(err =>
+              console.warn('[share] rescue-code write failed for recipient', uid, err?.message ?? err)
+            );
           })
         );
       }

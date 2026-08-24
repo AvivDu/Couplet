@@ -75,6 +75,10 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
       expiration_date: c!.expiration_date,
       balance: c!.balance,
       status: c!.status,
+      // Metadata, not a coupon code — a gift-card link IS the coupon, so
+      // members can't use a shared one without it. (Codes/QR/barcodes stay
+      // client-only; see the security invariant in CLAUDE.md.)
+      giftcard_url: c!.giftcard_url ?? null,
     }));
 
   res.json({ ...group, members, pending_members, coupons });

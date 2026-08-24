@@ -70,8 +70,15 @@ export const WEBRTC_BRIDGE_HTML = `<!DOCTYPE html>
         function makeSession(sid, pc, onTimeout) {
           var s = {
             pc: pc,
+            // Recipient side only: kept so the ack can be sent once RN
+            // confirms the code was persisted.
+            channel: null,
             settled: false,
             remoteSet: false,
+            // Sharer side only: an answer is being (or has been) applied —
+            // set synchronously to reject duplicate answers from a recipient
+            // signed in on multiple devices.
+            answering: false,
             pending: [],
             timer: setTimeout(function () { onTimeout(sid); }, NEGOTIATION_TIMEOUT_MS)
           };
@@ -184,20 +191,25 @@ export const WEBRTC_BRIDGE_HTML = `<!DOCTYPE html>
 
             pc.ondatachannel = function (e) {
               var channel = e.channel;
+              var s = sessions[sid];
+              if (s) s.channel = channel;
               log('recipient: data channel opened by peer');
               channel.onmessage = function (evt) {
                 try {
                   var parsed = JSON.parse(evt.data);
                   if (!parsed || !parsed.coupon_id || !parsed.code) return;
                   log('recipient: CODE RECEIVED over P2P for coupon ' + parsed.coupon_id);
+                  // Hand it to RN and STOP. The ack is only sent once RN
+                  // confirms the code is actually persisted (see the 'ack'
+                  // command) — acking here would settle the sharer before the
+                  // write succeeded, so a failed write would lose the code
+                  // with no rescue.
                   post({
                     type: 'received',
                     sessionId: sid,
                     couponId: parsed.coupon_id,
                     code: parsed.code
                   });
-                  try { channel.send(JSON.stringify({ ack: true })); } catch (err) {}
-                  settle(sid);
                 } catch (err) { log('receive failed: ' + err); }
               };
             };
@@ -229,6 +241,16 @@ export const WEBRTC_BRIDGE_HTML = `<!DOCTYPE html>
         function answer(msg) {
           var s = sessions[msg.sessionId];
           if (!s) return;
+          // The offer is pushed to every live connection the recipient has, so
+          // a recipient signed in on two devices answers twice with the same
+          // session id. Applying the second throws (wrong signaling state) and
+          // used to tear down the connection that was already working. First
+          // answer wins; the other device's peer connection times out on its own.
+          // The flag is set synchronously (not after setRemoteDescription
+          // resolves, like remoteSet) so a second answer arriving inside that
+          // promise's resolution window is still rejected.
+          if (s.answering) { log('ignoring duplicate answer (recipient on multiple devices)'); return; }
+          s.answering = true;
           try {
             s.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp))
               .then(function () { flushIce(msg.sessionId); })
@@ -237,6 +259,22 @@ export const WEBRTC_BRIDGE_HTML = `<!DOCTYPE html>
             log('answer failed: ' + err);
             fail(msg.sessionId);
           }
+        }
+
+        // RN confirms the received code is persisted; only now is it safe to
+        // tell the sharer the transfer succeeded. If RN's write failed it
+        // never sends this, the sharer's timeout fires, and the rescue path
+        // stores the code server-side instead.
+        function ack(msg) {
+          var s = sessions[msg.sessionId];
+          if (!s || !s.channel) return;
+          // Send and leave the channel open: closing it (or tearing down the
+          // peer connection via settle) right after send can discard data
+          // still buffered by SCTP, losing the ack. The sharer closes the
+          // channel once the ack lands, which is what settles us below; the
+          // session timeout is the backstop if it never does.
+          s.channel.onclose = function () { settle(msg.sessionId); };
+          try { s.channel.send(JSON.stringify({ ack: true })); } catch (err) {}
         }
 
         function ice(msg) {
@@ -261,6 +299,7 @@ export const WEBRTC_BRIDGE_HTML = `<!DOCTYPE html>
           if (msg.type === 'offer') return offer(msg);
           if (msg.type === 'answer') return answer(msg);
           if (msg.type === 'ice') return ice(msg);
+          if (msg.type === 'ack') return ack(msg);
           if (msg.type === 'cancel') return cleanup(msg.sessionId);
         }
 

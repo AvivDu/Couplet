@@ -133,12 +133,16 @@ export async function handleBridgeMessage(raw: string): Promise<void> {
     }
 
     case 'received': {
+      if (!msg.couponId || !msg.code) return;
+      // Persist BEFORE acking. If this throws, no ack goes out, the sharer's
+      // negotiation times out, and the code is stored via the rescue path —
+      // which is what we want. Acking first would settle the sharer against a
+      // write that never landed.
+      await saveCouponCode(msg.couponId, msg.code);
+      console.log('[p2p] code saved locally for coupon', msg.couponId, '(never touched the server)');
+      send({ type: 'ack', sessionId: msg.sessionId });
       const cb = clearSession(msg.sessionId);
-      if (msg.couponId && msg.code) {
-        await saveCouponCode(msg.couponId, msg.code);
-        console.log('[p2p] code saved locally for coupon', msg.couponId, '(never touched the server)');
-        cb?.onReceived?.();
-      }
+      cb?.onReceived?.();
       return;
     }
 

@@ -39,6 +39,7 @@ import type { GroupDetail as GroupDetailType, GroupMember, CouponMeta, ContactMa
 
 type ContactMatchWithName = ContactMatch & { contactName: string };
 import { getCouponCode, saveCouponCode } from '../../storage/couponStorage';
+import { inspectShareable, unusableShareMessage } from '../../services/couponSharing';
 import { startShareSession } from '../../services/webrtc';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationsContext';
@@ -349,9 +350,26 @@ export default function GroupScreen() {
 
   async function handleShareCoupon(couponId: string) {
     if (!groupId) return;
+    // Nothing to send for this coupon? Say so before sharing, rather than
+    // letting the recipient open an empty coupon with no explanation.
+    const info = await inspectShareable(
+      couponId,
+      myCoupons.find(c => c.coupon_id === couponId)?.giftcard_url
+    );
+    if (!info.willBeUsable) {
+      Alert.alert('Share anyway?', unusableShareMessage(info), [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Share anyway', onPress: () => shareCouponNow(couponId, info.code) },
+      ]);
+      return;
+    }
+    await shareCouponNow(couponId, info.code);
+  }
+
+  async function shareCouponNow(couponId: string, code: string | null) {
+    if (!groupId) return;
     setSharingCouponId(couponId);
     try {
-      const code = await getCouponCode(couponId);
       // Offline members get the code stored server-side as a fallback; online
       // members get it via a direct WebRTC data channel negotiated below —
       // the server never sees the code for them.
@@ -366,7 +384,12 @@ export default function GroupScreen() {
         // than throwing and reporting a failed share to the user.
         (data.online_recipient_ids ?? []).forEach(uid =>
           startShareSession(sendSignal, uid, couponId, code, () => {
-            rescueCode(groupId, couponId, uid, code).catch(() => {});
+            // Last line of defence: P2P already failed, so if this also fails
+            // the code reaches nobody. Log it — silently swallowing left the
+            // loss untraceable.
+            rescueCode(groupId, couponId, uid, code).catch(err =>
+              console.warn('[share] rescue-code write failed for recipient', uid, err?.message ?? err)
+            );
           })
         );
       }

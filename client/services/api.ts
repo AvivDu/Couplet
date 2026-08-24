@@ -202,6 +202,7 @@ export interface GroupCoupon {
   expiration_date: string | null;
   balance: number | null;
   status: string;
+  giftcard_url?: string | null;
 }
 
 export interface GroupDetail extends GroupMeta {
