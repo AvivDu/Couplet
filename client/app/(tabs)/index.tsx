@@ -135,7 +135,7 @@ export default function HomeScreen() {
 
       // Save coupon codes delivered through group_share notifications
       const groupShareNotifs = serverNotifData.filter(n => n.type === 'group_share');
-      // Counts only — never log the notification object itself: the server
+      // Counts only - never log the notification object itself: the server
       // returns coupon_code decrypted, so dumping it would put plaintext
       // coupon codes in the device log.
       console.log('[notif] group_share:', groupShareNotifs.length,
@@ -146,7 +146,7 @@ export default function HomeScreen() {
           codeDeliveries.map(async n => {
             await saveCouponCode(n.coupon_id!, n.coupon_code!);
             // Clear the fallback code server-side now that it's been consumed
-            // locally — faster and more precise than waiting on the 72h TTL.
+            // locally - faster and more precise than waiting on the 72h TTL.
             await clearNotificationCode(n.notification_id).catch(() => {});
           })
         );
@@ -289,7 +289,7 @@ export default function HomeScreen() {
   async function handleRedeem(id: string, action: RedeemAction) {
     const { data } = await redeemOwnCoupon(id, action);
     setCoupons(prev => prev.map(c => c.coupon_id === id ? data : c));
-    // Local mutation, not a live notification — bump so any other mounted
+    // Local mutation, not a live notification - bump so any other mounted
     // screen (e.g. a group screen showing this shared coupon) picks it up.
     // Keyed off the server's resulting status, so a partial redeem that
     // happens to drain the balance also refreshes.
@@ -382,7 +382,7 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* Category cards — horizontal scroll */}
+        {/* Category cards - horizontal scroll */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -484,7 +484,7 @@ export default function HomeScreen() {
         {joinedGroupName !== null && (
           <Modal transparent animationType="fade" visible onRequestClose={() => setJoinedGroupName(null)}>
             <View style={styles.joinOverlay}>
-              {/* Backdrop — rendered first so the box sits on top and receives touches first */}
+              {/* Backdrop - rendered first so the box sits on top and receives touches first */}
               <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setJoinedGroupName(null)} />
               <View style={styles.joinBox}>
                 <TouchableOpacity style={styles.joinCloseBtn} onPress={() => setJoinedGroupName(null)}>
@@ -568,7 +568,7 @@ export default function HomeScreen() {
             <View style={styles.aboutCard}>
               <Text style={styles.aboutTitle}>Couplet</Text>
               <Text style={styles.aboutVersion}>Version 1.0.0</Text>
-              <Text style={styles.aboutDesc}>Your personal coupon wallet — store, manage, and share coupons securely. Coupon codes never leave your device.</Text>
+              <Text style={styles.aboutDesc}>Your personal coupon wallet - store, manage, and share coupons securely. Coupon codes never leave your device.</Text>
               <View style={styles.aboutDivider} />
               <Text style={styles.aboutTeamLabel}>BUILT BY</Text>
               <Text style={styles.aboutTeam}>Aviv Duzy</Text>

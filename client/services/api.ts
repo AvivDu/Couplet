@@ -30,7 +30,7 @@ function resolveBaseUrl() {
 export const BASE_URL = resolveBaseUrl();
 
 // WebSocket API base (wss://<id>.execute-api.<region>.amazonaws.com/<stage>).
-// Lives on AWS, so there is no local-dev fallback — set EXPO_PUBLIC_WS_URL to
+// Lives on AWS, so there is no local-dev fallback - set EXPO_PUBLIC_WS_URL to
 // enable live notifications + coupon relay. When unset the socket simply never
 // connects and the app falls back to poll-on-focus, so nothing breaks in dev.
 export const WS_URL = process.env.EXPO_PUBLIC_WS_URL ?? null;
@@ -43,7 +43,7 @@ export function buildNotificationsSocketUrl(token: string): string | null {
 
 const api = axios.create({ baseURL: BASE_URL });
 
-// In-memory token cache — avoids a SecureStore disk read on every API call.
+// In-memory token cache - avoids a SecureStore disk read on every API call.
 // Populated on first interceptor miss, explicitly set on login/register, cleared on signOut.
 let tokenCache: string | null = null;
 export function setTokenCache(token: string | null) { tokenCache = token; }
@@ -120,7 +120,7 @@ export async function login(identifier: string, password: string) {
 
   const token = await cognitoSignIn(email, password);
   setTokenCache(token);
-  // Persist token and fetch user metadata in parallel — the network call
+  // Persist token and fetch user metadata in parallel - the network call
   // uses the token directly so it doesn't depend on the disk write completing.
   const [, { data }] = await Promise.all([
     SecureStore.setItemAsync('authToken', token),
@@ -163,7 +163,7 @@ export const updateCoupon = (id: string, data: Partial<CouponMeta>) =>
 export const deleteCoupon = (id: string) => api.delete(`/coupons/${id}`);
 
 // Redemption sends the *amount* (or redeem_all), never a client-computed
-// absolute balance — the server applies it atomically so two members
+// absolute balance - the server applies it atomically so two members
 // redeeming the same shared coupon at once can't overdraw it.
 export type RedeemAction = { redeem_all: true } | { amount: number };
 
@@ -237,7 +237,7 @@ export const addMember = (groupId: string, identifier: string) =>
 export const removeMember = (groupId: string, userId: string) =>
   api.delete(`/groups/${groupId}/members/${userId}`);
 export interface ShareResult extends GroupMeta {
-  // Recipients who were connected at share time — the sharer's client should
+  // Recipients who were connected at share time - the sharer's client should
   // negotiate a WebRTC data channel with each of these to deliver the code
   // directly; offline recipients get it via the DB fallback instead.
   online_recipient_ids: string[];
@@ -247,7 +247,7 @@ export const shareToGroup = (groupId: string, couponId: string, code?: string | 
   api.post<ShareResult>(`/groups/${groupId}/coupons/${couponId}`, code ? { coupon_code: code } : {});
 
 // Sharer-triggered fallback when a WebRTC P2P negotiation to an online
-// recipient failed — persists the code (encrypted, TTL'd) server-side, same
+// recipient failed - persists the code (encrypted, TTL'd) server-side, same
 // mechanism as the offline fallback.
 export const rescueCode = (groupId: string, couponId: string, recipientUserId: string, code: string) =>
   api.post(`/groups/${groupId}/coupons/${couponId}/rescue-code`, {

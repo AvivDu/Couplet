@@ -9,6 +9,7 @@ import {
   Alert,
   Image,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { Text, TextInput } from '../../components/rn';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -48,6 +49,7 @@ import { useRefreshOnNotification } from '../../hooks/useRefreshOnNotification';
 import CouponDetail from '../../components/CouponDetail';
 import type { CouponWithCode } from '../../components/CouponDetail/types';
 import { CATEGORY_DEFS, SORT_OPTIONS, sortCoupons, type SortOption } from '../../constants/categories';
+import { formatBalance } from '../../utils/format';
 
 // ── Design tokens (group page redesign) ───────────────────────────
 // Reuses the app's established palette; handoff-specific values (sender
@@ -76,6 +78,7 @@ export default function GroupScreen() {
 
   const [group, setGroup] = useState<GroupDetailType | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [savingPhoto, setSavingPhoto] = useState(false);
   const [pendingPhotoPick, setPendingPhotoPick] = useState(false);
 
@@ -100,7 +103,7 @@ export default function GroupScreen() {
   const [selectedCoupon, setSelectedCoupon] = useState<CouponWithCode | null>(null);
   const [loadingCouponId, setLoadingCouponId] = useState<string | null>(null);
 
-  // Filter sheet — by sender (member) and/or category.
+  // Filter sheet - by sender (member) and/or category.
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   const [filterMember, setFilterMember] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('All');
@@ -111,7 +114,7 @@ export default function GroupScreen() {
   // `silent` skips the error alert for background refreshes (live-notification
   // updates, refocusing an already-loaded screen) where the user isn't
   // actively waiting on this call and a transient failure shouldn't interrupt
-  // them — they'll just see stale data until the next successful refresh.
+  // them - they'll just see stale data until the next successful refresh.
   // Explicit user actions (rename, share, invite, ...) call this with the
   // default so a real failure still surfaces.
   const fetchGroup = useCallback(async (opts?: { silent?: boolean }) => {
@@ -119,7 +122,12 @@ export default function GroupScreen() {
     try {
       const { data } = await getGroup(groupId);
       setGroup(data);
-    } catch {
+    } catch (err: any) {
+      // Always log, even when silent. A silent refresh that fails leaves the
+      // screen on stale data with nothing on-screen to say so - which looks
+      // exactly like a rendering bug (e.g. a status badge "not appearing")
+      // when it's really a refresh that never landed.
+      console.warn('[group] refresh failed:', err?.response?.status ?? '', err?.message ?? err);
       if (!opts?.silent) Alert.alert('Error', 'Could not load group details.');
     }
   }, [groupId]);
@@ -128,13 +136,25 @@ export default function GroupScreen() {
     fetchGroup({ silent: true });
   }, [fetchGroup]);
 
+  // Manual escape hatch. Everything here also refreshes live (notifications)
+  // and on focus, but when any of that misses - socket dropped, app resumed
+  // late, another member acted while this screen sat open - the user was
+  // otherwise stuck looking at stale data with no way to force an update.
+  // Not silent: the user asked for this one, so a failure has to surface
+  // rather than leaving them pulling repeatedly at unchanged data.
+  const handlePullRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchGroup();
+    setRefreshing(false);
+  }, [fetchGroup]);
+
   useEffect(() => {
     if (!groupId) return;
     setLoading(true);
     fetchGroup().finally(() => setLoading(false));
   }, [groupId, fetchGroup]);
 
-  // Refetching on focus (no spinner) fixes the group page being mount-only —
+  // Refetching on focus (no spinner) fixes the group page being mount-only -
   // returning to an already-open group after data changed elsewhere left it
   // stale until fully remounted. Skips the initial focus (mount), which the
   // effect above already covers with its own spinner + error alert.
@@ -184,8 +204,8 @@ export default function GroupScreen() {
       setSavingPhoto(true);
       const prevImage = group?.image ?? null;
       try {
-        // Resize to a small square so the base64 stays tiny — well under DynamoDB's
-        // 400KB item limit — and is cheap for every member to fetch.
+        // Resize to a small square so the base64 stays tiny - well under DynamoDB's
+        // 400KB item limit - and is cheap for every member to fetch.
         // Modern contextual API (manipulateAsync is deprecated in SDK 54).
         const ctx = ImageManipulator.manipulate(result.assets[0].uri);
         ctx.resize({ width: 256, height: 256 });
@@ -372,12 +392,12 @@ export default function GroupScreen() {
     setSharingCouponId(couponId);
     try {
       // Offline members get the code stored server-side as a fallback; online
-      // members get it via a direct WebRTC data channel negotiated below —
+      // members get it via a direct WebRTC data channel negotiated below -
       // the server never sees the code for them.
       const { data } = await shareToGroup(groupId, couponId, code);
       console.log(
         '[share] online recipients:', data.online_recipient_ids ?? [],
-        '— offline members get the encrypted DB fallback instead'
+        '- offline members get the encrypted DB fallback instead'
       );
       if (code) {
         // Tolerate a server that predates online_recipient_ids: the share
@@ -386,7 +406,7 @@ export default function GroupScreen() {
         (data.online_recipient_ids ?? []).forEach(uid =>
           startShareSession(sendSignal, uid, couponId, code, () => {
             // Last line of defence: P2P already failed, so if this also fails
-            // the code reaches nobody. Log it — silently swallowing left the
+            // the code reaches nobody. Log it - silently swallowing left the
             // loss untraceable.
             rescueCode(groupId, couponId, uid, code).catch(err =>
               console.warn('[share] rescue-code write failed for recipient', uid, err?.message ?? err)
@@ -482,7 +502,7 @@ export default function GroupScreen() {
             await clearNotificationCode(delivery.notification_id).catch(() => {});
           }
         } catch {
-          // network failure — open modal with null code rather than crashing
+          // network failure - open modal with null code rather than crashing
         }
       }
       setSelectedCoupon({ ...coupon, created_at: '', code });
@@ -497,7 +517,7 @@ export default function GroupScreen() {
     setGroup(prev => prev
       ? { ...prev, coupons: prev.coupons.map(c => c.coupon_id === couponId ? { ...c, ...updated } : c) }
       : prev);
-    // Local mutation, not a live notification — bump so any other mounted
+    // Local mutation, not a live notification - bump so any other mounted
     // screen (e.g. My Coupons for the owner) picks it up. Keyed off the
     // server's resulting status, so a partial redeem that happens to drain
     // the balance also refreshes.
@@ -590,7 +610,18 @@ export default function GroupScreen() {
       {loading || !group ? (
         <ActivityIndicator color={COLORS.coral} style={{ marginTop: 80 }} />
       ) : (
-        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={styles.body}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handlePullRefresh}
+              tintColor={COLORS.coral}
+              colors={[COLORS.coral]}
+            />
+          }
+        >
           {/* Members section label */}
           <View style={styles.membersLabelRow}>
             <Text style={styles.membersLabel}>MEMBERS · {group.members.length}</Text>
@@ -747,6 +778,13 @@ export default function GroupScreen() {
                         </View>
                       )}
                     </View>
+                    {/* Right-aligned so it fills space the row already has,
+                        keeping card height unchanged. Hidden when there's no
+                        tracked balance (a code-only coupon) or when the coupon
+                        is done - the USED badge already says that. */}
+                    {!isUsed && coupon.balance != null && (
+                      <Text style={styles.cardBalance}>₪{formatBalance(coupon.balance)}</Text>
+                    )}
                   </TouchableOpacity>
 
                   {/* Action */}
@@ -887,7 +925,7 @@ export default function GroupScreen() {
         animationType="slide"
         onRequestClose={() => setSettingsSheetVisible(false)}
         onDismiss={() => {
-          // iOS: runs after the sheet has fully closed — safe to present the picker now.
+          // iOS: runs after the sheet has fully closed - safe to present the picker now.
           if (pendingPhotoPick) {
             setPendingPhotoPick(false);
             handlePickImage();
@@ -1162,7 +1200,7 @@ export default function GroupScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Rename Dialog — View overlay avoids nested-Modal iOS conflict */}
+      {/* Rename Dialog - View overlay avoids nested-Modal iOS conflict */}
       {renameModalVisible && (
         <TouchableOpacity
           style={[StyleSheet.absoluteFill, styles.dialogOverlay]}
@@ -1214,7 +1252,7 @@ export default function GroupScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Delete Confirmation — View overlay avoids nested-Modal iOS conflict */}
+      {/* Delete Confirmation - View overlay avoids nested-Modal iOS conflict */}
       {deleteConfirmVisible && (
         <TouchableOpacity
           style={[StyleSheet.absoluteFill, styles.dialogOverlay]}
@@ -1382,7 +1420,7 @@ export default function GroupScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Coupon Detail — same experience as My Coupons tab */}
+      {/* Coupon Detail - same experience as My Coupons tab */}
       <CouponDetail
         coupon={selectedCoupon}
         visible={!!selectedCoupon}
@@ -1597,6 +1635,7 @@ const styles = StyleSheet.create({
   },
   cardUsed: { opacity: 0.5 },
   cardText: { flex: 1, minWidth: 0 },
+  cardBalance: { fontSize: 16, fontWeight: '700', color: COLORS.ink, marginLeft: 8 },
   brandName: { fontSize: 17, fontWeight: '700', color: COLORS.ink },
   category: { fontSize: 13, color: COLORS.muted, marginTop: 2 },
   expiry: { fontSize: 12, color: COLORS.muted, marginTop: 4 },

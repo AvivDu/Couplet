@@ -57,7 +57,18 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
   const [partialAmount, setPartialAmount] = React.useState('');
   const [partialLoading, setPartialLoading] = React.useState(false);
   const [redeemAllLoading, setRedeemAllLoading] = React.useState(false);
-  const { sendSignal } = useNotifications();
+  const { sendSignal, bump } = useNotifications();
+
+  // A rejected redeem means this screen's copy of the coupon is out of date -
+  // someone else changed it underneath us. Leaving the sheet open invites
+  // another attempt against the same stale numbers (which is how Redeem All
+  // slipped past a balance that had already been drained), so close back to
+  // the list and refresh it before telling the user what happened.
+  function failRedeem(err: any) {
+    onClose();
+    bump();
+    Alert.alert('Could not redeem', err?.response?.data?.error ?? 'Please try again.');
+  }
 
   React.useEffect(() => {
     getCouponImage(coupon.coupon_id).then(uri => {
@@ -98,12 +109,12 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
     setSharingGroupId(group.group_id);
     try {
       // Offline members get the code stored server-side as a fallback; online
-      // members get it via a direct WebRTC data channel negotiated below —
+      // members get it via a direct WebRTC data channel negotiated below -
       // the server never sees the code for them.
       const { data } = await shareToGroup(group.group_id, coupon.coupon_id, coupon.code);
       console.log(
         '[share] online recipients:', data.online_recipient_ids ?? [],
-        '— offline members get the encrypted DB fallback instead'
+        '- offline members get the encrypted DB fallback instead'
       );
       if (coupon.code) {
         // Tolerate a server that predates online_recipient_ids: the share
@@ -158,18 +169,19 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
       setRedeemModalVisible(false);
       onClose();
     } catch (err: any) {
-      Alert.alert('Error', err?.response?.data?.error ?? 'Could not redeem.');
+      setRedeemModalVisible(false);
+      failRedeem(err);
     } finally {
       setRedeemAllLoading(false);
     }
   }
 
   async function handlePartialRedeem() {
-    // Unreachable while invalid — the Confirm button is disabled and the
+    // Unreachable while invalid - the Confirm button is disabled and the
     // reason is shown inline (see partialError). Kept as a guard only.
     if (partialError || parsedPartialAmount === null) return;
     const amount = parsedPartialAmount;
-    // Client-side validation is an affordance, not enforcement — the server
+    // Client-side validation is an affordance, not enforcement - the server
     // applies the decrement atomically and is the authority on the result,
     // which matters when another member redeems the same coupon at once.
     setPartialLoading(true);
@@ -178,14 +190,17 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
       onUpdate(updated, coupon.code ?? '');
       setRedeemModalVisible(false);
       setPartialAmount('');
+      // Close back to the list either way, so the next action always starts
+      // from freshly-fetched numbers rather than this screen's snapshot.
+      onClose();
       if (updated.status === 'used') {
         Alert.alert('Fully Redeemed', 'Balance is now zero.');
-        onClose();
       } else {
         Alert.alert('Success', `₪${formatBalance(amount)} redeemed. Remaining: ₪${formatBalance(updated.balance ?? 0)}.`);
       }
     } catch (err: any) {
-      Alert.alert('Error', err?.response?.data?.error ?? 'Could not redeem.');
+      setRedeemModalVisible(false);
+      failRedeem(err);
     } finally {
       setPartialLoading(false);
     }
@@ -199,7 +214,7 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
   const parsedPartialAmount = partialAmount.trim() === '' ? null : Number(partialAmount);
   const partialError =
     parsedPartialAmount === null
-      ? null // nothing typed yet — don't scold before they've started
+      ? null // nothing typed yet - don't scold before they've started
       : Number.isNaN(parsedPartialAmount)
         ? 'Enter a valid number.'
         : parsedPartialAmount <= 0
@@ -217,7 +232,7 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
   const expiry = coupon.expiration_date
     ? new Date(coupon.expiration_date).toLocaleDateString()
     : 'No expiry';
-  const balance = coupon.balance != null ? `₪${formatBalance(coupon.balance)}` : '—';
+  const balance = coupon.balance != null ? `₪${formatBalance(coupon.balance)}` : '-';
 
   return (
     <>
@@ -274,7 +289,7 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
 
             {(showTextCode || imageUri === null) && (
               <View style={styles.codeLarge}>
-                <Text style={styles.codeLargeText}>{coupon.code ?? '—'}</Text>
+                <Text style={styles.codeLargeText}>{coupon.code ?? '-'}</Text>
               </View>
             )}
 
@@ -319,7 +334,7 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
         </View>
       </View>
 
-      {/* Primary action — Redeem */}
+      {/* Primary action - Redeem */}
       {coupon.status === 'active' && (
         <TouchableOpacity
           style={styles.redeemBtn}
@@ -330,7 +345,7 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
         </TouchableOpacity>
       )}
 
-      {/* Secondary actions — Edit + Share (owner-only server-side) */}
+      {/* Secondary actions - Edit + Share (owner-only server-side) */}
       {isOwner && (
         <View style={styles.actionRow}>
           <TouchableOpacity style={styles.editBtn} onPress={onEdit}>
@@ -344,7 +359,7 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
         </View>
       )}
 
-      {/* Where to use — minimalist link */}
+      {/* Where to use - minimalist link */}
       <TouchableOpacity
         style={styles.whereLink}
         onPress={handleWhereToUse}
@@ -354,7 +369,7 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
         <Text style={styles.whereLinkText}>Where to use</Text>
       </TouchableOpacity>
 
-      {/* Delete — destructive plain text link (owner-only server-side) */}
+      {/* Delete - destructive plain text link (owner-only server-side) */}
       {isOwner && (
         <TouchableOpacity
           style={styles.deleteLink}
@@ -397,7 +412,7 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
           </TouchableOpacity>
 
           {/* Partial redemption only makes sense for a coupon that tracks a
-              remaining balance — otherwise there's nothing to split. */}
+              remaining balance - otherwise there's nothing to split. */}
           {canPartialRedeem && (
             <>
               <View style={styles.orDivider}>
@@ -627,7 +642,7 @@ const styles = StyleSheet.create({
   statusDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#7DC99E' },
   statusUsed: { color: '#B8C4CC' },
 
-  // Primary — Redeem button
+  // Primary - Redeem button
   redeemBtn: {
     backgroundColor: '#1A2332',
     borderRadius: 30,
@@ -637,7 +652,7 @@ const styles = StyleSheet.create({
   },
   redeemBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
-  // Secondary — Edit + Share
+  // Secondary - Edit + Share
   actionRow: { flexDirection: 'row', gap: 10, marginBottom: 4 },
   editBtn: {
     flex: 1,
@@ -816,7 +831,7 @@ const styles = StyleSheet.create({
   locationOpenNo: { color: '#E8604C' },
   locationRating: { fontSize: 12, color: '#A8997A' },
 
-  // Image box — base (used when aspect ratio known)
+  // Image box - base (used when aspect ratio known)
   imageBoxBase: {
     backgroundColor: '#fff',
     borderRadius: 12,
