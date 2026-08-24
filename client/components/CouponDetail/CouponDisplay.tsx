@@ -20,8 +20,8 @@ import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import { getCouponImage } from '../../storage/couponStorage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getGroups, shareToGroup, rescueCode, getCouponLocations, updateCoupon } from '../../services/api';
-import type { GroupMeta, StoreLocation, CouponMeta } from '../../services/api';
+import { getGroups, shareToGroup, rescueCode, getCouponLocations } from '../../services/api';
+import type { GroupMeta, StoreLocation, CouponMeta, RedeemAction } from '../../services/api';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants/categories';
 import type { CouponWithCode } from './types';
 import { formatBalance, maskBalanceInput } from '../../utils/format';
@@ -31,14 +31,17 @@ import { useNotifications } from '../../context/NotificationsContext';
 
 interface CouponDisplayProps {
   coupon: CouponWithCode;
+  // Non-owners open this from the group screen to redeem a shared coupon;
+  // owner-only controls (edit/share/delete) are hidden for them.
+  isOwner: boolean;
   onEdit: () => void;
   onDelete: (id: string) => void;
-  onMarkUsed: (id: string) => void;
+  onRedeem: (id: string, action: RedeemAction) => Promise<CouponMeta>;
   onUpdate: (updated: CouponMeta, newCode: string) => void;
   onClose: () => void;
 }
 
-export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, onUpdate, onClose }: CouponDisplayProps) {
+export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRedeem, onUpdate, onClose }: CouponDisplayProps) {
   const [imageUri, setImageUri] = React.useState<string | null>(null);
   const [imageNatSize, setImageNatSize] = React.useState<{ w: number; h: number } | null>(null);
   const [fullscreenVisible, setFullscreenVisible] = React.useState(false);
@@ -53,6 +56,7 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
   const [redeemModalVisible, setRedeemModalVisible] = React.useState(false);
   const [partialAmount, setPartialAmount] = React.useState('');
   const [partialLoading, setPartialLoading] = React.useState(false);
+  const [redeemAllLoading, setRedeemAllLoading] = React.useState(false);
   const { sendSignal } = useNotifications();
 
   React.useEffect(() => {
@@ -146,32 +150,39 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
     }
   }
 
-  async function handlePartialRedeem() {
-    const amount = parseFloat(partialAmount);
-    const currentBalance = coupon.balance ?? 0;
-    if (isNaN(amount) || amount <= 0) {
-      Alert.alert('Invalid amount', 'Enter a positive number.');
-      return;
+  async function handleRedeemAll() {
+    setRedeemAllLoading(true);
+    try {
+      const updated = await onRedeem(coupon.coupon_id, { redeem_all: true });
+      onUpdate(updated, coupon.code ?? '');
+      setRedeemModalVisible(false);
+      onClose();
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.error ?? 'Could not redeem.');
+    } finally {
+      setRedeemAllLoading(false);
     }
-    if (amount > currentBalance) {
-      Alert.alert('Amount too large', `Cannot exceed ₪${formatBalance(currentBalance)}.`);
-      return;
-    }
-    const newBalance = parseFloat((currentBalance - amount).toFixed(2));
-    const updateData: Partial<CouponMeta> = { balance: newBalance };
-    if (newBalance === 0) updateData.status = 'used';
+  }
 
+  async function handlePartialRedeem() {
+    // Unreachable while invalid — the Confirm button is disabled and the
+    // reason is shown inline (see partialError). Kept as a guard only.
+    if (partialError || parsedPartialAmount === null) return;
+    const amount = parsedPartialAmount;
+    // Client-side validation is an affordance, not enforcement — the server
+    // applies the decrement atomically and is the authority on the result,
+    // which matters when another member redeems the same coupon at once.
     setPartialLoading(true);
     try {
-      const { data: updated } = await updateCoupon(coupon.coupon_id, updateData);
+      const updated = await onRedeem(coupon.coupon_id, { amount });
       onUpdate(updated, coupon.code ?? '');
       setRedeemModalVisible(false);
       setPartialAmount('');
-      if (newBalance === 0) {
+      if (updated.status === 'used') {
         Alert.alert('Fully Redeemed', 'Balance is now zero.');
         onClose();
       } else {
-        Alert.alert('Success', `₪${formatBalance(amount)} redeemed. Remaining: ₪${formatBalance(newBalance)}.`);
+        Alert.alert('Success', `₪${formatBalance(amount)} redeemed. Remaining: ₪${formatBalance(updated.balance ?? 0)}.`);
       }
     } catch (err: any) {
       Alert.alert('Error', err?.response?.data?.error ?? 'Could not redeem.');
@@ -179,6 +190,27 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
       setPartialLoading(false);
     }
   }
+
+  // Partial-redeem validation, derived from the input rather than stored, so
+  // the Confirm button and the inline message can never drift out of sync.
+  // `null` = nothing usable typed yet (button disabled, but no scolding).
+  const currentBalance = coupon.balance ?? 0;
+  const canPartialRedeem = coupon.balance != null && coupon.balance > 0;
+  const parsedPartialAmount = partialAmount.trim() === '' ? null : Number(partialAmount);
+  const partialError =
+    parsedPartialAmount === null
+      ? null // nothing typed yet — don't scold before they've started
+      : Number.isNaN(parsedPartialAmount)
+        ? 'Enter a valid number.'
+        : parsedPartialAmount <= 0
+          ? 'Enter an amount greater than 0.'
+          : parsedPartialAmount > currentBalance
+            ? `That's more than the ₪${formatBalance(currentBalance)} left on this coupon.`
+            : null;
+  // The only silently-disabled state is "nothing typed", which is self-evident;
+  // every other disabled state has a message next to it.
+  const partialConfirmDisabled =
+    partialLoading || redeemAllLoading || parsedPartialAmount === null || partialError !== null;
 
   const color = CATEGORY_COLORS[coupon.category] ?? CATEGORY_COLORS.Other;
   const categoryIcon = (CATEGORY_ICONS[coupon.category] ?? 'ellipsis-horizontal-outline') as any;
@@ -298,17 +330,19 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
         </TouchableOpacity>
       )}
 
-      {/* Secondary actions — Edit + Share */}
-      <View style={styles.actionRow}>
-        <TouchableOpacity style={styles.editBtn} onPress={onEdit}>
-          <Ionicons name="pencil-outline" size={16} color="#E8604C" />
-          <Text style={styles.editBtnText}>Edit Coupon</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.shareBtn} onPress={handleShareToGroup}>
-          <Ionicons name="share-social-outline" size={16} color="#E8604C" />
-          <Text style={styles.shareBtnText}>Share to Group</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Secondary actions — Edit + Share (owner-only server-side) */}
+      {isOwner && (
+        <View style={styles.actionRow}>
+          <TouchableOpacity style={styles.editBtn} onPress={onEdit}>
+            <Ionicons name="pencil-outline" size={16} color="#E8604C" />
+            <Text style={styles.editBtnText}>Edit Coupon</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.shareBtn} onPress={handleShareToGroup}>
+            <Ionicons name="share-social-outline" size={16} color="#E8604C" />
+            <Text style={styles.shareBtnText}>Share to Group</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Where to use — minimalist link */}
       <TouchableOpacity
@@ -320,13 +354,15 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
         <Text style={styles.whereLinkText}>Where to use</Text>
       </TouchableOpacity>
 
-      {/* Delete — destructive plain text link */}
-      <TouchableOpacity
-        style={styles.deleteLink}
-        onPress={() => { onDelete(coupon.coupon_id); onClose(); }}
-      >
-        <Text style={styles.deleteLinkText}>Delete Coupon</Text>
-      </TouchableOpacity>
+      {/* Delete — destructive plain text link (owner-only server-side) */}
+      {isOwner && (
+        <TouchableOpacity
+          style={styles.deleteLink}
+          onPress={() => { onDelete(coupon.coupon_id); onClose(); }}
+        >
+          <Text style={styles.deleteLinkText}>Delete Coupon</Text>
+        </TouchableOpacity>
+      )}
 
     </ScrollView>
 
@@ -345,44 +381,54 @@ export default function CouponDisplay({ coupon, onEdit, onDelete, onMarkUsed, on
       >
         <View style={styles.confirmBox} onStartShouldSetResponder={() => true}>
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
-          <Text style={styles.confirmTitle}>How would you like to redeem?</Text>
+          <Text style={styles.confirmTitle}>
+            {canPartialRedeem ? 'How would you like to redeem?' : 'Redeem this coupon?'}
+          </Text>
 
           <TouchableOpacity
             style={styles.redeemAllBtn}
-            onPress={() => {
-              setRedeemModalVisible(false);
-              onMarkUsed(coupon.coupon_id);
-              onClose();
-            }}
+            onPress={handleRedeemAll}
+            disabled={redeemAllLoading || partialLoading}
             activeOpacity={0.85}
           >
-            <Text style={styles.redeemAllBtnText}>Redeem All</Text>
-          </TouchableOpacity>
-
-          <View style={styles.orDivider}>
-            <View style={styles.orLine} />
-            <Text style={styles.orText}>OR</Text>
-            <View style={styles.orLine} />
-          </View>
-
-          <Text style={styles.partialLabel}>Enter partial amount</Text>
-          <TextInput
-            style={styles.partialInput}
-            placeholder={`max ₪${formatBalance(coupon.balance ?? 0)}`}
-            placeholderTextColor="#A8997A"
-            keyboardType="numeric"
-            value={maskBalanceInput(partialAmount)}
-            onChangeText={text => setPartialAmount(text.replace(/,/g, ''))}
-          />
-          <TouchableOpacity
-            style={styles.redeemPartialConfirmBtn}
-            onPress={handlePartialRedeem}
-            disabled={partialLoading}
-          >
-            {partialLoading
+            {redeemAllLoading
               ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.redeemPartialConfirmBtnText}>Confirm Partial Redeem</Text>}
+              : <Text style={styles.redeemAllBtnText}>Redeem All</Text>}
           </TouchableOpacity>
+
+          {/* Partial redemption only makes sense for a coupon that tracks a
+              remaining balance — otherwise there's nothing to split. */}
+          {canPartialRedeem && (
+            <>
+              <View style={styles.orDivider}>
+                <View style={styles.orLine} />
+                <Text style={styles.orText}>OR</Text>
+                <View style={styles.orLine} />
+              </View>
+
+              <Text style={styles.partialLabel}>Enter partial amount</Text>
+              <TextInput
+                style={[styles.partialInput, partialError != null && styles.partialInputError]}
+                placeholder={`max ₪${formatBalance(currentBalance)}`}
+                placeholderTextColor="#A8997A"
+                keyboardType="numeric"
+                value={maskBalanceInput(partialAmount)}
+                onChangeText={text => setPartialAmount(text.replace(/,/g, ''))}
+              />
+              {partialError != null && (
+                <Text style={styles.partialErrorText}>{partialError}</Text>
+              )}
+              <TouchableOpacity
+                style={[styles.redeemPartialConfirmBtn, partialConfirmDisabled && styles.redeemPartialConfirmBtnDisabled]}
+                onPress={handlePartialRedeem}
+                disabled={partialConfirmDisabled}
+              >
+                {partialLoading
+                  ? <ActivityIndicator color="#fff" />
+                  : <Text style={styles.redeemPartialConfirmBtnText}>Confirm Partial Redeem</Text>}
+              </TouchableOpacity>
+            </>
+          )}
 
           <TouchableOpacity
             style={styles.cancelLink}
@@ -692,6 +738,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 4,
   },
+  partialInputError: { borderBottomColor: '#C0392B' },
+  partialErrorText: {
+    fontSize: 12,
+    color: '#C0392B',
+    textAlign: 'center',
+    marginTop: 2,
+  },
   redeemPartialConfirmBtn: {
     width: '100%',
     backgroundColor: '#E8604C',
@@ -700,6 +753,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 12,
   },
+  redeemPartialConfirmBtnDisabled: { backgroundColor: '#E0D8CA' },
   redeemPartialConfirmBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   cancelLink: { marginTop: 16, paddingVertical: 8, alignItems: 'center' },
   cancelLinkText: { fontSize: 14, color: '#A8997A', fontWeight: '500' },
