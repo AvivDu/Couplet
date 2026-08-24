@@ -5,7 +5,7 @@ import { pushToUser } from '../lib/websocket';
 import { encryptCode, decryptStoredCode } from '../lib/codeCrypto';
 
 // A code-carrying fallback row (offline share, or a failed P2P negotiation)
-// is only kept for 72h — see code_expires_at below.
+// is only kept for 72h - see code_expires_at below.
 const CODE_TTL_SECONDS = 72 * 60 * 60;
 
 export interface Notification {
@@ -20,7 +20,7 @@ export interface Notification {
   group_name?: string;
   coupon_id?: string;
   coupon_code?: string;
-  // DynamoDB TTL attribute (epoch seconds) — only set when coupon_code is
+  // DynamoDB TTL attribute (epoch seconds) - only set when coupon_code is
   // present. Deletes the whole item (not just the code) after ~72h if the
   // recipient never consumed it; see markCodeConsumed for the earlier path.
   code_expires_at?: number;
@@ -45,7 +45,7 @@ export async function insertNotification(
 // Insert a notification AND push it live over the WebSocket. The pushed payload
 // is always code-stripped: coupon codes never travel inside a notification
 // frame. Persisting coupon_code on the item (encrypted, TTL'd) is a fallback
-// only — used when the recipient was offline at share time, or when a P2P
+// only - used when the recipient was offline at share time, or when a P2P
 // data-channel transfer to an online recipient failed (see rescueCode).
 export async function notifyUser(
   notif: Omit<Notification, 'notification_id' | 'created_at'>
@@ -56,7 +56,7 @@ export async function notifyUser(
   return item;
 }
 
-// Clears a delivered fallback code once the client has consumed it locally —
+// Clears a delivered fallback code once the client has consumed it locally -
 // faster and more precise than waiting on the 72h TTL, and leaves the
 // notification row (read state, history) intact.
 export async function clearNotificationCode(userId: string, notificationId: string): Promise<void> {
@@ -71,18 +71,16 @@ export async function clearNotificationCode(userId: string, notificationId: stri
 // Finds that recipient's group_share notification for this coupon and writes
 // the code onto it (encrypted, TTL'd), same as the offline fallback.
 //
-// TODO: getNotificationsForUser only returns the 50 newest notifications, so a
-// recipient with heavy notification traffic could have the target group_share
-// pushed out of that window between the share and the rescue — the rescue then
-// returns false and that recipient never gets the code. Fix by querying for the
-// specific group_id/coupon_id instead of scanning the recent page.
+// Searches the recipient's full notification history rather than a truncated
+// page. The target row is matched by group_id/coupon_id, so an unrelated
+// backlog must not be able to hide it and silently strand the code.
 export async function rescueCode(
   userId: string,
   groupId: string,
   couponId: string,
   couponCode: string
 ): Promise<boolean> {
-  const notifications = await getNotificationsForUser(userId);
+  const notifications = await queryAllNotifications(userId);
   const target = notifications.find(
     n => n.type === 'group_share' && n.group_id === groupId && n.coupon_id === couponId
   );
@@ -99,15 +97,41 @@ export async function rescueCode(
   return true;
 }
 
+const MAX_NOTIFICATIONS_RETURNED = 50;
+const MAX_QUERY_PAGES = 20; // safety valve against an unbounded scan
+
+// The table's sort key is notification_id, a random uuidv4 - NOT a timestamp.
+// So DynamoDB's own ordering is meaningless here: `ScanIndexForward: false`
+// with a Limit returns the highest random UUIDs, not the most recent rows.
+// That silently dropped arbitrary notifications for anyone past the limit,
+// including group_share rows carrying a coupon-code fallback, so recipients
+// could never find the code. We therefore page the whole (per-user, small)
+// partition and order by created_at ourselves before truncating.
+//
+// If notification volume ever grows enough for this to hurt, the real fix is
+// a sortable sort key (ULID / created_at-prefixed id) or a GSI on created_at.
+async function queryAllNotifications(userId: string): Promise<Notification[]> {
+  const items: Notification[] = [];
+  let lastKey: Record<string, unknown> | undefined;
+  let pages = 0;
+
+  do {
+    const result: any = await ddb.send(new QueryCommand({
+      TableName: NOTIFICATIONS_TABLE,
+      KeyConditionExpression: 'user_id = :uid',
+      ExpressionAttributeValues: { ':uid': userId },
+      ExclusiveStartKey: lastKey,
+    }));
+    items.push(...((result.Items as Notification[]) ?? []));
+    lastKey = result.LastEvaluatedKey;
+    pages += 1;
+  } while (lastKey && pages < MAX_QUERY_PAGES);
+
+  return items.sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+}
+
 export async function getNotificationsForUser(userId: string): Promise<Notification[]> {
-  const result = await ddb.send(new QueryCommand({
-    TableName: NOTIFICATIONS_TABLE,
-    KeyConditionExpression: 'user_id = :uid',
-    ExpressionAttributeValues: { ':uid': userId },
-    ScanIndexForward: false,
-    Limit: 50,
-  }));
-  const items = (result.Items as Notification[]) ?? [];
+  const items = (await queryAllNotifications(userId)).slice(0, MAX_NOTIFICATIONS_RETURNED);
   return items.map(n => (n.coupon_code ? { ...n, coupon_code: decryptStoredCode(n.coupon_code) } : n));
 }
 
@@ -118,8 +142,10 @@ export async function deleteNotification(userId: string, notificationId: string)
   }));
 }
 
+// Reads the full history, not the returned page: marking only the newest 50
+// would leave older unread rows behind and the badge stuck above zero.
 export async function markAllNotificationsRead(userId: string): Promise<void> {
-  const notifications = await getNotificationsForUser(userId);
+  const notifications = await queryAllNotifications(userId);
   await Promise.all(
     notifications
       .filter(n => !n.read)
