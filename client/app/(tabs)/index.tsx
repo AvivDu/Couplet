@@ -17,9 +17,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, TextInput } from '../../components/rn';
 import { Ionicons } from '@expo/vector-icons';
 import { CATEGORY_COLORS } from '../../constants/categories';
-import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, clearNotificationCode, type CouponMeta } from '../../services/api';
+import { getCoupons, updateCoupon, redeemOwnCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, clearNotificationCode, type CouponMeta, type RedeemAction } from '../../services/api';
 import { getCouponCode, saveCouponCode, deleteCouponCode, deleteCouponImage } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
+import { useNotifications } from '../../context/NotificationsContext';
 import { useRefreshOnNotification } from '../../hooks/useRefreshOnNotification';
 import CouponCard from '../../components/CouponCard';
 import CouponDetail from '../../components/CouponDetail';
@@ -58,6 +59,7 @@ const DRAWER_WIDTH = Dimensions.get('window').width * 0.48;
 
 export default function HomeScreen() {
   const { user, signOut } = useAuth();
+  const { bump } = useNotifications();
   const router = useRouter();
   const [coupons, setCoupons] = useState<CouponMeta[]>([]);
   const [couponCodes, setCouponCodes] = useState<Record<string, string | null>>({});
@@ -284,13 +286,15 @@ export default function HomeScreen() {
     markNotificationsRead().catch(() => {});
   }
 
-  async function handleMarkUsed(id: string) {
-    try {
-      const { data } = await updateCoupon(id, { status: 'used' });
-      setCoupons(prev => prev.map(c => c.coupon_id === id ? data : c));
-    } catch {
-      Alert.alert('Error', 'Could not update coupon.');
-    }
+  async function handleRedeem(id: string, action: RedeemAction) {
+    const { data } = await redeemOwnCoupon(id, action);
+    setCoupons(prev => prev.map(c => c.coupon_id === id ? data : c));
+    // Local mutation, not a live notification — bump so any other mounted
+    // screen (e.g. a group screen showing this shared coupon) picks it up.
+    // Keyed off the server's resulting status, so a partial redeem that
+    // happens to drain the balance also refreshes.
+    if (data.status === 'used') bump();
+    return data;
   }
 
   async function handleDelete(id: string) {
@@ -499,7 +503,7 @@ export default function HomeScreen() {
           visible={!!selected}
           onClose={() => setSelected(null)}
           onDelete={handleDelete}
-          onMarkUsed={handleMarkUsed}
+          onRedeem={handleRedeem}
           onUpdate={handleUpdate}
         />
 

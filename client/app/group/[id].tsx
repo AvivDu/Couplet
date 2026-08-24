@@ -28,6 +28,7 @@ import {
   cancelInvitation,
   shareToGroup,
   rescueCode,
+  redeemGroupCoupon,
   getCoupons,
   renameGroup,
   setGroupPhoto,
@@ -35,7 +36,7 @@ import {
   getNotifications,
   clearNotificationCode,
 } from '../../services/api';
-import type { GroupDetail as GroupDetailType, GroupMember, CouponMeta, ContactMatch, GroupCoupon } from '../../services/api';
+import type { GroupDetail as GroupDetailType, GroupMember, CouponMeta, ContactMatch, GroupCoupon, RedeemAction } from '../../services/api';
 
 type ContactMatchWithName = ContactMatch & { contactName: string };
 import { getCouponCode, saveCouponCode } from '../../storage/couponStorage';
@@ -71,7 +72,7 @@ export default function GroupScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const groupId = typeof id === 'string' ? id : Array.isArray(id) ? id[0] : null;
   const { user } = useAuth();
-  const { sendSignal } = useNotifications();
+  const { sendSignal, bump } = useNotifications();
 
   const [group, setGroup] = useState<GroupDetailType | null>(null);
   const [loading, setLoading] = useState(true);
@@ -490,6 +491,20 @@ export default function GroupScreen() {
     }
   }
 
+  async function handleGroupRedeem(couponId: string, action: RedeemAction) {
+    if (!groupId) throw new Error('No group id');
+    const { data: updated } = await redeemGroupCoupon(groupId, couponId, action);
+    setGroup(prev => prev
+      ? { ...prev, coupons: prev.coupons.map(c => c.coupon_id === couponId ? { ...c, ...updated } : c) }
+      : prev);
+    // Local mutation, not a live notification — bump so any other mounted
+    // screen (e.g. My Coupons for the owner) picks it up. Keyed off the
+    // server's resulting status, so a partial redeem that happens to drain
+    // the balance also refreshes.
+    if (updated.status === 'used') bump();
+    return updated;
+  }
+
   function getInitials(name: string) {
     return name.slice(0, 2).toUpperCase();
   }
@@ -683,9 +698,10 @@ export default function GroupScreen() {
                 ? new Date(coupon.expiration_date + 'T00:00:00').toLocaleDateString()
                 : null;
               const isLoading = loadingCouponId === coupon.coupon_id;
+              const isUsed = coupon.status !== 'active';
 
               return (
-                <View key={coupon.coupon_id} style={styles.card}>
+                <View key={coupon.coupon_id} style={[styles.card, isUsed && styles.cardUsed]}>
                   {/* Sender attribution */}
                   <View style={styles.senderRow}>
                     <View
@@ -725,24 +741,35 @@ export default function GroupScreen() {
                       <Text style={styles.brandName} numberOfLines={1}>{coupon.store_name}</Text>
                       <Text style={styles.category}>{coupon.category}</Text>
                       {expiry && <Text style={styles.expiry}>Expires {expiry}</Text>}
+                      {isUsed && (
+                        <View style={styles.usedBadge}>
+                          <Text style={styles.usedText}>{coupon.status.toUpperCase()}</Text>
+                        </View>
+                      )}
                     </View>
                   </TouchableOpacity>
 
                   {/* Action */}
                   <TouchableOpacity
-                    style={[styles.actionBtn, isOwn ? styles.actionBtnRevoke : styles.actionBtnUse]}
+                    style={[
+                      styles.actionBtn,
+                      isOwn ? styles.actionBtnRevoke : styles.actionBtnUse,
+                      isUsed && !isOwn && styles.actionBtnUsed,
+                    ]}
                     onPress={() =>
                       isOwn
                         ? handleRevokeCoupon(coupon.coupon_id)
                         : handleOpenCouponDetail(coupon)
                     }
-                    disabled={isLoading}
+                    disabled={isLoading || (isUsed && !isOwn)}
                     activeOpacity={0.8}
                   >
                     {isLoading ? (
                       <ActivityIndicator size="small" color={COLORS.coralDeep} />
                     ) : (
-                      <Text style={styles.actionBtnText}>{isOwn ? 'Revoke' : 'Use coupon'}</Text>
+                      <Text style={styles.actionBtnText}>
+                        {isOwn ? 'Revoke' : isUsed ? 'Used' : 'Use coupon'}
+                      </Text>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -1361,8 +1388,8 @@ export default function GroupScreen() {
         visible={!!selectedCoupon}
         onClose={() => setSelectedCoupon(null)}
         onDelete={() => setSelectedCoupon(null)}
-        onMarkUsed={() => setSelectedCoupon(null)}
-        onUpdate={() => setSelectedCoupon(null)}
+        onRedeem={handleGroupRedeem}
+        onUpdate={(updated, newCode) => setSelectedCoupon(prev => prev ? { ...prev, ...updated, code: newCode } : prev)}
       />
     </SafeAreaView>
   );
@@ -1568,10 +1595,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  cardUsed: { opacity: 0.5 },
   cardText: { flex: 1, minWidth: 0 },
   brandName: { fontSize: 17, fontWeight: '700', color: COLORS.ink },
   category: { fontSize: 13, color: COLORS.muted, marginTop: 2 },
   expiry: { fontSize: 12, color: COLORS.muted, marginTop: 4 },
+  usedBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(26,35,50,0.15)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginTop: 4,
+  },
+  usedText: { fontSize: 10, fontWeight: '700', color: COLORS.ink, letterSpacing: 0.5 },
 
   actionBtn: {
     borderRadius: 10,
@@ -1581,6 +1618,7 @@ const styles = StyleSheet.create({
   },
   actionBtnUse: { backgroundColor: COLORS.coralPale },
   actionBtnRevoke: { backgroundColor: 'rgba(216,90,60,0.10)' },
+  actionBtnUsed: { backgroundColor: COLORS.divider },
   actionBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.coralDeep },
 
   // Filter sheet

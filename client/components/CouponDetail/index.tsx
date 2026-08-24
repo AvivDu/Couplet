@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, View, StyleSheet } from 'react-native';
+import { useAuth } from '../../context/AuthContext';
 import CouponHeader from './CouponHeader';
 import CouponDisplay from './CouponDisplay';
 import CouponEditForm, { type CouponEditFormHandle } from './CouponEditForm';
@@ -10,16 +11,22 @@ export default function CouponDetail({
   visible,
   onClose,
   onDelete,
-  onMarkUsed,
+  onRedeem,
   onUpdate,
 }: CouponDetailProps) {
   const [isEditing, setIsEditing] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const editFormRef = React.useRef<CouponEditFormHandle | null>(null);
+  const { user } = useAuth();
 
   if (!coupon) {
     return null;
   }
+
+  // Editing, sharing and deleting are owner-only server-side. This modal is
+  // also opened by non-owners from the group screen (to redeem a shared
+  // coupon), so those controls are hidden rather than left as dead ends.
+  const isOwner = coupon.owner_id === user?.userId;
 
   async function handleSavePress() {
     if (!editFormRef.current) return;
@@ -37,9 +44,10 @@ export default function CouponDetail({
         />
         <CouponDisplay
           coupon={coupon}
+          isOwner={isOwner}
           onEdit={() => setIsEditing(true)}
           onDelete={onDelete}
-          onMarkUsed={onMarkUsed}
+          onRedeem={onRedeem}
           onUpdate={onUpdate}
           onClose={onClose}
         />

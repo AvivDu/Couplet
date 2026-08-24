@@ -1,6 +1,7 @@
 import { GetCommand, PutCommand, UpdateCommand, ScanCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb, GROUPS_TABLE } from '../lib/dynamo';
 import { getCouponById } from './coupons';
+import { notifyUser } from './notifications';
 
 export interface Group {
   group_id: string;
@@ -113,6 +114,47 @@ export async function removeCouponFromAllGroups(couponId: string): Promise<void>
   }));
   const groups = (result.Items as Group[]) ?? [];
   await Promise.all(groups.map(g => removeCouponFromGroup(g.group_id, couponId)));
+}
+
+export async function getGroupsContainingCoupon(couponId: string): Promise<Group[]> {
+  const result = await ddb.send(new ScanCommand({
+    TableName: GROUPS_TABLE,
+    FilterExpression: 'contains(coupon_id_list, :cid)',
+    ExpressionAttributeValues: { ':cid': couponId },
+  }));
+  return (result.Items as Group[]) ?? [];
+}
+
+// "Used" is a global fact about a coupon, not scoped to whichever group the
+// action happened in — so this notifies every member of every group the
+// coupon is shared to (minus the actor), regardless of whether the actor
+// was the owner (redeeming from My Coupons) or a non-owner member
+// (redeeming from a group screen).
+export async function notifyGroupsCouponUsed(
+  couponId: string,
+  actorUserId: string,
+  actorName: string,
+  storeName: string
+): Promise<void> {
+  const groups = await getGroupsContainingCoupon(couponId);
+  await Promise.all(
+    groups.flatMap(group =>
+      group.user_id_list
+        .filter(uid => uid !== actorUserId)
+        .map(uid =>
+          notifyUser({
+            user_id: uid,
+            type: 'coupon_used',
+            title: `Coupon used in "${group.name}"`,
+            body: `${actorName} marked a ${storeName} coupon as used`,
+            read: false,
+            group_id: group.group_id,
+            group_name: group.name,
+            coupon_id: couponId,
+          })
+        )
+    )
+  );
 }
 
 export async function addPendingMemberToGroup(groupId: string, userId: string): Promise<Group | null> {

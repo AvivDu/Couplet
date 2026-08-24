@@ -1,4 +1,4 @@
-import type { CouponMeta } from '../../services/api';
+import type { CouponMeta, RedeemAction } from '../../services/api';
 
 export type CouponWithCode = CouponMeta & { code: string | null };
 
@@ -7,6 +7,6 @@ export interface CouponDetailProps {
   visible: boolean;
   onClose: () => void;
   onDelete: (id: string) => void;
-  onMarkUsed: (id: string) => void;
+  onRedeem: (id: string, action: RedeemAction) => Promise<CouponMeta>;
   onUpdate: (updated: CouponMeta, newCode: string) => void;
 }

@@ -4,6 +4,7 @@ import { getCouponsByOwner, getCouponById, insertCoupon, updateCoupon, deleteCou
 import { removeCouponFromAllGroups } from '../repositories/groups';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { crawlRedeemableStores } from '../services/crawler';
+import { applyRedemption, parseRedeemAction, notifyIfNewlyUsed } from '../services/redemption';
 
 const router = Router();
 
@@ -64,13 +65,46 @@ router.patch('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   if (status !== undefined) fields.status = status;
   if (giftcard_url !== undefined) fields.giftcard_url = giftcard_url;
 
+  // This is the general-purpose edit endpoint, so an absolute balance is the
+  // right semantic here. Redeeming goes through /:id/redeem below, which is
+  // atomic. The notify is kept as a safety net for anything that sets 'used'
+  // through this route directly.
+  const wasAlreadyUsed = status === 'used'
+    ? (await getCouponById(req.params.id))?.status === 'used'
+    : false;
+
   const updated = await updateCoupon(req.params.id, req.userId!, fields);
   if (!updated) {
     res.status(404).json({ error: 'Coupon not found' });
     return;
   }
 
+  if (status === 'used') await notifyIfNewlyUsed(updated, wasAlreadyUsed, req.userId!);
+
   res.json(updated);
+});
+
+// POST /coupons/:id/redeem — owner redeems their own coupon.
+// Body: { redeem_all: true } or { amount: <number > 0> }.
+router.post('/:id/redeem', async (req: AuthRequest, res: Response): Promise<void> => {
+  const parsed = parseRedeemAction(req.body);
+  if ('error' in parsed) {
+    res.status(400).json({ error: parsed.error });
+    return;
+  }
+
+  const coupon = await getCouponById(req.params.id);
+  if (!coupon || coupon.owner_id !== req.userId!) {
+    res.status(404).json({ error: 'Coupon not found' });
+    return;
+  }
+
+  const outcome = await applyRedemption(req.params.id, req.userId!, parsed);
+  if (outcome.status !== 200) {
+    res.status(outcome.status).json({ error: outcome.error });
+    return;
+  }
+  res.json(outcome.coupon);
 });
 
 router.delete('/:id', async (req: AuthRequest, res: Response): Promise<void> => {

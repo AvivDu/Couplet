@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createGroup, getGroupsByUser, getGroupById, removeMemberFromGroup, leaveGroup, addCouponToGroup, removeCouponFromGroup, removeCouponsByOwnerFromGroup, addPendingMemberToGroup, removePendingMemberFromGroup, acceptGroupInvitation, renameGroup, setGroupImage, deleteGroup } from '../repositories/groups';
 import { findUserByEmail, findUserByPhone, findUserById, findUsersByQuery } from '../repositories/users';
 import { getCouponById } from '../repositories/coupons';
+import { applyRedemption, parseRedeemAction } from '../services/redemption';
 import { notifyUser, rescueCode } from '../repositories/notifications';
 import { getConnectionsForUser } from '../repositories/connections';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
@@ -307,6 +308,40 @@ router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): P
 
   console.log('[share] coupon=%s group=%s online_recipients=%j', coupon.coupon_id, group.group_id, online_recipient_ids);
   res.json({ ...updated, online_recipient_ids });
+});
+
+// POST /groups/:id/coupons/:couponId/redeem — any group member (not just the
+// owner) redeems a coupon shared to this group. Separate from the owner-gated
+// coupon routes: authorization is group membership, and it can only redeem,
+// never touch the coupon's other editable fields.
+// Body: { redeem_all: true } or { amount: <number > 0> }.
+router.post('/:id/coupons/:couponId/redeem', async (req: AuthRequest, res: Response): Promise<void> => {
+  const parsed = parseRedeemAction(req.body);
+  if ('error' in parsed) {
+    res.status(400).json({ error: parsed.error });
+    return;
+  }
+
+  const group = await getGroupById(req.params.id);
+  if (!group) {
+    res.status(404).json({ error: 'Group not found' });
+    return;
+  }
+  if (!group.user_id_list.includes(req.userId!)) {
+    res.status(403).json({ error: 'You are not a member of this group' });
+    return;
+  }
+  if (!group.coupon_id_list.includes(req.params.couponId)) {
+    res.status(404).json({ error: 'Coupon is not shared to this group' });
+    return;
+  }
+
+  const outcome = await applyRedemption(req.params.couponId, req.userId!, parsed);
+  if (outcome.status !== 200) {
+    res.status(outcome.status).json({ error: outcome.error });
+    return;
+  }
+  res.json(outcome.coupon);
 });
 
 // POST /groups/:id/coupons/:couponId/rescue-code — sharer-triggered fallback

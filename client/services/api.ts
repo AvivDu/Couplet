@@ -162,6 +162,18 @@ export const updateCoupon = (id: string, data: Partial<CouponMeta>) =>
 
 export const deleteCoupon = (id: string) => api.delete(`/coupons/${id}`);
 
+// Redemption sends the *amount* (or redeem_all), never a client-computed
+// absolute balance — the server applies it atomically so two members
+// redeeming the same shared coupon at once can't overdraw it.
+export type RedeemAction = { redeem_all: true } | { amount: number };
+
+export const redeemOwnCoupon = (couponId: string, action: RedeemAction) =>
+  api.post<CouponMeta>(`/coupons/${couponId}/redeem`, action);
+
+// Any group member (not just the owner) can redeem a coupon shared to a group.
+export const redeemGroupCoupon = (groupId: string, couponId: string, action: RedeemAction) =>
+  api.post<CouponMeta>(`/groups/${groupId}/coupons/${couponId}/redeem`, action);
+
 export interface StoreLocation {
   name: string;
   address: string;

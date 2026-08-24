@@ -12,6 +12,10 @@ interface NotificationsContextType {
   revision: number;
   // Sends a signaling/keepalive payload over the live socket; no-ops if closed.
   sendSignal: SendSignal;
+  // Manually bump revision after a local mutation (e.g. this device's own
+  // redeem action) so any other mounted screen picks it up via
+  // useRefreshOnNotification, without waiting on a round-trip notification.
+  bump: () => void;
 }
 
 const NotificationsContext = createContext<NotificationsContextType | null>(null);
@@ -233,7 +237,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, [dismissAndNavigate]);
 
   return (
-    <NotificationsContext.Provider value={{ revision, sendSignal }}>
+    <NotificationsContext.Provider value={{ revision, sendSignal, bump }}>
       {children}
       <NotificationBanner data={banner} onPress={handleBannerPress} onDismiss={() => setBanner(null)} />
     </NotificationsContext.Provider>
