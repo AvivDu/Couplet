@@ -19,9 +19,10 @@ import * as ImagePicker from 'expo-image-picker';
 import ImageCropModal from '../../components/ImageCropModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { createCoupon } from '../../services/api';
 import { saveCouponCode, saveCouponImage } from '../../storage/couponStorage';
+import { dismissDraft } from '../../storage/gmailDraftStorage';
 import { CATEGORY_COLORS } from '../../constants/categories';
 import { maskBalanceInput } from '../../utils/format';
 
@@ -49,9 +50,23 @@ export default function AddCouponScreen() {
   const [imageNatSize, setImageNatSize] = useState<{ w: number; h: number } | null>(null);
   const [giftUrl, setGiftUrl] = useState('');
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    fromGmail?: string; messageId?: string; code?: string; store?: string;
+    category?: string; expiration?: string; amount?: string;
+  }>();
 
   useFocusEffect(
     useCallback(() => {
+      if (params.fromGmail === '1') {
+        setCode(params.code ?? '');
+        setCouponName(params.store ?? '');
+        setCategory(params.category && ADD_CATEGORIES.some(c => c.label === params.category) ? params.category : '');
+        setExpiryDate(params.expiration ? new Date(params.expiration) : null);
+        setBalance(params.amount ?? '');
+        setImageUri(null);
+        setGiftUrl('');
+        return;
+      }
       setCode('');
       setCouponName('');
       setCategory('');
@@ -59,7 +74,7 @@ export default function AddCouponScreen() {
       setBalance('');
       setImageUri(null);
       setGiftUrl('');
-    }, [])
+    }, [params.fromGmail, params.messageId])
   );
 
   const expiryString = expiryDate
@@ -120,6 +135,9 @@ export default function AddCouponScreen() {
       if (imageUri) {
         await saveCouponImage(data.coupon_id, imageUri);
       }
+      // Belt-and-suspenders: the source email would also stop showing as a draft once
+      // its code matches this new coupon's saved code, but dismiss it explicitly too.
+      if (params.messageId) await dismissDraft(params.messageId);
 
       Alert.alert('Coupon added!', `${couponName} coupon has been saved.`, [
         { text: 'OK', onPress: () => router.replace('/(tabs)') },

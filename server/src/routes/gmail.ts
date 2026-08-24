@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { encryptToken, decryptToken } from '../lib/tokenCrypto';
 import { exchangeCodeForTokens, refreshAccessToken, buildGoogleAuthUrl, credentialsFor } from '../lib/googleOAuth';
-import { getGmailAddress, buildCandidateQuery, listCandidateMessageIds, getMessageHeaders } from '../lib/gmail';
+import { getGmailAddress, buildCandidateQuery, listCandidateMessageIds, getMessageHeaders, getMessageBody, extractCouponFields, GmailDraftFields } from '../lib/gmail';
 import { createOAuthState, verifyOAuthState } from '../lib/oauthState';
 import { renderOAuthResultPage } from '../lib/oauthResultPage';
 import { getGmailConnection, saveGmailConnection, addCandidatesAndUpdateLastScan, GmailCandidate, OAuthClient } from '../repositories/gmailConnections';
@@ -169,27 +169,76 @@ router.post('/scan', async (req: AuthRequest, res: Response): Promise<void> => {
 
   const now = new Date().toISOString();
   // One message failing to fetch (deleted, transient API error) shouldn't lose the
-  // rest of the batch — skip it and keep the ones that succeeded.
+  // rest of the batch — skip it and keep the ones that succeeded. The body fetch +
+  // extraction is best-effort too: a body-fetch failure still keeps the candidate,
+  // just without a draft (draft: null), rather than dropping it entirely.
   const fetched = await Promise.all(
     newIds.map(async id => {
       try {
         const headers = await getMessageHeaders(accessToken, id);
-        return { message_id: id, ...headers, created_at: now };
+        const body = await getMessageBody(accessToken, id).catch(() => '');
+        const draft = extractCouponFields(body, headers.from, headers.subject);
+        return { message_id: id, ...headers, created_at: now, draft };
       } catch {
         return null;
       }
     })
   );
-  const newCandidates: GmailCandidate[] = fetched.filter((c): c is GmailCandidate => c !== null);
+  const newResults = fetched.filter((c): c is GmailCandidate & { draft: GmailDraftFields } => c !== null);
+  const newCandidates: GmailCandidate[] = newResults.map(({ draft, ...c }) => c);
 
   const merged = await addCandidatesAndUpdateLastScan(req.userId!, connection.candidates, newCandidates, now);
 
-  res.json(merged);
+  // Draft fields are never persisted (see addCandidatesAndUpdateLastScan / GmailCandidate) —
+  // attach them here only for candidates we just extracted, transiently, for this response.
+  // The `draft` key is omitted entirely (not null) for candidates already known from a
+  // prior scan, so the client can tell "authoritatively checked, nothing found" (draft: {code:
+  // null,...}) apart from "not checked this scan" (key absent) — the latter it backfills on
+  // demand via POST /candidates/:messageId/extract and caches the result locally.
+  const draftByMessageId = new Map(newResults.map(r => [r.message_id, r.draft]));
+  const response = merged.map(c => {
+    const draft = draftByMessageId.get(c.message_id);
+    return draft !== undefined ? { ...c, draft } : c;
+  });
+
+  res.json(response);
 });
 
 router.get('/candidates', async (req: AuthRequest, res: Response): Promise<void> => {
   const connection = await getGmailConnection(req.userId!);
   res.json(connection?.candidates ?? []);
+});
+
+// On-demand extraction for a candidate the client doesn't have a cached draft for
+// (e.g. scanned before this feature shipped, or after a reinstall). Restricted to
+// message IDs already in this user's stored candidates — not a free-form inbox browse.
+router.post('/candidates/:messageId/extract', async (req: AuthRequest, res: Response): Promise<void> => {
+  const { messageId } = req.params;
+  const connection = await getGmailConnection(req.userId!);
+  if (!connection) {
+    res.status(404).json({ error: 'Gmail not connected' });
+    return;
+  }
+  if (!connection.candidates.some(c => c.message_id === messageId)) {
+    res.status(404).json({ error: 'Unknown candidate' });
+    return;
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = await refreshAccessToken(decryptToken(connection.refresh_token_encrypted), credentialsFor(connection.oauth_client ?? 'native'));
+  } catch {
+    res.status(409).json({ error: 'Gmail access expired or was revoked. Please reconnect.' });
+    return;
+  }
+
+  try {
+    const headers = await getMessageHeaders(accessToken, messageId);
+    const body = await getMessageBody(accessToken, messageId).catch(() => '');
+    res.json(extractCouponFields(body, headers.from, headers.subject));
+  } catch {
+    res.status(502).json({ error: 'Could not read this email from Gmail.' });
+  }
 });
 
 export default router;

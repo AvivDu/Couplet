@@ -61,8 +61,27 @@ export async function connectGmail(): Promise<{ gmail_email: string }> {
   return data;
 }
 
-export const scanGmail = () => api.post<GmailCandidate[]>('/gmail/scan');
+// Best-effort fields extracted server-side from an email body — returned transiently,
+// never persisted server-side (see server/src/routes/gmail.ts). null fields mean
+// nothing confident was found for that field.
+export interface GmailDraftFields {
+  code: string | null;
+  store: string | null;
+  amount: number | null;
+  expiration: string | null;
+}
+
+// `draft` is present only for candidates actually extracted during this scan (new
+// ones) — absent for already-known candidates, which the caller should treat like a
+// normal load (check the local cache, then backfill via extractGmailCandidate).
+export const scanGmail = () => api.post<(GmailCandidate & { draft?: GmailDraftFields })[]>('/gmail/scan');
 export const getGmailCandidates = () => api.get<GmailCandidate[]>('/gmail/candidates');
+
+// On-demand re-extraction for a candidate without a locally cached draft yet
+// (e.g. scanned before this feature shipped). Restricted server-side to message IDs
+// already known from a prior scan.
+export const extractGmailCandidate = (messageId: string) =>
+  api.post<GmailDraftFields>(`/gmail/candidates/${messageId}/extract`);
 
 export interface GmailStatus {
   connected: boolean;

@@ -72,3 +72,149 @@ export async function getMessageHeaders(accessToken: string, messageId: string):
   const get = (name: string) => headers.find(h => h.name === name)?.value ?? '';
   return { from: get('From'), subject: get('Subject'), date: get('Date') };
 }
+
+interface GmailMessagePart {
+  mimeType?: string;
+  body?: { data?: string };
+  parts?: GmailMessagePart[];
+}
+
+function decodeBase64Url(data: string): string {
+  const normalized = data.replace(/-/g, '+').replace(/_/g, '/');
+  return Buffer.from(normalized, 'base64').toString('utf-8');
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|tr|li)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&#39;/gi, '\'')
+    .replace(/&quot;/gi, '"')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+
+function findBodyText(part: GmailMessagePart, preferredMime: string): string | null {
+  if (part.mimeType === preferredMime && part.body?.data) {
+    return decodeBase64Url(part.body.data);
+  }
+  for (const child of part.parts ?? []) {
+    const found = findBodyText(child, preferredMime);
+    if (found) return found;
+  }
+  return null;
+}
+
+// Full message body — never persisted. Used only to extract draft coupon fields
+// transiently for the caller's response (see extractCouponFields below).
+export async function getMessageBody(accessToken: string, messageId: string): Promise<string> {
+  const params = new URLSearchParams({ format: 'full' });
+  const message = await gmailFetch(accessToken, `/messages/${messageId}`, params);
+  const payload: GmailMessagePart = message.payload ?? {};
+  const plain = findBodyText(payload, 'text/plain');
+  if (plain) return plain;
+  const html = findBodyText(payload, 'text/html');
+  if (html) return stripHtml(html);
+  return '';
+}
+
+export interface GmailDraftFields {
+  code: string | null;
+  store: string | null;
+  amount: number | null;
+  expiration: string | null;
+}
+
+// Labeled patterns only — deliberately conservative. An unlabeled bare token would
+// false-positive on order numbers, phone numbers, etc. scattered through marketing mail.
+const CODE_LABEL_PATTERNS = [
+  /קוד\s*קופון[:\s]+([A-Za-z0-9-]{4,20})/i,
+  /קוד\s*הנחה[:\s]+([A-Za-z0-9-]{4,20})/i,
+  /coupon\s*code[:\s]+([A-Za-z0-9-]{4,20})/i,
+  /promo(?:\s*code)?[:\s]+([A-Za-z0-9-]{4,20})/i,
+  /discount\s*code[:\s]+([A-Za-z0-9-]{4,20})/i,
+  /\bcode[:\s]+([A-Za-z0-9-]{4,20})/i,
+];
+
+function extractCode(text: string): string | null {
+  for (const pattern of CODE_LABEL_PATTERNS) {
+    const match = text.match(pattern);
+    if (match) return match[1].trim();
+  }
+  return null;
+}
+
+const AMOUNT_PATTERNS = [
+  /₪\s*(\d+(?:[.,]\d+)?)/,
+  /(\d+(?:[.,]\d+)?)\s*₪/,
+  /(\d+(?:[.,]\d+)?)\s*שקל/,
+  /\$\s*(\d+(?:[.,]\d+)?)/,
+];
+
+function extractAmount(text: string): number | null {
+  for (const pattern of AMOUNT_PATTERNS) {
+    const match = text.match(pattern);
+    if (match) {
+      const value = parseFloat(match[1].replace(',', ''));
+      if (!isNaN(value)) return value;
+    }
+  }
+  return null;
+}
+
+const EXPIRATION_LABEL_PATTERNS = [
+  /(?:בתוקף\s*עד|תוקף\s*עד)[:\s]*([0-9./-]{6,10})/,
+  /(?:valid\s*until|expires?(?:\s*on)?|exp\.?\s*date)[:\s]*([0-9./-]{6,10})/i,
+];
+
+function parseDateToken(token: string): string | null {
+  const parts = token.split(/[./-]/).map(p => p.trim());
+  if (parts.length !== 3) return null;
+  const [a, b, c] = parts;
+  let year: number, month: number, day: number;
+  if (a.length === 4) {
+    year = parseInt(a, 10); month = parseInt(b, 10); day = parseInt(c, 10);
+  } else {
+    day = parseInt(a, 10); month = parseInt(b, 10); year = parseInt(c, 10);
+    if (year < 100) year += 2000;
+  }
+  if (!year || !month || !day || month > 12 || day > 31) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (isNaN(date.getTime())) return null;
+  return date.toISOString().split('T')[0];
+}
+
+function extractExpiration(text: string): string | null {
+  for (const pattern of EXPIRATION_LABEL_PATTERNS) {
+    const match = text.match(pattern);
+    if (match) {
+      const parsed = parseDateToken(match[1]);
+      if (parsed) return parsed;
+    }
+  }
+  return null;
+}
+
+function extractStore(fromHeader: string): string | null {
+  const match = fromHeader.match(/^"?([^"<]+?)"?\s*<[^>]+>$/);
+  const name = (match ? match[1] : fromHeader).trim();
+  return name || null;
+}
+
+// Best-effort only — the client always shows extracted fields as an editable,
+// user-reviewed draft before a coupon is actually saved.
+export function extractCouponFields(body: string, fromHeader: string, subject: string): GmailDraftFields {
+  const text = `${subject}\n${body}`;
+  return {
+    code: extractCode(text),
+    store: extractStore(fromHeader),
+    amount: extractAmount(text),
+    expiration: extractExpiration(text),
+  };
+}
