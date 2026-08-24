@@ -4,9 +4,25 @@ import { ddb, NOTIFICATIONS_TABLE } from '../lib/dynamo';
 import { pushToUser } from '../lib/websocket';
 import { encryptCode, decryptStoredCode } from '../lib/codeCrypto';
 
-// A code-carrying fallback row (offline share, or a failed P2P negotiation)
-// is only kept for 72h - see code_expires_at below.
+// DynamoDB allows exactly one TTL attribute per table, so `expires_at` does
+// double duty (see the interface below):
+//   - a code-carrying fallback row (offline share, or a failed P2P
+//     negotiation) is kept only 72h, then the whole row goes;
+//   - every other row is ordinary history, kept 30 days.
+// Without the second value notifications accumulated forever, which is what
+// made reading a user's partition expensive in the first place.
 const CODE_TTL_SECONDS = 72 * 60 * 60;
+const NOTIFICATION_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+const ttlFromNow = (seconds: number) => Math.floor(Date.now() / 1000) + seconds;
+
+const MAX_NOTIFICATIONS_RETURNED = 50;
+const MAX_QUERY_PAGES = 20; // safety valve on any paged base-table read
+
+// GSI (user_id, created_at) - the base table's sort key is a random uuidv4,
+// so only this index can answer "newest first". Created manually in the
+// console, same as Couplet-Connections' user_id-index.
+const CREATED_AT_INDEX = 'user_id-created_at-index';
 
 export interface Notification {
   user_id: string;
@@ -20,10 +36,11 @@ export interface Notification {
   group_name?: string;
   coupon_id?: string;
   coupon_code?: string;
-  // DynamoDB TTL attribute (epoch seconds) - only set when coupon_code is
-  // present. Deletes the whole item (not just the code) after ~72h if the
-  // recipient never consumed it; see markCodeConsumed for the earlier path.
-  code_expires_at?: number;
+  // DynamoDB TTL attribute (epoch seconds), set on every row. Deletes the
+  // whole item, never just one attribute: 72h while it still carries an
+  // unconsumed coupon_code, otherwise 30 days as ordinary history.
+  // clearNotificationCode moves a row from the first case to the second.
+  expires_at?: number;
 }
 
 export async function insertNotification(
@@ -34,9 +51,8 @@ export async function insertNotification(
     ...rest,
     notification_id: uuidv4(),
     created_at: new Date().toISOString(),
-    ...(coupon_code
-      ? { coupon_code: encryptCode(coupon_code), code_expires_at: Math.floor(Date.now() / 1000) + CODE_TTL_SECONDS }
-      : {}),
+    expires_at: ttlFromNow(coupon_code ? CODE_TTL_SECONDS : NOTIFICATION_TTL_SECONDS),
+    ...(coupon_code ? { coupon_code: encryptCode(coupon_code) } : {}),
   };
   await ddb.send(new PutCommand({ TableName: NOTIFICATIONS_TABLE, Item: item }));
   return { ...item, coupon_code };
@@ -59,11 +75,17 @@ export async function notifyUser(
 // Clears a delivered fallback code once the client has consumed it locally -
 // faster and more precise than waiting on the 72h TTL, and leaves the
 // notification row (read state, history) intact.
+//
+// The row also graduates from the 72h code clock to ordinary 30-day
+// retention. Simply dropping the TTL attribute here would leave it with no
+// expiry at all, i.e. immortal - which is how notifications came to
+// accumulate without bound.
 export async function clearNotificationCode(userId: string, notificationId: string): Promise<void> {
   await ddb.send(new UpdateCommand({
     TableName: NOTIFICATIONS_TABLE,
     Key: { user_id: userId, notification_id: notificationId },
-    UpdateExpression: 'REMOVE coupon_code, code_expires_at',
+    UpdateExpression: 'REMOVE coupon_code SET expires_at = :exp',
+    ExpressionAttributeValues: { ':exp': ttlFromNow(NOTIFICATION_TTL_SECONDS) },
   }));
 }
 
@@ -71,46 +93,56 @@ export async function clearNotificationCode(userId: string, notificationId: stri
 // Finds that recipient's group_share notification for this coupon and writes
 // the code onto it (encrypted, TTL'd), same as the offline fallback.
 //
-// Searches the recipient's full notification history rather than a truncated
-// page. The target row is matched by group_id/coupon_id, so an unrelated
-// backlog must not be able to hide it and silently strand the code.
+// Matches the one row by group_id/coupon_id, so no ordering is needed and an
+// unrelated backlog cannot hide it.
+//
+// Reads the BASE table with ConsistentRead, deliberately not the GSI: indexes
+// are eventually consistent and cannot be read consistently, and this runs
+// seconds after notifyUser wrote the row. A lagging index would miss it and
+// strand the code - the exact failure this path exists to prevent.
 export async function rescueCode(
   userId: string,
   groupId: string,
   couponId: string,
   couponCode: string
 ): Promise<boolean> {
-  const notifications = await queryAllNotifications(userId);
-  const target = notifications.find(
-    n => n.type === 'group_share' && n.group_id === groupId && n.coupon_id === couponId
-  );
+  const matches = await queryUserPartition(userId, {
+    filter: '#t = :share AND group_id = :gid AND coupon_id = :cid',
+    names: { '#t': 'type' }, // `type` is a DynamoDB reserved word
+    values: { ':share': 'group_share', ':gid': groupId, ':cid': couponId },
+    consistent: true,
+  });
+  const target = matches[0];
   if (!target) return false;
   await ddb.send(new UpdateCommand({
     TableName: NOTIFICATIONS_TABLE,
     Key: { user_id: userId, notification_id: target.notification_id },
-    UpdateExpression: 'SET coupon_code = :code, code_expires_at = :exp',
+    UpdateExpression: 'SET coupon_code = :code, expires_at = :exp',
     ExpressionAttributeValues: {
       ':code': encryptCode(couponCode),
-      ':exp': Math.floor(Date.now() / 1000) + CODE_TTL_SECONDS,
+      // Back onto the 72h code clock until the recipient consumes it.
+      ':exp': ttlFromNow(CODE_TTL_SECONDS),
     },
   }));
   return true;
 }
 
-const MAX_NOTIFICATIONS_RETURNED = 50;
-const MAX_QUERY_PAGES = 20; // safety valve against an unbounded scan
-
-// The table's sort key is notification_id, a random uuidv4 - NOT a timestamp.
-// So DynamoDB's own ordering is meaningless here: `ScanIndexForward: false`
-// with a Limit returns the highest random UUIDs, not the most recent rows.
-// That silently dropped arbitrary notifications for anyone past the limit,
-// including group_share rows carrying a coupon-code fallback, so recipients
-// could never find the code. We therefore page the whole (per-user, small)
-// partition and order by created_at ourselves before truncating.
+// Pages a user's partition on the BASE table. Used where ordering is
+// irrelevant but completeness matters, and where a strongly consistent read
+// is required (the GSI cannot do one).
 //
-// If notification volume ever grows enough for this to hurt, the real fix is
-// a sortable sort key (ULID / created_at-prefixed id) or a GSI on created_at.
-async function queryAllNotifications(userId: string): Promise<Notification[]> {
+// Keeps paging on an empty page on purpose: a FilterExpression is applied
+// after the read, so DynamoDB can return zero matches and still hand back a
+// LastEvaluatedKey. Stopping there would miss later matches.
+async function queryUserPartition(
+  userId: string,
+  opts: {
+    filter?: string;
+    names?: Record<string, string>;
+    values?: Record<string, unknown>;
+    consistent?: boolean;
+  } = {}
+): Promise<Notification[]> {
   const items: Notification[] = [];
   let lastKey: Record<string, unknown> | undefined;
   let pages = 0;
@@ -119,7 +151,10 @@ async function queryAllNotifications(userId: string): Promise<Notification[]> {
     const result: any = await ddb.send(new QueryCommand({
       TableName: NOTIFICATIONS_TABLE,
       KeyConditionExpression: 'user_id = :uid',
-      ExpressionAttributeValues: { ':uid': userId },
+      ...(opts.filter ? { FilterExpression: opts.filter } : {}),
+      ...(opts.names ? { ExpressionAttributeNames: opts.names } : {}),
+      ExpressionAttributeValues: { ':uid': userId, ...(opts.values ?? {}) },
+      ...(opts.consistent ? { ConsistentRead: true } : {}),
       ExclusiveStartKey: lastKey,
     }));
     items.push(...((result.Items as Notification[]) ?? []));
@@ -127,11 +162,45 @@ async function queryAllNotifications(userId: string): Promise<Notification[]> {
     pages += 1;
   } while (lastKey && pages < MAX_QUERY_PAGES);
 
-  return items.sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+  return items;
 }
 
+// Fallback for getNotificationsForUser when the GSI is unavailable: read the
+// whole partition and order it here. Correct but reads everything, which is
+// exactly what the index exists to avoid.
+async function newestByFullScan(userId: string): Promise<Notification[]> {
+  const items = await queryUserPartition(userId);
+  return items
+    .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
+    .slice(0, MAX_NOTIFICATIONS_RETURNED);
+}
+
+// Newest first, capped. Served by the GSI so DynamoDB returns exactly the
+// rows we need instead of us reading the whole partition to find them.
+//
+// Falls back to a full scan on any index error: the GSI is unusable for a few
+// minutes after creation while it backfills, and this keeps notifications
+// working if it is missing or misnamed rather than failing the request. The
+// warning makes a permanently-absent index visible instead of silently slow.
 export async function getNotificationsForUser(userId: string): Promise<Notification[]> {
-  const items = (await queryAllNotifications(userId)).slice(0, MAX_NOTIFICATIONS_RETURNED);
+  let items: Notification[];
+  try {
+    const result = await ddb.send(new QueryCommand({
+      TableName: NOTIFICATIONS_TABLE,
+      IndexName: CREATED_AT_INDEX,
+      KeyConditionExpression: 'user_id = :uid',
+      ExpressionAttributeValues: { ':uid': userId },
+      ScanIndexForward: false,
+      Limit: MAX_NOTIFICATIONS_RETURNED,
+    }));
+    items = (result.Items as Notification[]) ?? [];
+  } catch (err: any) {
+    console.warn(
+      '[notifications] GSI query failed (%s), falling back to full scan: %s',
+      CREATED_AT_INDEX, err?.message ?? err
+    );
+    items = await newestByFullScan(userId);
+  }
   return items.map(n => (n.coupon_code ? { ...n, coupon_code: decryptStoredCode(n.coupon_code) } : n));
 }
 
@@ -142,13 +211,17 @@ export async function deleteNotification(userId: string, notificationId: string)
   }));
 }
 
-// Reads the full history, not the returned page: marking only the newest 50
-// would leave older unread rows behind and the badge stuck above zero.
+// Filters server-side for unread rows across the whole partition, not just a
+// page: marking only the newest 50 would leave older unread rows behind and
+// the badge stuck above zero. Ordering is irrelevant here, so no index.
 export async function markAllNotificationsRead(userId: string): Promise<void> {
-  const notifications = await queryAllNotifications(userId);
+  const unread = await queryUserPartition(userId, {
+    filter: '#r = :false',
+    names: { '#r': 'read' }, // `read` is a DynamoDB reserved word
+    values: { ':false': false },
+  });
   await Promise.all(
-    notifications
-      .filter(n => !n.read)
+    unread
       .map(n =>
         ddb.send(new UpdateCommand({
           TableName: NOTIFICATIONS_TABLE,
