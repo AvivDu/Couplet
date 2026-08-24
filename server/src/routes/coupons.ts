@@ -1,10 +1,10 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getCouponsByOwner, getCouponById, insertCoupon, updateCoupon, deleteCoupon } from '../repositories/coupons';
-import { removeCouponFromAllGroups } from '../repositories/groups';
+import { removeCouponFromAllGroups, pushCouponUpdated } from '../repositories/groups';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { crawlRedeemableStores } from '../services/crawler';
-import { applyRedemption, parseRedeemAction, notifyIfNewlyUsed } from '../services/redemption';
+import { applyRedemption, parseRedeemAction, notifyCouponRedeemed } from '../services/redemption';
 
 const router = Router();
 
@@ -49,6 +49,10 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
 
 const VALID_STATUSES = ['active', 'expired', 'used'];
 
+// The fields GET /groups/:id exposes to members - only these are worth a
+// live refresh on other people's devices.
+const GROUP_VISIBLE_FIELDS = ['category', 'store_name', 'expiration_date', 'balance', 'status', 'giftcard_url'];
+
 router.patch('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   const { category, store_name, expiration_date, balance, status, giftcard_url } = req.body;
 
@@ -79,12 +83,20 @@ router.patch('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
     return;
   }
 
-  if (status === 'used') await notifyIfNewlyUsed(updated, wasAlreadyUsed, req.userId!);
+  if (status === 'used' && !wasAlreadyUsed) {
+    await notifyCouponRedeemed(updated, req.userId!, { kind: 'full' });
+  } else if (GROUP_VISIBLE_FIELDS.some(f => f in fields)) {
+    // Edits change what group members see on their group screen, which
+    // otherwise sits stale until they navigate away and back. This is a
+    // live refresh only - no notification row, no banner (see
+    // pushCouponUpdated). Awaited for the same Lambda-freeze reason.
+    await pushCouponUpdated(req.params.id, req.userId!);
+  }
 
   res.json(updated);
 });
 
-// POST /coupons/:id/redeem — owner redeems their own coupon.
+// POST /coupons/:id/redeem - owner redeems their own coupon.
 // Body: { redeem_all: true } or { amount: <number > 0> }.
 router.post('/:id/redeem', async (req: AuthRequest, res: Response): Promise<void> => {
   const parsed = parseRedeemAction(req.body);

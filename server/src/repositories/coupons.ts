@@ -90,7 +90,7 @@ export async function redeemCouponAmount(id: string, amount: number): Promise<Re
     }));
     coupon = result.Attributes as Coupon;
   } catch (err: any) {
-    // Someone else drained it first (or it never had enough) — the caller
+    // Someone else drained it first (or it never had enough) - the caller
     // reports this rather than silently overdrawing.
     if (err?.name === 'ConditionalCheckFailedException') return { ok: false, reason: 'insufficient' };
     throw err;
@@ -105,7 +105,7 @@ export async function redeemCouponAmount(id: string, amount: number): Promise<Re
   return { ok: true, coupon };
 }
 
-// Full redemption — zeroes a tracked balance and flips status. Idempotent, so
+// Full redemption - zeroes a tracked balance and flips status. Idempotent, so
 // a repeat call is harmless (callers guard the notification separately).
 export async function markCouponUsed(id: string): Promise<Coupon | null> {
   const existing = await getCouponById(id);

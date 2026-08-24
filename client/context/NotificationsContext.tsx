@@ -94,11 +94,19 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       return;
     }
 
-    // WebRTC signaling relay — the actual coupon code never appears in any of
+    // Silent refresh: a shared coupon's metadata changed (someone edited it).
+    // Deliberately no banner and no OS notification - it only re-fetches
+    // whatever screens are open so they stop showing stale details.
+    if (msg.event === 'coupon_updated') {
+      bump();
+      return;
+    }
+
+    // WebRTC signaling relay - the actual coupon code never appears in any of
     // these frames, only opaque SDP/ICE payloads; the code itself is exchanged
     // directly between devices once the RTCDataChannel opens (see services/webrtc.ts).
     if (msg.event === 'webrtc-offer' && msg.session_id && msg.from_user_id && msg.sdp) {
-      // Silent on receipt — the user is already told via the accompanying
+      // Silent on receipt - the user is already told via the accompanying
       // group_share notification, so the code landing in the wallet is an
       // implementation detail (matches the old coupon_transfer behavior).
       await handleOffer(sendSignal, msg, bump);
@@ -152,7 +160,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const connect = useCallback(() => {
     if (!token) return;
     const url = buildNotificationsSocketUrl(token);
-    if (!url) return; // WS not configured — fall back to poll-on-focus
+    if (!url) return; // WS not configured - fall back to poll-on-focus
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       return;
     }
@@ -210,7 +218,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, [token, connect, disconnect]);
 
   // On return to the foreground: reconnect (if dropped) and catch up. We do NOT
-  // force-close on background — the socket is left to survive the brief grace
+  // force-close on background - the socket is left to survive the brief grace
   // window so a just-in-time event can still fire an OS notification; the OS
   // suspends JS shortly after anyway, and 410s are pruned server-side.
   useEffect(() => {

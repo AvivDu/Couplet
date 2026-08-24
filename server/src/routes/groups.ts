@@ -12,7 +12,7 @@ const router = Router();
 
 router.use(authMiddleware);
 
-// POST /groups — create a group
+// POST /groups - create a group
 router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
   const { name } = req.body;
   if (!name || !name.trim()) {
@@ -34,13 +34,13 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
   res.status(201).json(group);
 });
 
-// GET /groups — list groups for current user
+// GET /groups - list groups for current user
 router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
   const groups = await getGroupsByUser(req.userId!);
   res.json(groups);
 });
 
-// GET /groups/:id — group detail with enriched member + coupon info
+// GET /groups/:id - group detail with enriched member + coupon info
 router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   const group = await getGroupById(req.params.id);
   if (!group) {
@@ -76,7 +76,7 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
       expiration_date: c!.expiration_date,
       balance: c!.balance,
       status: c!.status,
-      // Metadata, not a coupon code — a gift-card link IS the coupon, so
+      // Metadata, not a coupon code - a gift-card link IS the coupon, so
       // members can't use a shared one without it. (Codes/QR/barcodes stay
       // client-only; see the security invariant in CLAUDE.md.)
       giftcard_url: c!.giftcard_url ?? null,
@@ -85,7 +85,7 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   res.json({ ...group, members, pending_members, coupons });
 });
 
-// POST /groups/:id/members — add a member (admin only)
+// POST /groups/:id/members - add a member (admin only)
 router.post('/:id/members', async (req: AuthRequest, res: Response): Promise<void> => {
   const { identifier } = req.body;
   if (!identifier) {
@@ -106,7 +106,7 @@ router.post('/:id/members', async (req: AuthRequest, res: Response): Promise<voi
   // Find user by email, username, or phone number
   let target = await findUserByEmail(identifier);
   if (!target && /\d/.test(identifier)) {
-    // identifier contains digits — try resolving it as a phone number
+    // identifier contains digits - try resolving it as a phone number
     target = await findUserByPhone(identifier);
   }
   if (!target) {
@@ -149,7 +149,7 @@ router.post('/:id/members', async (req: AuthRequest, res: Response): Promise<voi
   res.json(updated);
 });
 
-// DELETE /groups/:id/members/me — leave a group (non-admin only)
+// DELETE /groups/:id/members/me - leave a group (non-admin only)
 router.delete('/:id/members/me', async (req: AuthRequest, res: Response): Promise<void> => {
   const group = await getGroupById(req.params.id);
   if (!group) {
@@ -161,7 +161,7 @@ router.delete('/:id/members/me', async (req: AuthRequest, res: Response): Promis
     return;
   }
   if (group.admin_user_id === req.userId!) {
-    res.status(400).json({ error: 'Admin cannot leave — transfer admin first or delete the group' });
+    res.status(400).json({ error: 'Admin cannot leave - transfer admin first or delete the group' });
     return;
   }
 
@@ -170,7 +170,7 @@ router.delete('/:id/members/me', async (req: AuthRequest, res: Response): Promis
   res.status(204).send();
 });
 
-// DELETE /groups/:id/members/:userId — remove a member (admin only)
+// DELETE /groups/:id/members/:userId - remove a member (admin only)
 router.delete('/:id/members/:userId', async (req: AuthRequest, res: Response): Promise<void> => {
   const group = await getGroupById(req.params.id);
   if (!group) {
@@ -192,7 +192,7 @@ router.delete('/:id/members/:userId', async (req: AuthRequest, res: Response): P
   res.status(204).send();
 });
 
-// POST /groups/:id/members/accept — invitee accepts invitation
+// POST /groups/:id/members/accept - invitee accepts invitation
 router.post('/:id/members/accept', async (req: AuthRequest, res: Response): Promise<void> => {
   const group = await getGroupById(req.params.id);
   if (!group) {
@@ -212,7 +212,7 @@ router.post('/:id/members/accept', async (req: AuthRequest, res: Response): Prom
   res.json(updated);
 });
 
-// DELETE /groups/:id/invitations/me — invitee declines invitation
+// DELETE /groups/:id/invitations/me - invitee declines invitation
 router.delete('/:id/invitations/me', async (req: AuthRequest, res: Response): Promise<void> => {
   const group = await getGroupById(req.params.id);
   if (!group) {
@@ -223,7 +223,7 @@ router.delete('/:id/invitations/me', async (req: AuthRequest, res: Response): Pr
   res.status(204).send();
 });
 
-// DELETE /groups/:id/pending/:userId — admin cancels a pending invitation
+// DELETE /groups/:id/pending/:userId - admin cancels a pending invitation
 router.delete('/:id/pending/:userId', async (req: AuthRequest, res: Response): Promise<void> => {
   const group = await getGroupById(req.params.id);
   if (!group) {
@@ -238,7 +238,7 @@ router.delete('/:id/pending/:userId', async (req: AuthRequest, res: Response): P
   res.status(204).send();
 });
 
-// POST /groups/:id/coupons/:couponId — share a coupon to a group
+// POST /groups/:id/coupons/:couponId - share a coupon to a group
 router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): Promise<void> => {
   const { coupon_code } = req.body;
   const group = await getGroupById(req.params.id);
@@ -273,7 +273,7 @@ router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): P
       otherMembers.map(async uid => {
         // Per-recipient decision: online members get the code via a WebRTC data
         // channel, negotiated client-side after this response (see
-        // online_recipient_ids below) — the code never touches this request.
+        // online_recipient_ids below) - the code never touches this request.
         // Offline members get it stored as a fallback for next app open.
         // A force-quit leaves its connection row behind until a push to it
         // 410s and prunes it, so "online" can be optimistic. That is safe:
@@ -291,7 +291,7 @@ router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): P
           group_name: group.name,
           coupon_id: coupon.coupon_id,
           // Persisted (encrypted, TTL'd) only for recipients who were offline
-          // at share time. Online recipients get it via RTCDataChannel — never
+          // at share time. Online recipients get it via RTCDataChannel - never
           // included here, and never sent over the live WebSocket.
           coupon_code: online ? undefined : (coupon_code ?? undefined),
         });
@@ -310,7 +310,7 @@ router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): P
   res.json({ ...updated, online_recipient_ids });
 });
 
-// POST /groups/:id/coupons/:couponId/redeem — any group member (not just the
+// POST /groups/:id/coupons/:couponId/redeem - any group member (not just the
 // owner) redeems a coupon shared to this group. Separate from the owner-gated
 // coupon routes: authorization is group membership, and it can only redeem,
 // never touch the coupon's other editable fields.
@@ -344,7 +344,7 @@ router.post('/:id/coupons/:couponId/redeem', async (req: AuthRequest, res: Respo
   res.json(outcome.coupon);
 });
 
-// POST /groups/:id/coupons/:couponId/rescue-code — sharer-triggered fallback
+// POST /groups/:id/coupons/:couponId/rescue-code - sharer-triggered fallback
 // when a WebRTC P2P negotiation to an online recipient failed. Persists the
 // code (encrypted, TTL'd) onto that recipient's existing group_share
 // notification, same mechanism as the offline-fallback path.
@@ -387,7 +387,7 @@ router.post('/:id/coupons/:couponId/rescue-code', async (req: AuthRequest, res: 
   res.status(204).send();
 });
 
-// DELETE /groups/:id/coupons/:couponId — revoke a coupon from a group
+// DELETE /groups/:id/coupons/:couponId - revoke a coupon from a group
 router.delete('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): Promise<void> => {
   const group = await getGroupById(req.params.id);
   if (!group) {
@@ -430,7 +430,7 @@ router.delete('/:id/coupons/:couponId', async (req: AuthRequest, res: Response):
   res.status(204).send();
 });
 
-// PUT /groups/:id/name — admin renames the group
+// PUT /groups/:id/name - admin renames the group
 router.put('/:id/name', async (req: AuthRequest, res: Response): Promise<void> => {
   const { name } = req.body;
   if (!name?.trim()) {
@@ -450,7 +450,7 @@ router.put('/:id/name', async (req: AuthRequest, res: Response): Promise<void> =
   res.json(updated);
 });
 
-// PUT /groups/:id/photo — admin sets the shared group photo (small base64 data-URL)
+// PUT /groups/:id/photo - admin sets the shared group photo (small base64 data-URL)
 router.put('/:id/photo', async (req: AuthRequest, res: Response): Promise<void> => {
   const { image } = req.body;
   if (typeof image !== 'string' || !image.startsWith('data:image/')) {
@@ -459,7 +459,7 @@ router.put('/:id/photo', async (req: AuthRequest, res: Response): Promise<void> 
   }
   // Keep well under DynamoDB's 400KB item limit; the client resizes to ~256px.
   if (image.length > 400_000) {
-    res.status(413).json({ error: 'Image too large — please choose a smaller photo' });
+    res.status(413).json({ error: 'Image too large - please choose a smaller photo' });
     return;
   }
   const group = await getGroupById(req.params.id);
@@ -475,7 +475,7 @@ router.put('/:id/photo', async (req: AuthRequest, res: Response): Promise<void> 
   res.json(updated);
 });
 
-// DELETE /groups/:id — admin deletes the group
+// DELETE /groups/:id - admin deletes the group
 router.delete('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   const group = await getGroupById(req.params.id);
   if (!group) {
