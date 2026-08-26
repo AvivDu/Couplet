@@ -487,15 +487,16 @@ export default function GroupScreen() {
           // edit makes another, so they're deleted rather than left to eat
           // slots in the newest-50 fetch; group_share rows are real history and
           // just lose their code. Same rule as index.tsx's load().
-          const isCarrier = delivery.type === 'coupon_code_sync';
-          await (isCarrier
+          await (delivery.type === 'coupon_code_sync'
             ? deleteNotification(delivery.notification_id)
             : clearNotificationCode(delivery.notification_id)
-          ).then(
+          ).catch(err =>
+            // Best-effort tidy-up: the code is already saved locally, so a
+            // failure here must not stop the coupon from opening.
+            console.warn('[notif] could not retire delivered code row', delivery.notification_id, err?.message ?? err)
           );
-        } else {
         }
-      } catch (err: any) {
+      } catch {
         // network failure - open modal with whatever code is already local
       }
       setSelectedCoupon({ ...coupon, created_at: '', code });

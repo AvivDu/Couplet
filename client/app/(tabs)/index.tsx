@@ -168,14 +168,16 @@ export default function HomeScreen() {
         // code edit makes another - left behind they'd eat slots in the newest-50
         // fetch and push genuine notifications out of the panel.
         await Promise.all(
-          codeDeliveries.map(n => {
-            const isCarrier = n.type === 'coupon_code_sync';
-            return (isCarrier
+          codeDeliveries.map(n =>
+            (n.type === 'coupon_code_sync'
               ? deleteNotification(n.notification_id)
               : clearNotificationCode(n.notification_id)
-            ).then(
-            );
-          })
+            ).catch(err =>
+              // Best-effort tidy-up: the code is already saved locally, so a
+              // failure here must not reject and fail the whole load().
+              console.warn('[notif] could not retire delivered code row', n.notification_id, err?.message ?? err)
+            )
+          )
         );
         console.log('[notif] saved fallback codes for coupon_ids:', [...newestPerCoupon.keys()]);
       }

@@ -113,18 +113,16 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
         // forever. Fire-and-forget: the coupon save above already succeeded
         // and is what the user is waiting on; a redelivery hiccup here
         // shouldn't block or fail that.
-        // this ships; codes must never reach production logs.
-        const codeChanged = !!newCode && newCode !== (coupon.code ?? '');
-
-        if (codeChanged) {
+        if (newCode && newCode !== (coupon.code ?? '')) {
           getCouponGroups(coupon.coupon_id)
-            .then(({ data: groups }) => {
-              return Promise.all(
+            .then(({ data: groups }) =>
+              Promise.all(
                 groups.map(g =>
                   deliverCouponCode(sendSignal, g.group_id, coupon.coupon_id, newCode, { codeUpdated: true })
                 )
-              );
-            })
+              )
+            )
+            .catch(err => console.warn('[code-update] redelivery failed:', err?.message ?? err));
         }
 
         onSaved({ ...updated, code: newCode || null }, newCode);
