@@ -14,13 +14,15 @@ import {
 import { Text, TextInput } from '../rn';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { updateCoupon } from '../../services/api';
+import { updateCoupon, getCouponGroups } from '../../services/api';
 import { saveCouponCode, saveCouponImage, getCouponImage, deleteCouponImage } from '../../storage/couponStorage';
 import ImageCropModal from '../ImageCropModal';
 import { DAYS, MONTHS, YEARS } from './constants';
 import { maskBalanceInput } from '../../utils/format';
 import DatePickerSheet from './DatePickerSheet';
 import type { CouponWithCode } from './types';
+import { deliverCouponCode } from '../../services/couponSharing';
+import { useNotifications } from '../../context/NotificationsContext';
 
 type DateField = 'year' | 'month' | 'day';
 
@@ -52,6 +54,7 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
     const [cropUri, setCropUri] = React.useState<string | null>(null);
     const [imageNatSize, setImageNatSize] = React.useState<{ w: number; h: number } | null>(null);
     const [editGiftUrl, setEditGiftUrl] = React.useState(coupon.giftcard_url ?? '');
+    const { sendSignal } = useNotifications();
 
     React.useEffect(() => {
       getCouponImage(coupon.coupon_id).then(setImageUri);
@@ -101,6 +104,27 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
         const newCode = editCode.trim();
         if (newCode) {
           await saveCouponCode(coupon.coupon_id, newCode);
+        }
+
+        // The code lives only on this device (server never sees it), so an
+        // edited code needs the exact same delivery this coupon's original
+        // share used - P2P or the encrypted fallback - or every recipient
+        // who already received the old code is silently stuck with it
+        // forever. Fire-and-forget: the coupon save above already succeeded
+        // and is what the user is waiting on; a redelivery hiccup here
+        // shouldn't block or fail that.
+        // this ships; codes must never reach production logs.
+        const codeChanged = !!newCode && newCode !== (coupon.code ?? '');
+
+        if (codeChanged) {
+          getCouponGroups(coupon.coupon_id)
+            .then(({ data: groups }) => {
+              return Promise.all(
+                groups.map(g =>
+                  deliverCouponCode(sendSignal, g.group_id, coupon.coupon_id, newCode, { codeUpdated: true })
+                )
+              );
+            })
         }
 
         onSaved({ ...updated, code: newCode || null }, newCode);

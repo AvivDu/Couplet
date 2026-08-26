@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getCouponsByOwner, getCouponById, insertCoupon, updateCoupon, deleteCoupon } from '../repositories/coupons';
-import { removeCouponFromAllGroups, pushCouponUpdated } from '../repositories/groups';
+import { removeCouponFromAllGroups, pushCouponUpdated, getGroupsContainingCoupon } from '../repositories/groups';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { crawlRedeemableStores } from '../services/crawler';
 import { applyRedemption, parseRedeemAction, notifyCouponRedeemed } from '../services/redemption';
@@ -128,6 +128,21 @@ router.delete('/:id', async (req: AuthRequest, res: Response): Promise<void> => 
   // Clean up stale group references in the background
   removeCouponFromAllGroups(req.params.id).catch(() => {});
   res.status(204).send();
+});
+
+// GET /coupons/:id/groups - owner-only. Which groups this coupon is
+// currently shared to, so the client knows where to redeliver an edited code
+// (see POST /groups/:id/coupons/:couponId's code_updated branch). The code
+// itself never touches the server, so only the owner's device - the one that
+// holds it - can drive this redelivery; the server just needs to say where.
+router.get('/:id/groups', async (req: AuthRequest, res: Response): Promise<void> => {
+  const coupon = await getCouponById(req.params.id);
+  if (!coupon || coupon.owner_id !== req.userId!) {
+    res.status(404).json({ error: 'Coupon not found' });
+    return;
+  }
+  const groups = await getGroupsContainingCoupon(req.params.id);
+  res.json(groups.map(g => ({ group_id: g.group_id, name: g.name })));
 });
 
 router.get('/:id/locations', async (req: AuthRequest, res: Response): Promise<void> => {

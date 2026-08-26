@@ -238,9 +238,16 @@ router.delete('/:id/pending/:userId', async (req: AuthRequest, res: Response): P
   res.status(204).send();
 });
 
-// POST /groups/:id/coupons/:couponId - share a coupon to a group
+// POST /groups/:id/coupons/:couponId - share a coupon to a group. Also reused
+// (via code_updated) to redeliver a coupon's code to everyone it's already
+// shared with, when the owner edits it - see the branch below for why that
+// path is deliberately silent.
 router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): Promise<void> => {
-  const { coupon_code } = req.body;
+  const { coupon_code, code_updated } = req.body;
+  if (code_updated && !coupon_code) {
+    res.status(400).json({ error: 'coupon_code is required when code_updated is true' });
+    return;
+  }
   const group = await getGroupById(req.params.id);
   if (!group) {
     res.status(404).json({ error: 'Group not found' });
@@ -260,10 +267,13 @@ router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): P
     res.status(403).json({ error: 'You do not own this coupon' });
     return;
   }
+  if (code_updated && !group.coupon_id_list.includes(coupon.coupon_id)) {
+    res.status(400).json({ error: 'Coupon is not shared to this group - share it first' });
+    return;
+  }
 
   const updated = await addCouponToGroup(group.group_id, coupon.coupon_id);
 
-  // Notify all other group members
   const sharer = await findUserById(req.userId!);
   const sharerName = sharer?.username ?? 'A member';
   const otherMembers = group.user_id_list.filter(uid => uid !== req.userId!);
@@ -281,6 +291,31 @@ router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): P
         const online = (await getConnectionsForUser(uid)).length > 0;
         if (online) online_recipient_ids.push(uid);
         console.log('[share] recipient=%s online=%s persisting_code=%s', uid, online, !online && !!coupon_code);
+
+        if (code_updated) {
+          // An edit is a correction, not an event - same principle as the
+          // silent metadata refresh. Online recipients get the new code purely
+          // via P2P below, no row at all. Offline recipients still need
+          // something to survive until they reconnect, so this writes one -
+          // but marked invisible (read: true, a type the client never
+          // surfaces as a banner/OS-notification/panel row) so it never reads
+          // as "a coupon was (re-)shared" when nothing new was shared.
+          if (!online) {
+            await notifyUser({
+              user_id: uid,
+              type: 'coupon_code_sync',
+              title: 'Coupon code updated',
+              body: `${sharerName} updated the code for a ${coupon.store_name} coupon`,
+              read: true,
+              group_id: group.group_id,
+              group_name: group.name,
+              coupon_id: coupon.coupon_id,
+              coupon_code,
+            });
+          }
+          return;
+        }
+
         await notifyUser({
           user_id: uid,
           type: 'group_share',
@@ -379,7 +414,7 @@ router.post('/:id/coupons/:couponId/rescue-code', async (req: AuthRequest, res: 
     return;
   }
 
-  const rescued = await rescueCode(recipient_user_id, group.group_id, coupon.coupon_id, coupon_code);
+  const rescued = await rescueCode(recipient_user_id, group.group_id, coupon.coupon_id, coupon_code, group.name);
   if (!rescued) {
     res.status(404).json({ error: 'No matching group_share notification to rescue' });
     return;

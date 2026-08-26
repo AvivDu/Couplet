@@ -90,11 +90,13 @@ export async function clearNotificationCode(userId: string, notificationId: stri
 }
 
 // Rescue path: called when a P2P negotiation to an online recipient failed.
-// Finds that recipient's group_share notification for this coupon and writes
-// the code onto it (encrypted, TTL'd), same as the offline fallback.
+// Writes the code (encrypted, TTL'd) onto that recipient's existing row for
+// this coupon, same as the offline fallback.
 //
-// Matches the one row by group_id/coupon_id, so no ordering is needed and an
-// unrelated backlog cannot hide it.
+// Matches by group_id/coupon_id, so no ordering is needed and an unrelated
+// backlog cannot hide it. Accepts either carrier type: a first share leaves a
+// group_share row, while a code update to an ONLINE recipient leaves none at
+// all (the code was meant to go P2P only).
 //
 // Reads the BASE table with ConsistentRead, deliberately not the GSI: indexes
 // are eventually consistent and cannot be read consistently, and this runs
@@ -104,16 +106,39 @@ export async function rescueCode(
   userId: string,
   groupId: string,
   couponId: string,
-  couponCode: string
+  couponCode: string,
+  groupName?: string
 ): Promise<boolean> {
   const matches = await queryUserPartition(userId, {
-    filter: '#t = :share AND group_id = :gid AND coupon_id = :cid',
+    filter: '(#t = :share OR #t = :sync) AND group_id = :gid AND coupon_id = :cid',
     names: { '#t': 'type' }, // `type` is a DynamoDB reserved word
-    values: { ':share': 'group_share', ':gid': groupId, ':cid': couponId },
+    values: {
+      ':share': 'group_share',
+      ':sync': 'coupon_code_sync',
+      ':gid': groupId,
+      ':cid': couponId,
+    },
     consistent: true,
   });
   const target = matches[0];
-  if (!target) return false;
+
+  // Nothing to attach to. Happens when a code update's P2P delivery fails and
+  // the recipient has no surviving row from the original share (they dismissed
+  // it, or it aged out). Without this the code would simply be lost for them.
+  if (!target) {
+    await insertNotification({
+      user_id: userId,
+      type: 'coupon_code_sync',
+      title: 'Coupon code updated',
+      body: 'The code for a shared coupon was updated.',
+      read: true, // carrier row only - never surfaced, see the client type guard
+      group_id: groupId,
+      ...(groupName ? { group_name: groupName } : {}),
+      coupon_id: couponId,
+      coupon_code: couponCode,
+    });
+    return true;
+  }
   await ddb.send(new UpdateCommand({
     TableName: NOTIFICATIONS_TABLE,
     Key: { user_id: userId, notification_id: target.notification_id },

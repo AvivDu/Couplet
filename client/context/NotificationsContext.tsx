@@ -25,7 +25,7 @@ const MAX_BACKOFF_MS = 30 * 1000;
 const CATCHUP_OS_CAP = 3; // at most this many individual OS notifications on catch-up; rest summarized
 
 // Minimal shape the dispatch pipeline needs from a server notification.
-type DispatchNotif = { notification_id: string; title: string; body: string; group_id?: string };
+type DispatchNotif = { notification_id: string; type?: string; title: string; body: string; group_id?: string };
 
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -70,8 +70,15 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     if (seenIdsRef.current.has(n.notification_id)) return;
     seenIdsRef.current.add(n.notification_id);
 
+    // Internal carrier row (a silent coupon-code redelivery, see
+    // services/couponSharing.ts) is never surfaced - but it still bumps, so
+    // the screens that actually consume a fallback code re-run and pick the
+    // new one up promptly instead of leaving a stale code in place.
+    const silent = n.type === 'coupon_code_sync';
     const useOS = opts.forceOS || AppState.currentState !== 'active';
-    if (useOS) {
+    if (silent) {
+      // no banner, no OS notification
+    } else if (useOS) {
       presentLocalNotification({
         title: n.title,
         body: n.body,

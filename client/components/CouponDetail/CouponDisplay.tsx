@@ -20,13 +20,12 @@ import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import { getCouponImage } from '../../storage/couponStorage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getGroups, shareToGroup, rescueCode, getCouponLocations } from '../../services/api';
+import { getGroups, getCouponLocations } from '../../services/api';
 import type { GroupMeta, StoreLocation, CouponMeta, RedeemAction } from '../../services/api';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants/categories';
 import type { CouponWithCode } from './types';
 import { formatBalance, maskBalanceInput } from '../../utils/format';
-import { startShareSession } from '../../services/webrtc';
-import { inspectShareable, unusableShareMessage } from '../../services/couponSharing';
+import { inspectShareable, unusableShareMessage, deliverCouponCode } from '../../services/couponSharing';
 import { useNotifications } from '../../context/NotificationsContext';
 
 interface CouponDisplayProps {
@@ -108,28 +107,11 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
   async function shareToGroupNow(group: GroupMeta) {
     setSharingGroupId(group.group_id);
     try {
-      // Offline members get the code stored server-side as a fallback; online
-      // members get it via a direct WebRTC data channel negotiated below -
-      // the server never sees the code for them.
-      const { data } = await shareToGroup(group.group_id, coupon.coupon_id, coupon.code);
+      const data = await deliverCouponCode(sendSignal, group.group_id, coupon.coupon_id, coupon.code);
       console.log(
         '[share] online recipients:', data.online_recipient_ids ?? [],
         '- offline members get the encrypted DB fallback instead'
       );
-      if (coupon.code) {
-        // Tolerate a server that predates online_recipient_ids: the share
-        // itself already succeeded, so degrade to "no P2P targets" rather
-        // than throwing and reporting a failed share to the user.
-        (data.online_recipient_ids ?? []).forEach(uid =>
-          startShareSession(sendSignal, uid, coupon.coupon_id, coupon.code!, () => {
-            // Last line of defence: P2P already failed, so if this also fails
-            // the code reaches nobody. Log it rather than swallowing silently.
-            rescueCode(group.group_id, coupon.coupon_id, uid, coupon.code!).catch(err =>
-              console.warn('[share] rescue-code write failed for recipient', uid, err?.message ?? err)
-            );
-          })
-        );
-      }
       setGroupPickerVisible(false);
       Alert.alert('Shared!', `Coupon shared to "${group.name}".`);
     } catch (err: any) {

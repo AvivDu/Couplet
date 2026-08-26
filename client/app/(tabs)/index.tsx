@@ -133,24 +133,51 @@ export default function HomeScreen() {
       const invitations = invitationsResult.status === 'fulfilled' ? invitationsResult.value.data : [];
       const serverNotifData = serverNotifsResult.status === 'fulfilled' ? serverNotifsResult.value.data : [];
 
-      // Save coupon codes delivered through group_share notifications
-      const groupShareNotifs = serverNotifData.filter(n => n.type === 'group_share');
+      // Save coupon codes delivered as a fallback - either a first share
+      // (group_share) or a silent redelivery after the owner edited the code
+      // (coupon_code_sync, see services/couponSharing.ts) - both carry
+      // coupon_code the same way and are consumed identically.
+      const codeCarryingNotifs = serverNotifData.filter(
+        n => n.type === 'group_share' || n.type === 'coupon_code_sync'
+      );
       // Counts only - never log the notification object itself: the server
       // returns coupon_code decrypted, so dumping it would put plaintext
       // coupon codes in the device log.
-      console.log('[notif] group_share:', groupShareNotifs.length,
-        '| carrying a fallback code:', groupShareNotifs.filter(n => n.coupon_code).length);
-      const codeDeliveries = groupShareNotifs.filter(n => n.coupon_id && n.coupon_code);
+      console.log('[notif] code-carrying:', codeCarryingNotifs.length,
+        '| carrying a fallback code:', codeCarryingNotifs.filter(n => n.coupon_code).length);
+      const codeDeliveries = codeCarryingNotifs.filter(n => n.coupon_id && n.coupon_code);
       if (codeDeliveries.length > 0) {
+        // Editing a code repeatedly while a recipient is offline leaves several
+        // rows for the same coupon, so writing them concurrently would race on
+        // one storage key and could let an older code win. The server returns
+        // newest-first, so the first row per coupon is the current code; save
+        // only that, then clear every row since they're all superseded.
+        const newestPerCoupon = new Map<string, typeof codeDeliveries[number]>();
+        for (const n of codeDeliveries) {
+          if (!newestPerCoupon.has(n.coupon_id!)) newestPerCoupon.set(n.coupon_id!, n);
+        }
         await Promise.all(
-          codeDeliveries.map(async n => {
-            await saveCouponCode(n.coupon_id!, n.coupon_code!);
-            // Clear the fallback code server-side now that it's been consumed
-            // locally - faster and more precise than waiting on the 72h TTL.
-            await clearNotificationCode(n.notification_id).catch(() => {});
+          [...newestPerCoupon.values()].map(n => saveCouponCode(n.coupon_id!, n.coupon_code!))
+        );
+        // Retire the rows server-side now they've been consumed locally -
+        // faster and more precise than waiting on the TTL.
+        //
+        // group_share rows are kept (code stripped): they're real history, the
+        // user saw "X shared a coupon with you". coupon_code_sync rows are
+        // invisible carriers with nothing left to say once consumed, and every
+        // code edit makes another - left behind they'd eat slots in the newest-50
+        // fetch and push genuine notifications out of the panel.
+        await Promise.all(
+          codeDeliveries.map(n => {
+            const isCarrier = n.type === 'coupon_code_sync';
+            return (isCarrier
+              ? deleteNotification(n.notification_id)
+              : clearNotificationCode(n.notification_id)
+            ).then(
+            );
           })
         );
-        console.log('[notif] saved fallback codes for coupon_ids:', codeDeliveries.map(n => n.coupon_id));
+        console.log('[notif] saved fallback codes for coupon_ids:', [...newestPerCoupon.keys()]);
       }
 
       // Delete local coupon codes for any revoked coupons
@@ -161,8 +188,13 @@ export default function HomeScreen() {
         await Promise.all(revokedCouponIds.map(id => deleteCouponCode(id)));
       }
 
-      // Map server notifications; group_invite type gets Accept/Decline action buttons
-      const serverNotifs: NotificationItem[] = serverNotifData.map(n => ({
+      // Map server notifications; group_invite type gets Accept/Decline action
+      // buttons. coupon_code_sync is an internal carrier row only (a silent
+      // code redelivery, consumed above) - it's never meant to be seen, so it
+      // never becomes a panel row.
+      const serverNotifs: NotificationItem[] = serverNotifData
+        .filter(n => n.type !== 'coupon_code_sync')
+        .map(n => ({
         id: `server-${n.notification_id}`,
         serverId: n.notification_id,
         type: 'social' as const,
@@ -325,6 +357,12 @@ export default function HomeScreen() {
     setCoupons(prev => prev.map(c => c.coupon_id === updated.coupon_id ? updated : c));
     setCouponCodes(prev => ({ ...prev, [updated.coupon_id]: newCode }));
     setSelected({ ...updated, code: newCode });
+    // Covers edit-save (redeem already bumps itself via handleRedeem).
+    // pushCouponUpdated deliberately excludes the actor - the editing device
+    // doesn't need a round-trip to know about its own edit - which means
+    // nothing else refreshes this device's OTHER open screens (e.g. the
+    // Groups tab) unless something local does it.
+    bump();
   }
 
   function openDrawer() {

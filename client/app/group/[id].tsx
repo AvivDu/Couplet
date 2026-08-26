@@ -27,8 +27,6 @@ import {
   leaveGroup,
   searchUsers,
   cancelInvitation,
-  shareToGroup,
-  rescueCode,
   redeemGroupCoupon,
   getCoupons,
   renameGroup,
@@ -36,13 +34,13 @@ import {
   deleteGroup,
   getNotifications,
   clearNotificationCode,
+  deleteNotification,
 } from '../../services/api';
 import type { GroupDetail as GroupDetailType, GroupMember, CouponMeta, ContactMatch, GroupCoupon, RedeemAction } from '../../services/api';
 
 type ContactMatchWithName = ContactMatch & { contactName: string };
 import { getCouponCode, saveCouponCode } from '../../storage/couponStorage';
-import { inspectShareable, unusableShareMessage } from '../../services/couponSharing';
-import { startShareSession } from '../../services/webrtc';
+import { inspectShareable, unusableShareMessage, deliverCouponCode } from '../../services/couponSharing';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationsContext';
 import { useRefreshOnNotification } from '../../hooks/useRefreshOnNotification';
@@ -391,29 +389,11 @@ export default function GroupScreen() {
     if (!groupId) return;
     setSharingCouponId(couponId);
     try {
-      // Offline members get the code stored server-side as a fallback; online
-      // members get it via a direct WebRTC data channel negotiated below -
-      // the server never sees the code for them.
-      const { data } = await shareToGroup(groupId, couponId, code);
+      const data = await deliverCouponCode(sendSignal, groupId, couponId, code);
       console.log(
         '[share] online recipients:', data.online_recipient_ids ?? [],
         '- offline members get the encrypted DB fallback instead'
       );
-      if (code) {
-        // Tolerate a server that predates online_recipient_ids: the share
-        // itself already succeeded, so degrade to "no P2P targets" rather
-        // than throwing and reporting a failed share to the user.
-        (data.online_recipient_ids ?? []).forEach(uid =>
-          startShareSession(sendSignal, uid, couponId, code, () => {
-            // Last line of defence: P2P already failed, so if this also fails
-            // the code reaches nobody. Log it - silently swallowing left the
-            // loss untraceable.
-            rescueCode(groupId, couponId, uid, code).catch(err =>
-              console.warn('[share] rescue-code write failed for recipient', uid, err?.message ?? err)
-            );
-          })
-        );
-      }
       await fetchGroup();
       setCouponPickerVisible(false);
     } catch (err: any) {
@@ -489,21 +469,34 @@ export default function GroupScreen() {
     setLoadingCouponId(coupon.coupon_id);
     try {
       let code = await getCouponCode(coupon.coupon_id);
-      if (!code) {
-        try {
-          const { data: notifications } = await getNotifications();
-          const delivery = notifications.find(
-            n => n.type === 'group_share' && n.coupon_id === coupon.coupon_id && n.coupon_code
+      try {
+        const { data: notifications } = await getNotifications();
+        // group_share is only a first-time fallback (skip once a local code
+        // exists). coupon_code_sync means the owner edited the code, so it
+        // must win even when a - now stale - local code already exists;
+        // it's checked unconditionally, not gated behind `!code`.
+        const delivery = notifications.find(n =>
+          n.coupon_id === coupon.coupon_id && n.coupon_code &&
+          (n.type === 'coupon_code_sync' || (n.type === 'group_share' && !code))
+        );
+        if (delivery?.coupon_code) {
+          await saveCouponCode(coupon.coupon_id, delivery.coupon_code);
+          code = delivery.coupon_code;
+          // Retire the row server-side now it's been consumed locally. Sync
+          // rows are invisible carriers with nothing left to say, and each code
+          // edit makes another, so they're deleted rather than left to eat
+          // slots in the newest-50 fetch; group_share rows are real history and
+          // just lose their code. Same rule as index.tsx's load().
+          const isCarrier = delivery.type === 'coupon_code_sync';
+          await (isCarrier
+            ? deleteNotification(delivery.notification_id)
+            : clearNotificationCode(delivery.notification_id)
+          ).then(
           );
-          if (delivery?.coupon_code) {
-            await saveCouponCode(coupon.coupon_id, delivery.coupon_code);
-            code = delivery.coupon_code;
-            // Clear the fallback code server-side now that it's been consumed locally.
-            await clearNotificationCode(delivery.notification_id).catch(() => {});
-          }
-        } catch {
-          // network failure - open modal with null code rather than crashing
+        } else {
         }
+      } catch (err: any) {
+        // network failure - open modal with whatever code is already local
       }
       setSelectedCoupon({ ...coupon, created_at: '', code });
     } finally {
@@ -1427,7 +1420,18 @@ export default function GroupScreen() {
         onClose={() => setSelectedCoupon(null)}
         onDelete={() => setSelectedCoupon(null)}
         onRedeem={handleGroupRedeem}
-        onUpdate={(updated, newCode) => setSelectedCoupon(prev => prev ? { ...prev, ...updated, code: newCode } : prev)}
+        onUpdate={(updated, newCode) => {
+          // Owners can open their own shared coupon from this screen and edit
+          // it here, not just from My Coupons - so this needs the same fix:
+          // sync the underlying list (not just the open modal) and bump so
+          // this device's other screens (e.g. My Coupons) pick it up too.
+          // pushCouponUpdated intentionally skips the actor's own devices.
+          setSelectedCoupon(prev => prev ? { ...prev, ...updated, code: newCode } : prev);
+          setGroup(prev => prev
+            ? { ...prev, coupons: prev.coupons.map(c => c.coupon_id === updated.coupon_id ? { ...c, ...updated } : c) }
+            : prev);
+          bump();
+        }}
       />
     </SafeAreaView>
   );

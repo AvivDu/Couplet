@@ -243,8 +243,20 @@ export interface ShareResult extends GroupMeta {
   online_recipient_ids: string[];
 }
 
-export const shareToGroup = (groupId: string, couponId: string, code?: string | null) =>
-  api.post<ShareResult>(`/groups/${groupId}/coupons/${couponId}`, code ? { coupon_code: code } : {});
+// codeUpdated: this is a redelivery of an edited code to a group the coupon
+// is already shared with, not a first share - see the server route for what
+// that changes (silent, no "New coupon" notification).
+export const shareToGroup = (groupId: string, couponId: string, code?: string | null, codeUpdated?: boolean) =>
+  api.post<ShareResult>(`/groups/${groupId}/coupons/${couponId}`, {
+    ...(code ? { coupon_code: code } : {}),
+    ...(codeUpdated ? { code_updated: true } : {}),
+  });
+
+// Which groups a coupon is currently shared to - used to know where to
+// redeliver an edited code, since the code itself never touches the server
+// and so the server can't detect the edit on its own.
+export const getCouponGroups = (couponId: string) =>
+  api.get<{ group_id: string; name: string }[]>(`/coupons/${couponId}/groups`);
 
 // Sharer-triggered fallback when a WebRTC P2P negotiation to an online
 // recipient failed - persists the code (encrypted, TTL'd) server-side, same
