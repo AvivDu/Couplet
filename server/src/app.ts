@@ -7,6 +7,7 @@ import groupsRouter from './routes/groups';
 import invitationsRouter from './routes/invitations';
 import usersRouter from './routes/users';
 import notificationsRouter from './routes/notifications';
+import gmailRouter from './routes/gmail';
 
 const app = express();
 
@@ -20,6 +21,7 @@ app.use('/groups', groupsRouter);
 app.use('/invitations', invitationsRouter);
 app.use('/users', usersRouter);
 app.use('/notifications', notificationsRouter);
+app.use('/gmail', gmailRouter);
 
 // Express 4 does not catch rejections from async route handlers: an unhandled
 // one leaves the request hanging with no response and no log, which makes any

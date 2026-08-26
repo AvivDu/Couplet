@@ -11,84 +11,57 @@ import {
 } from 'react-native';
 import { Text, TextInput } from '../../components/rn';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuth } from '../../context/AuthContext';
-import { register, confirmAndSignIn, finishSync, resendConfirmationCode } from '../../services/api';
+import { requestPasswordReset, confirmPasswordReset } from '../../services/api';
 import LoadingOverlay from '../../components/LoadingOverlay';
-import ConfirmCodeStep from '../../components/ConfirmCodeStep';
 import { friendlyCognitoError } from '../../utils/cognitoErrors';
-import { isValidIsraeliPhone } from '../../utils/validation';
 
-export default function RegisterScreen() {
-  const [step, setStep] = useState<'form' | 'confirm'>('form');
+export default function ForgotPasswordScreen() {
+  const [step, setStep] = useState<'request' | 'confirm'>('request');
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
   const [code, setCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { signIn } = useAuth();
   const router = useRouter();
 
-  async function handleRegister() {
-    if (!email.trim() || !phone.trim() || !username.trim() || !password || !confirm) {
+  async function handleRequestCode() {
+    const trimmed = email.trim();
+    if (!trimmed || !trimmed.includes('@')) {
+      Alert.alert('Invalid email', 'Please enter a valid email address.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const normalized = trimmed.toLowerCase();
+      await requestPasswordReset(normalized);
+      setEmail(normalized);
+      setStep('confirm');
+    } catch (err: any) {
+      Alert.alert('Could not send code', friendlyCognitoError(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleConfirmReset() {
+    if (!code.trim() || !newPassword || !confirmPassword) {
       Alert.alert('Missing fields', 'Please fill in all fields.');
       return;
     }
-    if (!isValidIsraeliPhone(phone)) {
-      Alert.alert('Invalid phone', 'Enter a valid phone number, e.g. 050-1234567.');
-      return;
-    }
-    if (password !== confirm) return;
-    if (password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+    if (newPassword !== confirmPassword) return;
+    if (newPassword.length < 8 || !/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {
       Alert.alert('Weak password', 'Password must be at least 8 characters and include uppercase, lowercase, a number, and a symbol.');
       return;
     }
-
     setLoading(true);
     try {
-      setEmail(email.trim().toLowerCase());
-      setUsername(username.trim());
-      setPhone(phone.trim());
-      await register(email.trim().toLowerCase(), username.trim(), password, phone.trim());
-      setStep('confirm');
+      await confirmPasswordReset(email, code.trim(), newPassword);
+      Alert.alert('Password reset', 'You can now log in with your new password.', [
+        { text: 'OK', onPress: () => router.replace('/(auth)/login') },
+      ]);
     } catch (err: any) {
-      Alert.alert('Registration failed', friendlyCognitoError(err));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleVerify() {
-    if (!code.trim()) {
-      Alert.alert('Missing code', 'Please enter the verification code.');
-      return;
-    }
-    setLoading(true);
-    try {
-      const { token, username: confirmedUsername } = await confirmAndSignIn(email, code.trim(), password);
-      const data = await finishSync(email, confirmedUsername, phone);
-      await signIn(token, {
-        userId: data.userId,
-        email: data.email,
-        username: data.username,
-        phone_number: data.phone_number,
-      });
-      router.replace('/(tabs)');
-    } catch (err: any) {
-      Alert.alert('Verification failed', friendlyCognitoError(err));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleResend() {
-    setLoading(true);
-    try {
-      await resendConfirmationCode(email);
-    } catch (err: any) {
-      Alert.alert('Could not resend code', friendlyCognitoError(err));
+      Alert.alert('Reset failed', friendlyCognitoError(err));
     } finally {
       setLoading(false);
     }
@@ -102,12 +75,14 @@ export default function RegisterScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
-          <Text style={styles.title}>Sign Up</Text>
+          <Text style={styles.title}>Reset Password</Text>
           <Text style={styles.subtitle}>
-            {step === 'form' ? 'Create your Couplet account' : 'Enter the code we emailed you to finish signing up.'}
+            {step === 'request'
+              ? "Enter your email and we'll send you a code."
+              : 'Enter the code we emailed you and choose a new password.'}
           </Text>
 
-          {step === 'form' ? (
+          {step === 'request' ? (
             <>
               <View style={styles.inputWrap}>
                 <TextInput
@@ -118,37 +93,35 @@ export default function RegisterScreen() {
                   keyboardType="email-address"
                   value={email}
                   onChangeText={setEmail}
+                  returnKeyType="go"
+                  onSubmitEditing={handleRequestCode}
                 />
               </View>
+              <TouchableOpacity style={styles.btn} onPress={handleRequestCode} disabled={loading}>
+                <Text style={styles.btnText}>Send Code</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.hint, { color: '#4CAF50', marginTop: 0 }]}>Code sent to {email}</Text>
               <View style={styles.inputWrap}>
                 <TextInput
                   style={styles.input}
-                  placeholder="Phone"
+                  placeholder="Verification code"
                   placeholderTextColor="#A8997A"
-                  autoCapitalize="none"
-                  keyboardType="phone-pad"
-                  value={phone}
-                  onChangeText={setPhone}
-                />
-              </View>
-              <View style={styles.inputWrap}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Username"
-                  placeholderTextColor="#A8997A"
-                  autoCapitalize="none"
-                  value={username}
-                  onChangeText={setUsername}
+                  keyboardType="number-pad"
+                  value={code}
+                  onChangeText={setCode}
                 />
               </View>
               <View style={styles.inputWrap}>
                 <TextInput
                   style={[styles.input, { paddingRight: 40 }]}
-                  placeholder="Password"
+                  placeholder="New password"
                   placeholderTextColor="#A8997A"
                   secureTextEntry={!showPassword}
-                  value={password}
-                  onChangeText={setPassword}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
                 />
                 <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword(v => !v)}>
                   <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color="#A8997A" />
@@ -158,45 +131,41 @@ export default function RegisterScreen() {
               <View style={styles.inputWrap}>
                 <TextInput
                   style={[styles.input, { paddingRight: 40 }]}
-                  placeholder="Confirm password"
+                  placeholder="Confirm new password"
                   placeholderTextColor="#A8997A"
                   secureTextEntry={!showPassword}
-                  value={confirm}
-                  onChangeText={setConfirm}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
                 />
                 <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword(v => !v)}>
                   <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color="#A8997A" />
                 </TouchableOpacity>
               </View>
-              {confirm.length > 0 && (
-                <Text style={[styles.hint, { color: password === confirm ? '#4CAF50' : '#E8604C' }]}>
-                  {password === confirm ? 'Passwords match' : 'Passwords do not match'}
+              {confirmPassword.length > 0 && (
+                <Text style={[styles.hint, { color: newPassword === confirmPassword ? '#4CAF50' : '#E8604C' }]}>
+                  {newPassword === confirmPassword ? 'Passwords match' : 'Passwords do not match'}
                 </Text>
               )}
 
               <TouchableOpacity
                 style={styles.btn}
-                onPress={handleRegister}
-                disabled={loading || (confirm.length > 0 && password !== confirm)}
+                onPress={handleConfirmReset}
+                disabled={loading || (confirmPassword.length > 0 && newPassword !== confirmPassword)}
               >
-                <Text style={styles.btnText}>Create Account</Text>
+                <Text style={styles.btnText}>Reset Password</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.linkBtn} onPress={handleRequestCode} disabled={loading}>
+                <Text style={styles.linkText}>
+                  Didn't get a code? <Text style={styles.linkBold}>Resend</Text>
+                </Text>
               </TouchableOpacity>
             </>
-          ) : (
-            <ConfirmCodeStep
-              email={email}
-              code={code}
-              setCode={setCode}
-              loading={loading}
-              onVerify={handleVerify}
-              onResend={handleResend}
-            />
           )}
 
           <Link href="/(auth)/login" asChild>
             <TouchableOpacity style={styles.linkBtn}>
               <Text style={styles.linkText}>
-                Already have an account? <Text style={styles.linkBold}>Log in</Text>
+                Remember your password? <Text style={styles.linkBold}>Log in</Text>
               </Text>
             </TouchableOpacity>
           </Link>
@@ -242,7 +211,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  linkBtn: { alignItems: 'center' },
+  linkBtn: { alignItems: 'center', marginBottom: 12 },
   linkText: { color: '#1A2332', fontSize: 14, opacity: 0.6 },
   linkBold: { color: '#E8604C', fontWeight: '700', opacity: 1 },
   hint: { fontSize: 12, color: '#A8997A', marginBottom: 16, marginTop: -16 },

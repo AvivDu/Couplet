@@ -19,9 +19,10 @@ import * as ImagePicker from 'expo-image-picker';
 import ImageCropModal from '../../components/ImageCropModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { createCoupon } from '../../services/api';
 import { saveCouponCode, saveCouponImage } from '../../storage/couponStorage';
+import { dismissDraft } from '../../storage/gmailDraftStorage';
 import { CATEGORY_COLORS } from '../../constants/categories';
 import { matchGeneralGiftCard, type GeneralGiftCard } from '../../constants/generalGiftCards';
 import { maskBalanceInput } from '../../utils/format';
@@ -53,9 +54,34 @@ export default function AddCouponScreen() {
   const [matchedGeneralCard, setMatchedGeneralCard] = useState<GeneralGiftCard | null>(null);
   const categoryTouchedRef = useRef(false);
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    fromGmail?: string; messageId?: string; code?: string; store?: string;
+    category?: string; expiration?: string; amount?: string;
+  }>();
 
   useFocusEffect(
     useCallback(() => {
+      if (params.fromGmail === '1') {
+        setCode(params.code ?? '');
+        setCouponName(params.store ?? '');
+        // Run the same General-gift-card detection a hand-typed name gets, so an
+        // imported BUYME/XTRA/etc. classifies identically. A recognized brand beats
+        // the scanner's keyword guess - it matches on the store name itself, not on
+        // whatever words happened to appear in the email body.
+        const match = matchGeneralGiftCard(params.store ?? '');
+        setMatchedGeneralCard(match);
+        if (match) {
+          setCategory('General');
+        } else {
+          setCategory(params.category && ADD_CATEGORIES.some(c => c.label === params.category) ? params.category : '');
+        }
+        setExpiryDate(params.expiration ? new Date(params.expiration) : null);
+        setBalance(params.amount ?? '');
+        setImageUri(null);
+        setGiftUrl('');
+        categoryTouchedRef.current = false;
+        return;
+      }
       setCode('');
       setCouponName('');
       setCategory('');
@@ -65,7 +91,7 @@ export default function AddCouponScreen() {
       setGiftUrl('');
       setMatchedGeneralCard(null);
       categoryTouchedRef.current = false;
-    }, [])
+    }, [params.fromGmail, params.messageId])
   );
 
   function handleCouponNameChange(text: string) {
@@ -140,6 +166,9 @@ export default function AddCouponScreen() {
       if (imageUri) {
         await saveCouponImage(data.coupon_id, imageUri);
       }
+      // Belt-and-suspenders: the source email would also stop showing as a draft once
+      // its code matches this new coupon's saved code, but dismiss it explicitly too.
+      if (params.messageId) await dismissDraft(params.messageId);
 
       Alert.alert('Coupon added!', `${couponName} coupon has been saved.`, [
         { text: 'OK', onPress: () => router.replace('/(tabs)') },
