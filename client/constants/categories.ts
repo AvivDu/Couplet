@@ -10,6 +10,7 @@ export const CATEGORY_COLORS: Record<string, string> = {
   Travel:      '#CCEEFF',
   Sport:       '#FAFAC8',
   Other:       '#B9C4B6',
+  General:     '#F0DFC0',
 };
 
 export const CATEGORY_ICONS: Record<string, string> = {
@@ -21,6 +22,7 @@ export const CATEGORY_ICONS: Record<string, string> = {
   Travel:      'airplane-outline',
   Sport:       'trophy-outline',
   Other:       'ellipsis-horizontal-outline',
+  General:     'gift-outline',
 };
 
 // Category cards used by the filter UIs (My Coupons + Group page).
@@ -34,6 +36,7 @@ export type CategoryDef = {
 
 export const CATEGORY_DEFS: CategoryDef[] = [
   { label: 'All Coupons',  filter: 'All',         icon: 'grid-outline',                color: CATEGORY_COLORS.All         },
+  { label: 'General',      filter: 'General',     icon: 'gift-outline',                color: CATEGORY_COLORS.General     },
   { label: 'Food',         filter: 'Food',        icon: 'restaurant-outline',          color: CATEGORY_COLORS.Food        },
   { label: 'Groceries',    filter: 'Groceries',   icon: 'cart-outline',                color: CATEGORY_COLORS.Groceries   },
   { label: 'Fashion',      filter: 'Fashion',     icon: 'shirt-outline',               color: CATEGORY_COLORS.Fashion     },

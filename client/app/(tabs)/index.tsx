@@ -35,6 +35,7 @@ type CategoryDef = {
 
 const CATEGORY_DEFS: CategoryDef[] = [
   { label: 'All Coupons',  filter: 'All',         icon: 'grid-outline',                color: CATEGORY_COLORS.All         },
+  { label: 'General',      filter: 'General',     icon: 'gift-outline',                color: CATEGORY_COLORS.General     },
   { label: 'Food',         filter: 'Food',        icon: 'restaurant-outline',          color: CATEGORY_COLORS.Food        },
   { label: 'Groceries',    filter: 'Groceries',   icon: 'cart-outline',                color: CATEGORY_COLORS.Groceries   },
   { label: 'Fashion',      filter: 'Fashion',     icon: 'shirt-outline',               color: CATEGORY_COLORS.Fashion     },
@@ -76,6 +77,7 @@ export default function HomeScreen() {
   const [aboutVisible, setAboutVisible] = useState(false);
 
   const drawerAnim = useRef(new Animated.Value(0)).current;
+  const sortSheetAnim = useRef(new Animated.Value(0)).current;
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -379,6 +381,17 @@ export default function HomeScreen() {
     });
   }
 
+  function openSortMenu() {
+    setSortMenuOpen(true);
+    Animated.timing(sortSheetAnim, { toValue: 1, duration: 260, useNativeDriver: true }).start();
+  }
+
+  function closeSortMenu() {
+    Animated.timing(sortSheetAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      setSortMenuOpen(false);
+    });
+  }
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
@@ -449,7 +462,7 @@ export default function HomeScreen() {
 
         {/* Sort row */}
         <View style={styles.sortRow}>
-          <TouchableOpacity style={styles.sortBtn} onPress={() => setSortMenuOpen(true)} activeOpacity={0.75}>
+          <TouchableOpacity style={styles.sortBtn} onPress={openSortMenu} activeOpacity={0.75}>
             <Ionicons name="funnel-outline" size={15} color={sort ? '#E8604C' : '#1A2332'} />
             <Text style={[styles.sortBtnText, sort && styles.sortBtnTextActive]} numberOfLines={1}>
               {activeSortLabel ?? 'Sort'}
@@ -482,9 +495,23 @@ export default function HomeScreen() {
         />
 
         {/* Sort menu */}
-        <Modal visible={sortMenuOpen} transparent animationType="slide" onRequestClose={() => setSortMenuOpen(false)}>
-          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setSortMenuOpen(false)}>
-            <View style={styles.sortSheet}>
+        <Modal visible={sortMenuOpen} transparent animationType="none" onRequestClose={closeSortMenu}>
+          <View style={styles.modalOverlay}>
+            <Animated.View
+              style={[StyleSheet.absoluteFill, styles.sortBackdrop, { opacity: sortSheetAnim }]}
+            />
+            <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeSortMenu} />
+            <Animated.View
+              style={[
+                styles.sortSheet,
+                {
+                  transform: [{ translateY: sortSheetAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [Dimensions.get('window').height, 0],
+                  }) }],
+                },
+              ]}
+            >
               <View style={styles.sheetHandle} />
               <Text style={styles.sortSheetTitle}>Sort By</Text>
               {SORT_OPTIONS.map(opt => {
@@ -493,7 +520,7 @@ export default function HomeScreen() {
                   <TouchableOpacity
                     key={opt.value}
                     style={[styles.sortOption, active && styles.sortOptionActive]}
-                    onPress={() => { setSort(active ? null : opt.value); setSortMenuOpen(false); }}
+                    onPress={() => { setSort(active ? null : opt.value); closeSortMenu(); }}
                   >
                     <View style={styles.sortOptionLeft}>
                       <Ionicons name={opt.icon} size={20} color={active ? '#E8604C' : '#1A2332'} />
@@ -505,8 +532,8 @@ export default function HomeScreen() {
                   </TouchableOpacity>
                 );
               })}
-            </View>
-          </TouchableOpacity>
+            </Animated.View>
+          </View>
         </Modal>
 
         {/* Notification panel */}
@@ -706,8 +733,10 @@ const styles = StyleSheet.create({
   sortBtnTextActive: { color: '#E8604C', opacity: 1 },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(26,35,50,0.4)',
     justifyContent: 'flex-end',
+  },
+  sortBackdrop: {
+    backgroundColor: 'rgba(26,35,50,0.4)',
   },
   sortSheet: {
     backgroundColor: '#F5F0E6',

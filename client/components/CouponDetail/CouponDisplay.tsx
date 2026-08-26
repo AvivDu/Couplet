@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getGroups, getCouponLocations } from '../../services/api';
 import type { GroupMeta, StoreLocation, CouponMeta, RedeemAction } from '../../services/api';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants/categories';
+import { matchGeneralGiftCard } from '../../constants/generalGiftCards';
 import type { CouponWithCode } from './types';
 import { formatBalance, maskBalanceInput } from '../../utils/format';
 import { inspectShareable, unusableShareMessage, deliverCouponCode } from '../../services/couponSharing';
@@ -122,6 +123,14 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
   }
 
   async function handleWhereToUse() {
+    if (coupon.category === 'General') {
+      const match = matchGeneralGiftCard(coupon.store_name);
+      if (match) {
+        WebBrowser.openBrowserAsync(match.storesUrl);
+        return;
+      }
+    }
+
     setLocationsLoading(true);
     setLocationsVisible(true);
     setLocations([]);

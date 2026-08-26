@@ -10,6 +10,8 @@ import {
   Image,
   Platform,
   RefreshControl,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import { Text, TextInput } from '../../components/rn';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -106,6 +108,7 @@ export default function GroupScreen() {
   const [filterMember, setFilterMember] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [filterSort, setFilterSort] = useState<SortOption | null>(null);
+  const filterSheetAnim = useRef(new Animated.Value(0)).current;
 
   const isAdmin = group?.admin_user_id === user?.userId;
 
@@ -558,6 +561,17 @@ export default function GroupScreen() {
     setFilterSort(null);
   }
 
+  function openFilterSheet() {
+    setFilterSheetVisible(true);
+    Animated.timing(filterSheetAnim, { toValue: 1, duration: 260, useNativeDriver: true }).start();
+  }
+
+  function closeFilterSheet() {
+    Animated.timing(filterSheetAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      setFilterSheetVisible(false);
+    });
+  }
+
   if (!user) return null;
 
   return (
@@ -694,7 +708,7 @@ export default function GroupScreen() {
             </Text>
             <TouchableOpacity
               style={[styles.filterBtn, hasFilter && styles.filterBtnActive]}
-              onPress={() => setFilterSheetVisible(true)}
+              onPress={openFilterSheet}
               activeOpacity={0.75}
             >
               <Ionicons
@@ -815,15 +829,25 @@ export default function GroupScreen() {
       <Modal
         visible={filterSheetVisible}
         transparent
-        animationType="slide"
-        onRequestClose={() => setFilterSheetVisible(false)}
+        animationType="none"
+        onRequestClose={closeFilterSheet}
       >
-        <TouchableOpacity
-          style={styles.sheetOverlay}
-          activeOpacity={1}
-          onPress={() => setFilterSheetVisible(false)}
-        >
-          <View style={styles.sheet} onStartShouldSetResponder={() => true}>
+        <View style={styles.filterSheetOverlay}>
+          <Animated.View
+            style={[StyleSheet.absoluteFill, styles.filterSheetBackdrop, { opacity: filterSheetAnim }]}
+          />
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeFilterSheet} />
+          <Animated.View
+            style={[
+              styles.sheet,
+              {
+                transform: [{ translateY: filterSheetAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [Dimensions.get('window').height, 0],
+                }) }],
+              },
+            ]}
+          >
             <View style={styles.sheetHandle} />
             <View style={styles.filterHeaderRow}>
               <Text style={[styles.sheetTitle, { marginBottom: 0 }]}>Filter Coupons</Text>
@@ -902,14 +926,14 @@ export default function GroupScreen() {
 
             <TouchableOpacity
               style={styles.filterDoneBtn}
-              onPress={() => setFilterSheetVisible(false)}
+              onPress={closeFilterSheet}
               activeOpacity={0.85}
             >
               <Text style={styles.filterDoneBtnText}>Done</Text>
             </TouchableOpacity>
             <View style={{ height: 24 }} />
-          </View>
-        </TouchableOpacity>
+          </Animated.View>
+        </View>
       </Modal>
 
       {/* Settings Bottom Sheet */}
@@ -1757,6 +1781,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(26,35,50,0.5)',
     justifyContent: 'flex-end',
+  },
+  filterSheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  filterSheetBackdrop: {
+    backgroundColor: 'rgba(26,35,50,0.5)',
   },
   sheet: {
     backgroundColor: COLORS.bg,
