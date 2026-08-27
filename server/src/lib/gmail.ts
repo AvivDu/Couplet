@@ -166,6 +166,9 @@ const AMOUNT_PATTERNS = [
   /(\d+(?:[.,]\d+)?)\s*₪/,
   /(\d+(?:[.,]\d+)?)\s*שקל/,
   /\$\s*(\d+(?:[.,]\d+)?)/,
+  // Hebrew "amount" label ("הסכום: 120", "הסכום הוא 120", "סכום של 120 ש"ח") - none of the
+  // currency-symbol patterns above fire when the email states the value by label instead.
+  /(?:הסכום|סכום)(?:\s*(?:הוא|של))?\s*[:\s]*₪?\s*(\d+(?:[.,]\d+)?)/,
 ];
 
 function extractAmount(text: string): number | null {
