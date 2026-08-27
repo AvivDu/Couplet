@@ -53,6 +53,10 @@ export default function AddCouponScreen() {
   const [giftUrl, setGiftUrl] = useState('');
   const [matchedGeneralCard, setMatchedGeneralCard] = useState<GeneralGiftCard | null>(null);
   const categoryTouchedRef = useRef(false);
+  // Route params on a tab screen persist across focuses (there's no unmount to reset
+  // them) - without this, the fromGmail branch below would re-populate the same draft
+  // every time this tab regains focus, even long after it was saved.
+  const consumedGmailMessageIdRef = useRef<string | null>(null);
   const router = useRouter();
   const params = useLocalSearchParams<{
     fromGmail?: string; messageId?: string; code?: string; store?: string;
@@ -61,7 +65,8 @@ export default function AddCouponScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (params.fromGmail === '1') {
+      if (params.fromGmail === '1' && params.messageId !== consumedGmailMessageIdRef.current) {
+        consumedGmailMessageIdRef.current = params.messageId ?? null;
         setCode(params.code ?? '');
         setCouponName(params.store ?? '');
         // Run the same General-gift-card detection a hand-typed name gets, so an
@@ -82,15 +87,17 @@ export default function AddCouponScreen() {
         categoryTouchedRef.current = false;
         return;
       }
-      setCode('');
-      setCouponName('');
-      setCategory('');
-      setExpiryDate(null);
-      setBalance('');
-      setImageUri(null);
-      setGiftUrl('');
-      setMatchedGeneralCard(null);
-      categoryTouchedRef.current = false;
+      if (params.fromGmail !== '1') {
+        setCode('');
+        setCouponName('');
+        setCategory('');
+        setExpiryDate(null);
+        setBalance('');
+        setImageUri(null);
+        setGiftUrl('');
+        setMatchedGeneralCard(null);
+        categoryTouchedRef.current = false;
+      }
     }, [params.fromGmail, params.messageId])
   );
 
@@ -169,6 +176,21 @@ export default function AddCouponScreen() {
       // Belt-and-suspenders: the source email would also stop showing as a draft once
       // its code matches this new coupon's saved code, but dismiss it explicitly too.
       if (params.messageId) await dismissDraft(params.messageId);
+
+      // The route's fromGmail/messageId params stick around (see consumedGmailMessageIdRef
+      // above), so this screen won't auto-populate from them again - but reset the fields
+      // now rather than leaving the just-saved draft's values sitting here until next focus.
+      if (params.fromGmail === '1') {
+        setCode('');
+        setCouponName('');
+        setCategory('');
+        setExpiryDate(null);
+        setBalance('');
+        setImageUri(null);
+        setGiftUrl('');
+        setMatchedGeneralCard(null);
+        categoryTouchedRef.current = false;
+      }
 
       Alert.alert('Coupon added!', `${couponName} coupon has been saved.`, [
         { text: 'OK', onPress: () => router.replace('/(tabs)') },

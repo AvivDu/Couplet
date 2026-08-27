@@ -133,13 +133,24 @@ export interface GmailDraftFields {
 
 // Labeled patterns only - deliberately conservative. An unlabeled bare token would
 // false-positive on order numbers, phone numbers, etc. scattered through marketing mail.
+//
+// The connector between the label and the code has to allow more than the original
+// "colon or whitespace, then the code immediately" - real marketing mail commonly
+// phrases it as "the code is: X" (a filler word between label and separator) and
+// wraps the code in quotes ("code: \"SAVE20\""). Both alternatives below still require
+// at least one real separator character, so "codeXXXX" (no separator at all) still
+// can't fuse into a false match.
+const CONNECTOR = String.raw`(?:[:\s]+|\s+(?:is|הוא)\s*:?\s*)`;
+const QUOTE = `["'"”‘’׳]?`;
+const CODE = `${QUOTE}([A-Za-z0-9-]{4,20})${QUOTE}`;
+
 const CODE_LABEL_PATTERNS = [
-  /קוד\s*קופון[:\s]+([A-Za-z0-9-]{4,20})/i,
-  /קוד\s*הנחה[:\s]+([A-Za-z0-9-]{4,20})/i,
-  /coupon\s*code[:\s]+([A-Za-z0-9-]{4,20})/i,
-  /promo(?:\s*code)?[:\s]+([A-Za-z0-9-]{4,20})/i,
-  /discount\s*code[:\s]+([A-Za-z0-9-]{4,20})/i,
-  /\bcode[:\s]+([A-Za-z0-9-]{4,20})/i,
+  new RegExp(String.raw`קוד\s*קופון${CONNECTOR}${CODE}`, 'i'),
+  new RegExp(String.raw`קוד\s*הנחה${CONNECTOR}${CODE}`, 'i'),
+  new RegExp(String.raw`coupon\s*code${CONNECTOR}${CODE}`, 'i'),
+  new RegExp(String.raw`promo(?:\s*code)?${CONNECTOR}${CODE}`, 'i'),
+  new RegExp(String.raw`discount\s*code${CONNECTOR}${CODE}`, 'i'),
+  new RegExp(String.raw`\bcode${CONNECTOR}${CODE}`, 'i'),
 ];
 
 function extractCode(text: string): string | null {

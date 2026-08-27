@@ -197,9 +197,12 @@ export default function GmailScanScreen() {
   }
 
   function handleDraftPress(candidate: GmailCandidate, draft: GmailDraftFields) {
+    const hasCode = !!draft.code;
     Alert.alert(
       'Create a coupon?',
-      `We found a possible coupon in this email from ${draft.store || candidate.from}. Create a new coupon from it?`,
+      hasCode
+        ? `We found a possible coupon in this email from ${draft.store || candidate.from}. Create a new coupon from it?`
+        : `We found an email from ${draft.store || candidate.from} that looks like a coupon, but couldn't detect the code. Create a coupon and fill in the code yourself?`,
       [
         { text: 'Not now', style: 'cancel', onPress: () => handleDismiss(candidate.message_id) },
         { text: 'Create coupon', onPress: () => openAddCoupon(candidate, draft) },
@@ -215,7 +218,11 @@ export default function GmailScanScreen() {
   const visibleCandidates = candidates.filter(c => {
     if (dismissed.has(c.message_id)) return false;
     const draft = drafts[c.message_id];
-    if (!draft?.code) return false;
+    // Not yet extracted (still backfilling) - stays hidden until resolved either way.
+    if (!draft) return false;
+    // Resolved but no code found - still worth surfacing as a manual-entry candidate,
+    // rather than silently dropping it (indistinguishable from "nothing found").
+    if (!draft.code) return true;
     return !localCodes.has(normalizeCode(draft.code));
   });
 
@@ -262,6 +269,7 @@ export default function GmailScanScreen() {
           contentContainerStyle={visibleCandidates.length === 0 ? styles.emptyContainer : styles.list}
           renderItem={({ item }) => {
             const draft = drafts[item.message_id]!;
+            const hasCode = !!draft.code;
             const category = guessCategory(`${item.subject} ${draft.store ?? ''}`);
             const icon = (category ? CATEGORY_ICONS[category] : null) ?? 'pricetag-outline';
             const color = category ? CATEGORY_COLORS[category] : '#EDE8DC';
@@ -275,12 +283,14 @@ export default function GmailScanScreen() {
                     <Text style={styles.rowStore} numberOfLines={1}>{draft.store || item.from}</Text>
                     <Text style={styles.rowSubject} numberOfLines={1}>{item.subject || '(no subject)'}</Text>
                   </View>
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>New</Text>
+                  <View style={[styles.badge, !hasCode && styles.badgeMuted]}>
+                    <Text style={styles.badgeText}>{hasCode ? 'New' : 'No code found'}</Text>
                   </View>
                 </View>
                 <Text style={styles.rowHint}>
-                  Received {formatDate(item.date)} - tap to create a coupon from this email.
+                  {hasCode
+                    ? `Received ${formatDate(item.date)} - tap to create a coupon from this email.`
+                    : 'We found an email that looks like a coupon but couldn\'t detect the code - tap to fill it in manually.'}
                 </Text>
               </TouchableOpacity>
             );
@@ -368,6 +378,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
+  badgeMuted: { backgroundColor: '#A8997A' },
   badgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   emptyContainer: { flex: 1, justifyContent: 'center' },
   empty: { alignItems: 'center', gap: 8, paddingHorizontal: 40 },
