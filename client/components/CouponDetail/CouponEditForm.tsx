@@ -11,7 +11,7 @@ import {
   Platform,
   Image,
 } from 'react-native';
-import { Text, TextInput } from '../rn';
+import { Text } from '../rn';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { updateCoupon, getCouponGroups } from '../../services/api';
@@ -23,6 +23,8 @@ import DatePickerSheet from './DatePickerSheet';
 import type { CouponWithCode } from './types';
 import { deliverCouponCode } from '../../services/couponSharing';
 import { useNotifications } from '../../context/NotificationsContext';
+import Input from '../ui/Input';
+import { colors, radius, spacing, fontFamily, fontSize } from '../../constants/theme';
 
 type DateField = 'year' | 'month' | 'day';
 
@@ -213,41 +215,31 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
         <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
             <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-          <Text style={styles.editTitle}>Edit Coupon</Text>
 
-          <View style={styles.inputWrap}>
-            <TextInput
-              style={styles.input}
-              placeholder="Coupon Name"
-              placeholderTextColor="#A8997A"
-              value={editName}
-              onChangeText={setEditName}
-            />
-          </View>
+          <Input
+            label="Coupon Name"
+            value={editName}
+            onChangeText={setEditName}
+            wrapperStyle={styles.field}
+          />
 
-          <View style={styles.inputWrap}>
-            <TextInput
-              style={styles.input}
-              placeholder="Coupon Code"
-              placeholderTextColor="#A8997A"
-              autoCapitalize="characters"
-              value={editCode}
-              onChangeText={setEditCode}
-            />
-          </View>
+          <Input
+            label="Coupon Code"
+            autoCapitalize="characters"
+            value={editCode}
+            onChangeText={setEditCode}
+            wrapperStyle={styles.field}
+          />
 
-          <Text style={styles.dateLabel}>Dynamic Gift Card Link (optional)</Text>
-          <View style={styles.inputWrap}>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. https://www.buyme.co.il/..."
-              placeholderTextColor="#A8997A"
-              autoCapitalize="none"
-              keyboardType="url"
-              value={editGiftUrl}
-              onChangeText={setEditGiftUrl}
-            />
-          </View>
+          <Input
+            label="Dynamic Gift Card Link (optional)"
+            placeholder="e.g. https://www.buyme.co.il/..."
+            autoCapitalize="none"
+            keyboardType="url"
+            value={editGiftUrl}
+            onChangeText={setEditGiftUrl}
+            wrapperStyle={styles.field}
+          />
 
           <Text style={styles.dateLabel}>Barcode / QR Image (optional)</Text>
           <View style={styles.imagePickerWrap}>
@@ -275,7 +267,7 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
                 </>
               ) : (
                 <View style={styles.imageEmpty}>
-                  <Text style={styles.imageEmptyIcon}>+</Text>
+                  <Ionicons name="qr-code-outline" size={28} color={colors.textMuted} />
                   <Text style={styles.imageEmptyText}>Add barcode or QR image</Text>
                   <Text style={styles.imageEmptyHint}>Camera or Photo Library</Text>
                 </View>
@@ -291,7 +283,7 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
                 }}
                 hitSlop={8}
               >
-                <Ionicons name="close-circle" size={22} color="#E8604C" />
+                <Ionicons name="close-circle" size={22} color={colors.coral400} />
               </TouchableOpacity>
             )}
           </View>
@@ -320,17 +312,14 @@ const CouponEditForm = React.forwardRef<CouponEditFormHandle, CouponEditFormProp
             </View>
           </View>
 
-          <Text style={styles.dateLabel}>Balance (optional)</Text>
-          <View style={styles.inputWrap}>
-            <TextInput
-              style={styles.input}
-              placeholder="0"
-              placeholderTextColor="#A8997A"
-              value={maskBalanceInput(editBalance)}
-              onChangeText={text => setEditBalance(text.replace(/,/g, ''))}
-              keyboardType="decimal-pad"
-            />
-          </View>
+          <Input
+            label="Balance (optional)"
+            placeholder="0"
+            value={maskBalanceInput(editBalance)}
+            onChangeText={text => setEditBalance(text.replace(/,/g, ''))}
+            keyboardType="decimal-pad"
+            wrapperStyle={styles.field}
+          />
             </ScrollView>
           </KeyboardAvoidingView>
         </TouchableWithoutFeedback>
@@ -353,77 +342,61 @@ CouponEditForm.displayName = 'CouponEditForm';
 export default CouponEditForm;
 
 const styles = StyleSheet.create({
-  body: { padding: 20, paddingBottom: 48 },
-  editTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#1A2332',
-    marginBottom: 28,
-    marginTop: 4,
-  },
-  inputWrap: {
-    borderBottomWidth: 1.5,
-    borderBottomColor: '#C4B8A0',
-    marginBottom: 28,
-  },
-  input: {
-    paddingVertical: 10,
-    fontSize: 16,
-    color: '#1A2332',
-    backgroundColor: 'transparent',
-  },
+  body: { padding: spacing.gutterScreen, paddingBottom: 48 },
+  field: { marginBottom: spacing.s7 },
   dateLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#A8997A',
+    fontFamily: fontFamily.uiBold,
+    fontSize: fontSize.micro,
+    color: colors.textMuted,
     letterSpacing: 0.5,
-    marginBottom: 10,
+    marginBottom: spacing.s5,
   },
   dateRow: {
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 28,
+    marginBottom: spacing.s7,
   },
   datePillWrap: {
     flex: 1,
-    borderRadius: 12,
+    borderRadius: radius.m,
     borderWidth: 1.5,
-    borderColor: '#C4B8A0',
+    borderColor: colors.lineStrong,
     padding: 10,
     alignItems: 'center',
   },
   datePillCaption: {
+    fontFamily: fontFamily.ui,
     fontSize: 11,
-    color: '#A8997A',
+    color: colors.textMuted,
     marginBottom: 4,
   },
   dateValue: {
+    fontFamily: fontFamily.uiSemibold,
     fontSize: 14,
-    color: '#1A2332',
-    fontWeight: '600',
+    color: colors.textStrong,
   },
   imagePickerWrap: {
     position: 'relative',
-    marginBottom: 28,
+    marginBottom: spacing.s7,
   },
   imagePickerBase: {
-    borderRadius: 14,
+    borderRadius: radius.l,
     borderWidth: 1.5,
-    borderColor: '#C4B8A0',
+    borderColor: colors.lineStrong,
     borderStyle: 'dashed',
     overflow: 'hidden',
-    backgroundColor: '#FDFAF4',
+    backgroundColor: 'rgba(255,255,255,.5)',
     width: '100%',
     maxHeight: 150,
   },
   imagePicker: {
-    borderRadius: 14,
+    borderRadius: radius.l,
     borderWidth: 1.5,
-    borderColor: '#C4B8A0',
+    borderColor: colors.lineStrong,
     borderStyle: 'dashed',
     height: 120,
     overflow: 'hidden',
-    backgroundColor: '#FDFAF4',
+    backgroundColor: 'rgba(255,255,255,.5)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -431,7 +404,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -8,
     right: -8,
-    backgroundColor: '#F5F0E6',
+    backgroundColor: colors.surfacePage,
     borderRadius: 11,
   },
   imagePreview: {
@@ -449,26 +422,22 @@ const styles = StyleSheet.create({
   },
   imageChangeText: {
     color: '#fff',
+    fontFamily: fontFamily.uiSemibold,
     fontSize: 12,
-    fontWeight: '600',
   },
   imageEmpty: {
     alignItems: 'center',
     gap: 6,
   },
-  imageEmptyIcon: {
-    fontSize: 28,
-    color: '#A8997A',
-    lineHeight: 32,
-  },
   imageEmptyText: {
+    fontFamily: fontFamily.uiSemibold,
     fontSize: 13,
-    fontWeight: '600',
-    color: '#1A2332',
+    color: colors.textStrong,
     opacity: 0.55,
   },
   imageEmptyHint: {
+    fontFamily: fontFamily.ui,
     fontSize: 11,
-    color: '#A8997A',
+    color: colors.textMuted,
   },
 });

@@ -5,16 +5,19 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
-  Image,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Text, TextInput } from '../components/rn';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
 import { updateProfile, resolvePhone, uploadProfileImage } from '../services/api';
+import AuroraBackground from '../components/ui/AuroraBackground';
+import ScreenHeader from '../components/ui/ScreenHeader';
+import Avatar from '../components/ui/Avatar';
+import Input from '../components/ui/Input';
+import Button from '../components/ui/Button';
+import { colors, radius, spacing } from '../constants/theme';
 
 export default function EditProfileScreen() {
   const router = useRouter();
@@ -105,31 +108,16 @@ export default function EditProfileScreen() {
     }
   }
 
+  const initials = (user?.username ?? '').slice(0, 2).toUpperCase();
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Ionicons name="chevron-back" size={26} color="#1A2332" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Edit Profile</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+    <AuroraBackground>
+      <ScreenHeader back onBack={() => router.back()} title="Edit Profile" />
 
       {/* Avatar */}
       <View style={styles.avatarWrap}>
-        <TouchableOpacity onPress={pickAvatar} activeOpacity={0.8}>
-          <View style={styles.avatarCircle}>
-            {avatarUri ? (
-              <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
-            ) : (
-              <Ionicons name="person-outline" size={44} color="#A8997A" />
-            )}
-          </View>
+        <TouchableOpacity onPress={pickAvatar} activeOpacity={0.8} style={styles.avatarTouchable}>
+          <Avatar initials={initials} src={avatarUri} size="xxl" />
           <View style={styles.cameraBadge}>
             <Ionicons name="camera-outline" size={14} color="#fff" />
           </View>
@@ -138,120 +126,56 @@ export default function EditProfileScreen() {
 
       {/* Form */}
       <View style={styles.form}>
-        <Text style={styles.fieldLabel}>USERNAME</Text>
-        <View style={styles.inputWrap}>
-          <TextInput
-            style={styles.input}
-            value={username}
-            onChangeText={setUsername}
-            placeholder="Username"
-            placeholderTextColor="#A8997A"
-            autoCapitalize="none"
-          />
-        </View>
+        <Input
+          label="Username"
+          value={username}
+          onChangeText={setUsername}
+          placeholder="Username"
+          autoCapitalize="none"
+          wrapperStyle={styles.field}
+        />
 
-        <Text style={styles.fieldLabel}>PHONE NUMBER</Text>
-        <View style={styles.inputWrap}>
-          <TextInput
-            style={styles.input}
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="e.g. 0501234567"
-            placeholderTextColor="#A8997A"
-            keyboardType="phone-pad"
-          />
-        </View>
+        <Input
+          label="Phone number"
+          value={phone}
+          onChangeText={setPhone}
+          placeholder="e.g. 0501234567"
+          keyboardType="phone-pad"
+          wrapperStyle={styles.field}
+        />
 
-        <Text style={styles.fieldLabel}>EMAIL</Text>
-        <View style={[styles.inputWrap, styles.inputWrapDisabled]}>
-          <TextInput
-            style={[styles.input, styles.inputDisabled]}
-            value={user?.email ?? ''}
-            editable={false}
-          />
-        </View>
+        <Input
+          label="Email"
+          value={user?.email ?? ''}
+          editable={false}
+          wrapperStyle={styles.field}
+        />
 
-        <TouchableOpacity
-          style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
-          onPress={handleSave}
-          disabled={saving}
-          activeOpacity={0.85}
-        >
-          {saving ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Text style={styles.saveBtnText}>Save Changes</Text>
-          )}
-        </TouchableOpacity>
+        <Button variant="primary" size="l" block onPress={handleSave} disabled={saving} style={styles.saveBtn}>
+          {saving ? <ActivityIndicator color="#fff" size="small" /> : 'Save Changes'}
+        </Button>
       </View>
-    </SafeAreaView>
+    </AuroraBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F5F0E6' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  backBtn: { width: 40, height: 40, justifyContent: 'center' },
-  headerTitle: { fontSize: 18, fontWeight: '700', color: '#1A2332' },
-  headerSpacer: { width: 40 },
   avatarWrap: { alignItems: 'center', marginTop: 20, marginBottom: 32 },
-  avatarCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: '#E0D8CA',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  avatarImage: { width: 96, height: 96 },
+  avatarTouchable: { position: 'relative' },
   cameraBadge: {
     position: 'absolute',
     bottom: 0,
     right: 0,
     width: 28,
     height: 28,
-    borderRadius: 14,
-    backgroundColor: '#E8604C',
+    borderRadius: radius.pill,
+    backgroundColor: colors.coral400,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: '#F5F0E6',
+    borderColor: colors.surfacePage,
   },
-  form: { paddingHorizontal: 24 },
-  fieldLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#A8997A',
-    letterSpacing: 0.8,
-    marginBottom: 6,
-  },
-  inputWrap: {
-    borderBottomWidth: 1.5,
-    borderBottomColor: '#C4B8A0',
-    marginBottom: 28,
-  },
-  inputWrapDisabled: { borderBottomColor: '#E0D8CA' },
-  input: {
-    paddingVertical: 10,
-    fontSize: 16,
-    color: '#1A2332',
-    backgroundColor: 'transparent',
-  },
-  inputDisabled: { color: '#1A2332', opacity: 0.35 },
-  saveBtn: {
-    marginTop: 12,
-    backgroundColor: '#E8604C',
-    borderRadius: 28,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  saveBtnDisabled: { opacity: 0.6 },
-  saveBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  form: { paddingHorizontal: spacing.gutterScreen },
+  field: { marginBottom: spacing.s7 },
+  saveBtn: { marginTop: 12 },
 });

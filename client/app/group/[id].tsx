@@ -10,7 +10,7 @@ import {
   Platform,
   RefreshControl,
 } from 'react-native';
-import { Text, TextInput } from '../../components/rn';
+import { Text } from '../../components/rn';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
@@ -57,6 +57,8 @@ import Sheet from '../../components/ui/Sheet';
 import CategoryTile from '../../components/ui/CategoryTile';
 import OptionRow from '../../components/ui/OptionRow';
 import Chip from '../../components/ui/Chip';
+import GlassPanel from '../../components/ui/GlassPanel';
+import Input from '../../components/ui/Input';
 import CouponCard from '../../components/CouponCard';
 import { colors as theme } from '../../constants/theme';
 
@@ -792,11 +794,10 @@ export default function GroupScreen() {
       </Sheet>
 
       {/* Settings Bottom Sheet */}
-      <Modal
-        visible={settingsSheetVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setSettingsSheetVisible(false)}
+      <Sheet
+        title="Group Settings"
+        open={settingsSheetVisible}
+        onClose={() => setSettingsSheetVisible(false)}
         onDismiss={() => {
           // iOS: runs after the sheet has fully closed - safe to present the picker now.
           if (pendingPhotoPick) {
@@ -805,89 +806,62 @@ export default function GroupScreen() {
           }
         }}
       >
-        <TouchableOpacity
-          style={styles.sheetOverlay}
-          activeOpacity={1}
-          onPress={() => setSettingsSheetVisible(false)}
-        >
-          <View style={styles.sheet} onStartShouldSetResponder={() => true}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Group Settings</Text>
+        {isAdmin && (
+          <>
+            <OptionRow
+              icon={<Ionicons name="image-outline" size={20} color={COLORS.coral} />}
+              label="Change Group Photo"
+              trailing={<Ionicons name="chevron-forward" size={16} color="#C4B8A0" />}
+              onPress={() => {
+                // iOS can't present the image picker while the settings sheet is still
+                // on screen, so launch it only AFTER the sheet has fully dismissed
+                // (via Sheet's onDismiss). Android has no such restriction.
+                setSettingsSheetVisible(false);
+                if (Platform.OS === 'ios') {
+                  setPendingPhotoPick(true);
+                } else {
+                  setTimeout(() => handlePickImage(), 250);
+                }
+              }}
+            />
+            <OptionRow
+              icon={<Ionicons name="pencil-outline" size={20} color={COLORS.coral} />}
+              label="Rename Group"
+              trailing={<Ionicons name="chevron-forward" size={16} color="#C4B8A0" />}
+              onPress={() => {
+                setSettingsSheetVisible(false);
+                setNewGroupName(group?.name ?? '');
+                setRenameModalVisible(true);
+              }}
+            />
+            <OptionRow
+              icon={<Ionicons name="trash-outline" size={20} color="#D93025" />}
+              label="Delete Group"
+              destructive
+              divider={false}
+              trailing={<Ionicons name="chevron-forward" size={16} color="#C4B8A0" />}
+              onPress={() => {
+                setSettingsSheetVisible(false);
+                setDeleteConfirmVisible(true);
+              }}
+            />
+          </>
+        )}
 
-            {isAdmin && (
-              <>
-                <TouchableOpacity
-                  style={styles.settingsRow}
-                  onPress={() => {
-                    // iOS can't present the image picker while the settings Modal is still
-                    // on screen, so launch it only AFTER the Modal has fully dismissed
-                    // (via the Modal's onDismiss). Android has no such restriction.
-                    setSettingsSheetVisible(false);
-                    if (Platform.OS === 'ios') {
-                      setPendingPhotoPick(true);
-                    } else {
-                      setTimeout(() => handlePickImage(), 250);
-                    }
-                  }}
-                  activeOpacity={0.75}
-                >
-                  <Ionicons name="image-outline" size={20} color={COLORS.coral} />
-                  <Text style={styles.settingsRowText}>Change Group Photo</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#C4B8A0" style={styles.settingsRowChevron} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.settingsRow}
-                  onPress={() => {
-                    setSettingsSheetVisible(false);
-                    setNewGroupName(group?.name ?? '');
-                    setRenameModalVisible(true);
-                  }}
-                  activeOpacity={0.75}
-                >
-                  <Ionicons name="pencil-outline" size={20} color={COLORS.coral} />
-                  <Text style={styles.settingsRowText}>Rename Group</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#C4B8A0" style={styles.settingsRowChevron} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.settingsRow, styles.settingsRowLast]}
-                  onPress={() => {
-                    setSettingsSheetVisible(false);
-                    setDeleteConfirmVisible(true);
-                  }}
-                  activeOpacity={0.75}
-                >
-                  <Ionicons name="trash-outline" size={20} color="#D93025" />
-                  <Text style={[styles.settingsRowText, styles.settingsRowTextDestructive]}>
-                    Delete Group
-                  </Text>
-                  <Ionicons name="chevron-forward" size={16} color="#C4B8A0" style={styles.settingsRowChevron} />
-                </TouchableOpacity>
-              </>
-            )}
-
-            {!isAdmin && (
-              <TouchableOpacity
-                style={[styles.settingsRow, styles.settingsRowLast]}
-                onPress={() => {
-                  setSettingsSheetVisible(false);
-                  handleLeaveGroup();
-                }}
-                activeOpacity={0.75}
-              >
-                <Ionicons name="exit-outline" size={20} color="#D93025" />
-                <Text style={[styles.settingsRowText, styles.settingsRowTextDestructive]}>
-                  Leave Group
-                </Text>
-                <Ionicons name="chevron-forward" size={16} color="#C4B8A0" style={styles.settingsRowChevron} />
-              </TouchableOpacity>
-            )}
-
-            <View style={{ height: 24 }} />
-          </View>
-        </TouchableOpacity>
-      </Modal>
+        {!isAdmin && (
+          <OptionRow
+            icon={<Ionicons name="exit-outline" size={20} color="#D93025" />}
+            label="Leave Group"
+            destructive
+            divider={false}
+            trailing={<Ionicons name="chevron-forward" size={16} color="#C4B8A0" />}
+            onPress={() => {
+              setSettingsSheetVisible(false);
+              handleLeaveGroup();
+            }}
+          />
+        )}
+      </Sheet>
 
       {/* Members Bottom Sheet */}
       <Sheet open={membersSheetVisible} onClose={() => setMembersSheetVisible(false)}>
@@ -989,25 +963,21 @@ export default function GroupScreen() {
           activeOpacity={1}
           onPress={closeInviteSheet}
         >
-          <View style={styles.dialog} onStartShouldSetResponder={() => true}>
+          <View style={styles.dialogPanelWrap} onStartShouldSetResponder={() => true}>
+          <GlassPanel tint="thick" radius={24} padding={24}>
             <View style={styles.dialogHeader}>
               <Text style={styles.dialogTitle}>Add Member</Text>
-              <TouchableOpacity
-                onPress={closeInviteSheet}
-                style={styles.dialogCloseBtn}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="close" size={20} color={COLORS.ink} />
-              </TouchableOpacity>
+              <IconButton label="Close" size="s" onPress={closeInviteSheet}>
+                <Ionicons name="close" size={18} color={COLORS.ink} />
+              </IconButton>
             </View>
-            <TextInput
-              style={styles.dialogInput}
+            <Input
               placeholder="Email or username"
-              placeholderTextColor="#A8997A"
               value={memberQuery}
               onChangeText={setMemberQuery}
               autoCapitalize="none"
               autoFocus
+              wrapperStyle={{ marginBottom: suggestions.length > 0 ? 12 : 20 }}
             />
             {suggestions.length > 0 && (
               <View style={styles.suggestions}>
@@ -1026,29 +996,24 @@ export default function GroupScreen() {
                 ))}
               </View>
             )}
-            <TouchableOpacity
-              style={[
-                styles.dialogInviteBtn,
-                (addingMember || !memberQuery.trim()) && styles.dialogInviteBtnDisabled,
-              ]}
+            <Button
+              variant="primary"
+              block
               onPress={() => memberQuery.trim() && handleAddMember(memberQuery.trim())}
               disabled={addingMember || !memberQuery.trim()}
-              activeOpacity={0.8}
+              style={{ marginBottom: 12 }}
             >
-              {addingMember ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.dialogInviteBtnText}>Invite</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.addFromContactsBtn}
+              {addingMember ? <ActivityIndicator color="#fff" size="small" /> : 'Invite'}
+            </Button>
+            <Button
+              variant="glass"
+              block
               onPress={handleOpenContacts}
-              activeOpacity={0.8}
+              icon={<Ionicons name="people-outline" size={16} color={COLORS.coral} />}
             >
-              <Ionicons name="people-outline" size={16} color={COLORS.coral} />
-              <Text style={styles.addFromContactsBtnText}>Add from Contacts</Text>
-            </TouchableOpacity>
+              Add from Contacts
+            </Button>
+          </GlassPanel>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -1063,44 +1028,38 @@ export default function GroupScreen() {
             setNewGroupName('');
           }}
         >
-          <View style={styles.dialog} onStartShouldSetResponder={() => true}>
+          <View style={styles.dialogPanelWrap} onStartShouldSetResponder={() => true}>
+          <GlassPanel tint="thick" radius={24} padding={24}>
             <View style={styles.dialogHeader}>
               <Text style={styles.dialogTitle}>Rename Group</Text>
-              <TouchableOpacity
+              <IconButton
+                label="Close"
+                size="s"
                 onPress={() => {
                   setRenameModalVisible(false);
                   setNewGroupName('');
                 }}
-                style={styles.dialogCloseBtn}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Ionicons name="close" size={20} color={COLORS.ink} />
-              </TouchableOpacity>
+                <Ionicons name="close" size={18} color={COLORS.ink} />
+              </IconButton>
             </View>
-            <TextInput
-              style={styles.dialogInput}
+            <Input
               placeholder="New group name"
-              placeholderTextColor="#A8997A"
               value={newGroupName}
               onChangeText={setNewGroupName}
               autoFocus
               maxLength={60}
+              wrapperStyle={{ marginBottom: 20 }}
             />
-            <TouchableOpacity
-              style={[
-                styles.dialogInviteBtn,
-                (!newGroupName.trim() || renaming) && styles.dialogInviteBtnDisabled,
-              ]}
+            <Button
+              variant="primary"
+              block
               onPress={handleRenameGroup}
               disabled={!newGroupName.trim() || renaming}
-              activeOpacity={0.8}
             >
-              {renaming ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.dialogInviteBtnText}>Save</Text>
-              )}
-            </TouchableOpacity>
+              {renaming ? <ActivityIndicator color="#fff" size="small" /> : 'Save'}
+            </Button>
+          </GlassPanel>
           </View>
         </TouchableOpacity>
       )}
@@ -1112,97 +1071,62 @@ export default function GroupScreen() {
           activeOpacity={1}
           onPress={() => setDeleteConfirmVisible(false)}
         >
-          <View style={styles.dialog} onStartShouldSetResponder={() => true}>
+          <View style={styles.dialogPanelWrap} onStartShouldSetResponder={() => true}>
+          <GlassPanel tint="thick" radius={24} padding={24}>
             <View style={styles.dialogHeader}>
               <Text style={styles.dialogTitle}>Delete Group?</Text>
-              <TouchableOpacity
-                onPress={() => setDeleteConfirmVisible(false)}
-                style={styles.dialogCloseBtn}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="close" size={20} color={COLORS.ink} />
-              </TouchableOpacity>
+              <IconButton label="Close" size="s" onPress={() => setDeleteConfirmVisible(false)}>
+                <Ionicons name="close" size={18} color={COLORS.ink} />
+              </IconButton>
             </View>
             <Text style={styles.deleteWarningText}>
               Are you sure you want to delete "{group?.name}"? This action is
               permanent and will remove all members.
             </Text>
             <View style={styles.deleteDialogActions}>
-              <TouchableOpacity
-                style={styles.deleteCancelBtn}
-                onPress={() => setDeleteConfirmVisible(false)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.deleteCancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.deleteConfirmBtn,
-                  deleting && styles.dialogInviteBtnDisabled,
-                ]}
-                onPress={handleDeleteGroup}
-                disabled={deleting}
-                activeOpacity={0.8}
-              >
-                {deleting ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.deleteConfirmBtnText}>Delete</Text>
-                )}
-              </TouchableOpacity>
+              <Button variant="ghost" block onPress={() => setDeleteConfirmVisible(false)} style={styles.deleteCancelBtn}>
+                Cancel
+              </Button>
+              <Button variant="danger" block onPress={handleDeleteGroup} disabled={deleting} style={{ flex: 1 }}>
+                {deleting ? <ActivityIndicator color={theme.stateDanger} size="small" /> : 'Delete'}
+              </Button>
             </View>
+          </GlassPanel>
           </View>
         </TouchableOpacity>
       )}
 
       {/* Add from Contacts Sheet */}
-      <Modal
-        visible={contactsSheetVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setContactsSheetVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.sheetOverlay}
-          activeOpacity={1}
-          onPress={() => setContactsSheetVisible(false)}
-        >
-          <View style={styles.sheet} onStartShouldSetResponder={() => true}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Your Contacts on Couplet</Text>
-            {contactsLoading ? (
-              <ActivityIndicator color={COLORS.coral} style={{ marginVertical: 32 }} />
-            ) : contactMatches.length === 0 ? (
-              <Text style={styles.emptyCoupons}>None of your contacts are on Couplet yet.</Text>
-            ) : (
-              <ScrollView style={{ maxHeight: '80%' }}>
-                {contactMatches.map(match => (
-                  <View key={match.user_id} style={styles.memberRow}>
-                    <View style={styles.memberAvatar}>
-                      <Text style={styles.memberAvatarText}>{getInitials(match.contactName)}</Text>
-                    </View>
-                    <View style={styles.memberInfo}>
-                      <Text style={styles.memberName}>{match.contactName}</Text>
-                      <Text style={styles.memberEmail}>@{match.username}</Text>
-                    </View>
-                    <TouchableOpacity
-                      style={[styles.inviteContactBtn, invitingContactUserId === match.user_id && { opacity: 0.4 }]}
-                      onPress={() => handleInviteContact(match)}
-                      disabled={invitingContactUserId === match.user_id}
-                      activeOpacity={0.8}
-                    >
-                      {invitingContactUserId === match.user_id
-                        ? <ActivityIndicator color="#fff" size="small" />
-                        : <Text style={styles.inviteContactBtnText}>Invite</Text>}
-                    </TouchableOpacity>
-                  </View>
-                ))}
-                <View style={{ height: 40 }} />
-              </ScrollView>
-            )}
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <Sheet title="Your Contacts on Couplet" open={contactsSheetVisible} onClose={() => setContactsSheetVisible(false)}>
+        {contactsLoading ? (
+          <ActivityIndicator color={COLORS.coral} style={{ marginVertical: 32 }} />
+        ) : contactMatches.length === 0 ? (
+          <Text style={styles.emptyCoupons}>None of your contacts are on Couplet yet.</Text>
+        ) : (
+          <ScrollView style={{ maxHeight: 420 }}>
+            {contactMatches.map(match => (
+              <View key={match.user_id} style={styles.memberRow}>
+                <Avatar initials={getInitials(match.contactName)} size="m" />
+                <View style={styles.memberInfo}>
+                  <Text style={styles.memberName}>{match.contactName}</Text>
+                  <Text style={styles.memberEmail}>@{match.username}</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.inviteContactBtn, invitingContactUserId === match.user_id && { opacity: 0.4 }]}
+                  onPress={() => handleInviteContact(match)}
+                  disabled={invitingContactUserId === match.user_id}
+                  activeOpacity={0.8}
+                >
+                  {invitingContactUserId === match.user_id
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={styles.inviteContactBtnText}>Invite</Text>}
+                </TouchableOpacity>
+              </View>
+            ))}
+            <View style={{ height: 40 }} />
+          </ScrollView>
+        )}
+      </Sheet>
 
       {/* Share Coupon Picker */}
       <Sheet title="Share a Coupon" open={couponPickerVisible} onClose={() => setCouponPickerVisible(false)}>
@@ -1331,40 +1255,6 @@ const styles = StyleSheet.create({
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16, marginTop: 4 },
 
   // Settings sheet rows
-  settingsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(196,184,160,0.25)',
-  },
-  settingsRowLast: { borderBottomWidth: 0 },
-  settingsRowText: { flex: 1, fontSize: 15, fontWeight: '600', color: COLORS.ink },
-  settingsRowTextDestructive: { color: '#D93025' },
-  settingsRowChevron: { marginLeft: 'auto' as any },
-
-  // Bottom sheets
-  sheetOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(26,35,50,0.5)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: COLORS.bg,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingBottom: 0,
-  },
-  sheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#C4B8A0',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
   sheetTitle: { fontSize: 18, fontWeight: '800', color: COLORS.ink, marginBottom: 16 },
 
   membersSheetHeader: {
@@ -1443,17 +1333,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
   },
-  dialog: {
-    width: '100%',
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    elevation: 12,
-  },
+  dialogPanelWrap: { width: '100%' },
   dialogHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1461,32 +1341,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   dialogTitle: { fontSize: 18, fontWeight: '800', color: COLORS.ink },
-  dialogCloseBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F0EBE0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dialogInput: {
-    backgroundColor: COLORS.bg,
-    borderRadius: 12,
-    paddingVertical: 13,
-    paddingHorizontal: 16,
-    fontSize: 15,
-    color: COLORS.ink,
-    marginBottom: 12,
-  },
-  dialogInviteBtn: {
-    backgroundColor: COLORS.coral,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  dialogInviteBtnDisabled: { opacity: 0.4 },
-  dialogInviteBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   suggestions: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -1513,23 +1367,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   deleteDialogActions: { flexDirection: 'row', gap: 12 },
-  deleteCancelBtn: {
-    flex: 1,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#C4B8A0',
-  },
-  deleteCancelBtnText: { fontSize: 15, fontWeight: '600', color: COLORS.ink },
-  deleteConfirmBtn: {
-    flex: 1,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    backgroundColor: '#D93025',
-  },
-  deleteConfirmBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  deleteCancelBtn: { flex: 1 },
 
   // Coupon picker
   couponPickerRow: {
@@ -1553,17 +1391,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   inviteContactBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-
-  addFromContactsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 10,
-    borderWidth: 1.5,
-    borderColor: COLORS.coral,
-    borderRadius: 14,
-    paddingVertical: 13,
-  },
-  addFromContactsBtnText: { fontSize: 15, fontWeight: '600', color: COLORS.coral },
 });

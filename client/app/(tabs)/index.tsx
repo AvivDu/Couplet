@@ -3,7 +3,6 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import {
   Animated,
   Dimensions,
-  Image,
   View,
   StyleSheet,
   FlatList,
@@ -33,7 +32,11 @@ import Sheet from '../../components/ui/Sheet';
 import OptionRow from '../../components/ui/OptionRow';
 import SectionLabel from '../../components/ui/SectionLabel';
 import EmptyState from '../../components/ui/EmptyState';
-import { colors, spacing } from '../../constants/theme';
+import Avatar from '../../components/ui/Avatar';
+import GlassPanel from '../../components/ui/GlassPanel';
+import Button from '../../components/ui/Button';
+import { BlurView } from 'expo-blur';
+import { colors, glass, blur, radius, fontFamily, fontSize, spacing } from '../../constants/theme';
 
 type CouponWithCode = CouponMeta & { code: string | null };
 
@@ -525,12 +528,14 @@ export default function HomeScreen() {
                 },
               ]}
             >
+              <BlurView intensity={blur.l} tint="light" style={StyleSheet.absoluteFill} />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick }]} />
               <View style={styles.drawerHeader}>
-                <View style={styles.avatarCircle}>
-                  {user?.profile_image
-                    ? <Image source={{ uri: user.profile_image }} style={styles.avatarImage} />
-                    : <Ionicons name="person-outline" size={32} color="#A8997A" />}
-                </View>
+                <Avatar
+                  initials={(user?.username ?? '').slice(0, 2).toUpperCase()}
+                  src={user?.profile_image}
+                  size="xxl"
+                />
                 <Text style={styles.drawerUsername}>{user?.username}</Text>
                 <TouchableOpacity
                   style={styles.drawerProfileBtn}
@@ -570,7 +575,7 @@ export default function HomeScreen() {
         {/* About modal */}
         <Modal visible={aboutVisible} animationType="fade" transparent onRequestClose={() => setAboutVisible(false)}>
           <View style={styles.aboutOverlay}>
-            <View style={styles.aboutCard}>
+            <GlassPanel tint="thick" radius={radius['2xl']} padding={spacing.s14} style={{ width: '100%' }}>
               <Text style={styles.aboutTitle}>Couplet</Text>
               <Text style={styles.aboutVersion}>Version 1.0.0</Text>
               <Text style={styles.aboutDesc}>Your personal coupon wallet - store, manage, and share coupons securely. Coupon codes never leave your device.</Text>
@@ -579,10 +584,10 @@ export default function HomeScreen() {
               <Text style={styles.aboutTeam}>Aviv Duzy</Text>
               <Text style={styles.aboutTeam}>Roni Kenigsberg</Text>
               <Text style={styles.aboutTeam}>Doron Shen-Tzur</Text>
-              <TouchableOpacity style={styles.aboutCloseBtn} onPress={() => setAboutVisible(false)}>
-                <Text style={styles.aboutCloseBtnText}>Close</Text>
-              </TouchableOpacity>
-            </View>
+              <Button variant="primary" block onPress={() => setAboutVisible(false)} style={{ marginTop: 24 }}>
+                Close
+              </Button>
+            </GlassPanel>
           </View>
         </Modal>
       </View>
@@ -652,7 +657,7 @@ const styles = StyleSheet.create({
     top: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#F5F0E6',
+    overflow: 'hidden',
     paddingTop: 56,
     paddingBottom: 32,
     shadowColor: '#000',
@@ -666,33 +671,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 24,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0D8CA',
+    borderBottomColor: colors.lineSoft,
+    gap: spacing.s5,
   },
-  avatarCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#E0D8CA',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  avatarImage: { width: 72, height: 72 },
-  drawerUsername: { fontSize: 16, fontWeight: '700', color: '#1A2332', marginBottom: 10 },
+  drawerUsername: { fontFamily: fontFamily.uiBold, fontSize: 16, color: colors.textStrong },
   drawerProfileBtn: {
-    borderRadius: 20,
+    borderRadius: radius.pill,
     borderWidth: 1.5,
-    borderColor: '#E8604C',
+    borderColor: colors.coral400,
     paddingVertical: 7,
     paddingHorizontal: 16,
   },
-  drawerProfileBtnText: { fontSize: 13, fontWeight: '600', color: '#E8604C' },
+  drawerProfileBtnText: { fontFamily: fontFamily.uiSemibold, fontSize: 13, color: colors.coral400 },
   drawerBody: { flex: 1, paddingTop: 16, paddingHorizontal: 8 },
   drawerFooter: {
     paddingHorizontal: 8,
     borderTopWidth: 1,
-    borderTopColor: '#E0D8CA',
+    borderTopColor: colors.lineSoft,
     paddingTop: 12,
   },
   drawerItem: {
@@ -701,9 +696,9 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 14,
     paddingHorizontal: 12,
-    borderRadius: 10,
+    borderRadius: radius.s,
   },
-  drawerItemText: { fontSize: 15, fontWeight: '500', color: '#1A2332' },
+  drawerItemText: { fontFamily: fontFamily.ui, fontSize: fontSize.body, color: colors.textStrong },
   // About modal
   aboutOverlay: {
     flex: 1,
@@ -712,25 +707,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 32,
   },
-  aboutCard: {
-    backgroundColor: '#F5F0E6',
-    borderRadius: 24,
-    padding: 28,
-    width: '100%',
-    alignItems: 'center',
-  },
-  aboutTitle: { fontSize: 28, fontWeight: '800', color: '#E8604C', marginBottom: 4 },
-  aboutVersion: { fontSize: 13, color: '#1A2332', opacity: 0.4, marginBottom: 16 },
-  aboutDesc: { fontSize: 14, color: '#1A2332', opacity: 0.6, textAlign: 'center', lineHeight: 20 },
-  aboutDivider: { height: 1, backgroundColor: '#C4B8A0', width: '100%', marginVertical: 20 },
-  aboutTeamLabel: { fontSize: 11, fontWeight: '700', color: '#1A2332', opacity: 0.4, letterSpacing: 1, marginBottom: 10 },
-  aboutTeam: { fontSize: 15, color: '#1A2332', fontWeight: '500', marginBottom: 4 },
-  aboutCloseBtn: {
-    marginTop: 24,
-    backgroundColor: '#E8604C',
-    borderRadius: 24,
-    paddingVertical: 12,
-    paddingHorizontal: 40,
-  },
-  aboutCloseBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  aboutTitle: { fontFamily: fontFamily.display, fontSize: 28, color: colors.coral400, marginBottom: 4, textAlign: 'center' },
+  aboutVersion: { fontFamily: fontFamily.ui, fontSize: 13, color: colors.textStrong, opacity: 0.4, marginBottom: 16, textAlign: 'center' },
+  aboutDesc: { fontFamily: fontFamily.ui, fontSize: 14, color: colors.textStrong, opacity: 0.6, textAlign: 'center', lineHeight: 20 },
+  aboutDivider: { height: 1, backgroundColor: colors.lineStrong, width: '100%', marginVertical: 20 },
+  aboutTeamLabel: { fontFamily: fontFamily.uiBold, fontSize: 11, color: colors.textStrong, opacity: 0.4, letterSpacing: 1, marginBottom: 10, textAlign: 'center' },
+  aboutTeam: { fontFamily: fontFamily.ui, fontSize: 15, color: colors.textStrong, marginBottom: 4, textAlign: 'center' },
 });

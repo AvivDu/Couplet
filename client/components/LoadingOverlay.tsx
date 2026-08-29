@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet, Modal } from 'react-native';
 import { Text } from './rn';
+import AuroraBackground from './ui/AuroraBackground';
+import { colors, spacing } from '../constants/theme';
 
 const PHRASES = [
   'Hunting for the best deals...',
@@ -31,10 +33,12 @@ export default function LoadingOverlay({ visible }: { visible: boolean }) {
 
   return (
     <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
-      <View style={styles.overlay}>
-        <ActivityIndicator size="large" color="#E8604C" />
-        <Text style={styles.phrase}>{PHRASES[phraseIndex]}</Text>
-      </View>
+      <AuroraBackground>
+        <View style={styles.overlay}>
+          <ActivityIndicator size="large" color={colors.coral400} />
+          <Text style={styles.phrase}>{PHRASES[phraseIndex]}</Text>
+        </View>
+      </AuroraBackground>
     </Modal>
   );
 }
@@ -42,14 +46,13 @@ export default function LoadingOverlay({ visible }: { visible: boolean }) {
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: '#F5F0E6',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 24,
+    gap: spacing.s12,
   },
   phrase: {
     fontSize: 16,
-    color: '#1A2332',
+    color: colors.textStrong,
     opacity: 0.6,
     textAlign: 'center',
     paddingHorizontal: 48,

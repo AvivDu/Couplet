@@ -1,8 +1,7 @@
 import React from 'react';
-import { Modal, View, StyleSheet } from 'react-native';
+import { Modal, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
-import CouponHeader from './CouponHeader';
 import CouponDisplay from './CouponDisplay';
 import CouponEditForm, { type CouponEditFormHandle } from './CouponEditForm';
 import type { CouponDetailProps, CouponWithCode } from './types';
@@ -69,12 +68,16 @@ export default function CouponDetail({
         presentationStyle="pageSheet"
         onRequestClose={() => setIsEditing(false)}
       >
-        <View style={styles.container}>
-          <CouponHeader
-            isEditing={true}
-            saving={saving}
-            onClosePress={() => setIsEditing(false)}
-            onSavePress={handleSavePress}
+        <AuroraBackground>
+          <ScreenHeader
+            back
+            onBack={() => setIsEditing(false)}
+            title="Edit Coupon"
+            actions={
+              <IconButton label="Save" variant="solid" size="l" onPress={handleSavePress}>
+                {saving ? <ActivityIndicator color="#fff" size="small" /> : <Ionicons name="checkmark" size={20} color="#fff" />}
+              </IconButton>
+            }
           />
           <CouponEditForm
             ref={editFormRef}
@@ -85,12 +88,8 @@ export default function CouponDetail({
               setIsEditing(false);
             }}
           />
-        </View>
+        </AuroraBackground>
       </Modal>
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F0E6' },
-});

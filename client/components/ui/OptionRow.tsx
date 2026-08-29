@@ -8,10 +8,15 @@ interface OptionRowProps {
   icon?: React.ReactNode;
   selected?: boolean;
   divider?: boolean;
+  /** Red label — for destructive rows like "Delete Group"/"Leave Group". */
+  destructive?: boolean;
+  /** Trailing node (e.g. a chevron) for navigation rows. Ignored when selected
+   * (the checkmark takes that slot). */
+  trailing?: React.ReactNode;
   onPress?: () => void;
 }
 
-export default function OptionRow({ label, icon, selected = false, divider = true, onPress }: OptionRowProps) {
+export default function OptionRow({ label, icon, selected = false, divider = true, destructive = false, trailing, onPress }: OptionRowProps) {
   return (
     <Pressable
       onPress={onPress}
@@ -23,9 +28,17 @@ export default function OptionRow({ label, icon, selected = false, divider = tru
     >
       <View style={styles.left}>
         {icon}
-        <Text style={[styles.label, selected && { color: colors.coral400, fontFamily: fontFamily.uiBold }]}>{label}</Text>
+        <Text
+          style={[
+            styles.label,
+            selected && { color: colors.coral400, fontFamily: fontFamily.uiBold },
+            destructive && { color: colors.stateDanger },
+          ]}
+        >
+          {label}
+        </Text>
       </View>
-      {selected && <Ionicons name="checkmark" size={18} color={colors.coral400} />}
+      {selected ? <Ionicons name="checkmark" size={18} color={colors.coral400} /> : trailing}
     </Pressable>
   );
 }

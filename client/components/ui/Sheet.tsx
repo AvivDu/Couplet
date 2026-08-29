@@ -8,6 +8,10 @@ interface SheetProps {
   title?: string;
   open: boolean;
   onClose: () => void;
+  /** iOS-only: fires after the Modal has fully closed (native onDismiss) — use
+   * this instead of onClose when something must wait for the sheet to be
+   * completely gone (e.g. presenting another modal/picker right after). */
+  onDismiss?: () => void;
   footer?: React.ReactNode;
   children?: React.ReactNode;
 }
@@ -15,7 +19,7 @@ interface SheetProps {
 // Generalizes the Sort/Filter sheet animation pattern already used on the
 // Home and Group screens: backdrop fades in place, sheet slides up
 // independently, both animated off a single Animated.Value.
-export default function Sheet({ title, open, onClose, footer, children }: SheetProps) {
+export default function Sheet({ title, open, onClose, onDismiss, footer, children }: SheetProps) {
   const [visible, setVisible] = useState(open);
   const anim = useRef(new Animated.Value(0)).current;
 
@@ -33,7 +37,7 @@ export default function Sheet({ title, open, onClose, footer, children }: SheetP
   const screenHeight = Dimensions.get('window').height;
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} onDismiss={onDismiss}>
       <View style={styles.overlay}>
         <Animated.View style={[StyleSheet.absoluteFill, { opacity: anim }]}>
           <BlurView intensity={blur.s} tint="dark" style={StyleSheet.absoluteFill} />
