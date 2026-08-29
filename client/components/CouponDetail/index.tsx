@@ -1,10 +1,15 @@
 import React from 'react';
 import { Modal, View, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import CouponHeader from './CouponHeader';
 import CouponDisplay from './CouponDisplay';
 import CouponEditForm, { type CouponEditFormHandle } from './CouponEditForm';
 import type { CouponDetailProps, CouponWithCode } from './types';
+import AuroraBackground from '../ui/AuroraBackground';
+import ScreenHeader from '../ui/ScreenHeader';
+import IconButton from '../ui/IconButton';
+import { colors } from '../../constants/theme';
 
 export default function CouponDetail({
   coupon,
@@ -35,12 +40,17 @@ export default function CouponDetail({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={styles.container}>
-        <CouponHeader
-          isEditing={false}
-          saving={false}
-          onClosePress={onClose}
-          onSavePress={() => {}}
+      <AuroraBackground>
+        <ScreenHeader
+          back
+          onBack={onClose}
+          title={coupon.store_name}
+          subtitle={coupon.category}
+          actions={isOwner && (
+            <IconButton label="Edit coupon" variant="bare" size="l" onPress={() => setIsEditing(true)}>
+              <Ionicons name="create-outline" size={20} color={colors.textStrong} />
+            </IconButton>
+          )}
         />
         <CouponDisplay
           coupon={coupon}
@@ -51,7 +61,7 @@ export default function CouponDetail({
           onUpdate={onUpdate}
           onClose={onClose}
         />
-      </View>
+      </AuroraBackground>
 
       <Modal
         visible={isEditing}

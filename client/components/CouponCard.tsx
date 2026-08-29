@@ -1,76 +1,107 @@
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
-import { Text } from './rn';
-import type { CouponMeta } from '../services/api';
-import { CATEGORY_COLORS } from '../constants/categories';
+import React from 'react';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import Avatar from './ui/Avatar';
+import Badge from './ui/Badge';
+import { CATEGORY_COLORS, CATEGORY_ICONS } from '../constants/categories';
+import { colors, glass, blur, radius, spacing, fontFamily, fontSize, elevation } from '../constants/theme';
 import { formatBalance } from '../utils/format';
 
 interface Props {
-  coupon: CouponMeta;
-  onPress: () => void;
+  store: string;
+  category: string;
+  balance?: number | null;
+  expires?: string | null;
+  status?: 'active' | 'used' | 'expired';
+  /** Shown for group-shared coupons: "You" or a member's first name. */
+  sender?: string;
+  senderColor?: string;
+  sharedAt?: string;
+  /** Extra control at the end of the sender row, e.g. an admin's remove affordance. */
+  senderTrailing?: React.ReactNode;
+  /** Full-width action node, e.g. a Revoke/Use-coupon Button. */
+  action?: React.ReactNode;
+  /** Grid variant — smaller padding, title and tile. */
+  dense?: boolean;
+  onPress?: () => void;
 }
 
-export default function CouponCard({ coupon, onPress }: Props) {
-  const color = CATEGORY_COLORS[coupon.category] ?? CATEGORY_COLORS.Other;
-  const isUsed = coupon.status !== 'active';
+export default function CouponCard({
+  store, category, balance, expires, status = 'active',
+  sender, senderColor = colors.coral500, sharedAt, senderTrailing, action, dense = false, onPress,
+}: Props) {
+  const tint = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.Other;
+  const icon = (CATEGORY_ICONS[category] ?? 'ellipsis-horizontal-outline') as keyof typeof Ionicons.glyphMap;
+  const used = status !== 'active';
+  const pad = dense ? spacing.gutterCardDense : spacing.gutterCard;
 
   return (
-    <TouchableOpacity
-      style={[styles.card, { backgroundColor: color }, isUsed && styles.cardUsed]}
-      onPress={onPress}
-      activeOpacity={0.82}
-    >
-      <Text style={styles.store} numberOfLines={1}>
-        {coupon.store_name}
-      </Text>
-      {coupon.balance != null && (
-        <Text style={styles.balance}>₪{formatBalance(coupon.balance)} remaining</Text>
-      )}
-      {isUsed && (
-        <View style={styles.usedBadge}>
-          <Text style={styles.usedText}>{coupon.status.toUpperCase()}</Text>
+    <Pressable onPress={onPress} style={[styles.root, { opacity: used ? 0.58 : 1 }, elevation.card as object]}>
+      <BlurView intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />
+      <LinearGradient
+        colors={['rgba(255,255,255,.86)', 'rgba(255,255,255,.66)']}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: tint, opacity: 0.55 }]} />
+      <LinearGradient
+        pointerEvents="none"
+        colors={glass.sheenColors as unknown as [string, string, string]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+
+      <View style={{ padding: pad, gap: dense ? spacing.s5 : spacing.s6 }}>
+        {sender && (
+          <View style={styles.senderRow}>
+            <Avatar initials={sender.slice(0, 2)} size="xs" color={senderColor} />
+            <Text style={[styles.senderName, { color: senderColor }]}>{sender}</Text>
+            {sharedAt && <Text style={styles.sharedAt}>{sharedAt}</Text>}
+            {senderTrailing && <View style={sharedAt ? undefined : styles.senderTrailingAuto}>{senderTrailing}</View>}
+          </View>
+        )}
+        {sender && <View style={styles.perforation} />}
+
+        <View style={styles.body}>
+          <View style={[styles.iconTile, { width: dense ? 40 : 46, height: dense ? 40 : 46 }]}>
+            <Ionicons name={icon} size={dense ? 22 : 26} color={colors.accentTag} />
+          </View>
+          <View style={styles.info}>
+            <Text style={[styles.store, dense && { fontSize: fontSize.bodyS }]} numberOfLines={1}>{store}</Text>
+            <Text style={styles.category}>{category}</Text>
+            {balance != null && (
+              <Text style={styles.balance}>
+                ₪{formatBalance(balance)} <Text style={styles.balanceLabel}>remaining</Text>
+              </Text>
+            )}
+            {expires && (
+              <Text style={styles.expires}>{dense ? 'Exp ' : 'Expires '}{expires}</Text>
+            )}
+          </View>
+          {used && <Badge tone="ink" uppercase>{status}</Badge>}
         </View>
-      )}
-    </TouchableOpacity>
+
+        {action}
+      </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: 16,
-    marginHorizontal: 16,
-    marginVertical: 7,
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  cardUsed: { opacity: 0.5 },
-  store: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1A2332',
-  },
-  balance: {
-    fontSize: 13,
-    color: '#1A2332',
-    opacity: 0.65,
-    marginTop: 4,
-  },
-  usedBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(26,35,50,0.15)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginTop: 8,
-  },
-  usedText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#1A2332',
-    letterSpacing: 0.5,
-  },
+  root: { borderRadius: radius.card, borderWidth: 1, borderColor: glass.edge, overflow: 'hidden' },
+  senderRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.s4 },
+  senderName: { fontFamily: fontFamily.uiBold, fontSize: fontSize.caption },
+  sharedAt: { marginLeft: 'auto', fontFamily: fontFamily.ui, fontSize: fontSize.micro, color: colors.textMuted },
+  senderTrailingAuto: { marginLeft: 'auto' },
+  perforation: { height: 1, borderTopWidth: 1, borderColor: 'rgba(26,35,50,.22)', borderStyle: 'dashed', opacity: 0.35 },
+  body: { flexDirection: 'row', alignItems: 'center', gap: spacing.s6 },
+  iconTile: { borderRadius: radius.tile, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(214,167,122,.18)' },
+  info: { flex: 1, minWidth: 0 },
+  store: { fontFamily: fontFamily.uiBold, fontSize: fontSize.subheading, color: colors.textStrong },
+  category: { marginTop: 2, fontFamily: fontFamily.ui, fontSize: fontSize.caption, color: colors.textMuted },
+  balance: { marginTop: 4, fontFamily: fontFamily.mono, fontSize: fontSize.bodyS, color: colors.textStrong },
+  balanceLabel: { fontFamily: fontFamily.ui, fontSize: fontSize.caption, color: colors.textMuted },
+  expires: { marginTop: 4, fontFamily: fontFamily.ui, fontSize: fontSize.micro, color: colors.textMuted },
 });
