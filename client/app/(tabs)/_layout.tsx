@@ -17,28 +17,23 @@ export default function TabsLayout() {
         tabBarLabelStyle: { fontFamily: fontFamily.uiSemibold, fontSize: fontSize.nano },
         tabBarItemStyle: { borderRadius: radius['2xl'] },
         tabBarStyle: {
-          position: 'absolute',
-          left: 16,
-          right: 16,
-          bottom: 18 + insets.bottom,
-          height: 64,
-          borderRadius: radius['4xl'],
-          borderTopWidth: 0,
-          borderWidth: 1,
+          bottom: 0,
+          height: 64 + insets.bottom,
+          paddingBottom: insets.bottom,
+          borderRadius: 0,
+          borderTopWidth: 1,
           borderColor: glass.edge,
           backgroundColor: 'transparent',
-          // No overflow:'hidden' here so the float shadow below isn't clipped —
-          // the blur/tint layers in tabBarBackground carry their own borderRadius.
           elevation: 10,
           shadowColor: colors.ink900,
           shadowOpacity: 0.16,
           shadowRadius: 24,
-          shadowOffset: { width: 0, height: 18 },
+          shadowOffset: { width: 0, height: -4 },
         },
         tabBarBackground: () => (
           <>
-            <BlurView intensity={blur.l} tint="light" style={[StyleSheet.absoluteFill, { borderRadius: radius['4xl'] }]} />
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick, borderRadius: radius['4xl'] }]} />
+            <BlurView intensity={blur.l} tint="light" style={StyleSheet.absoluteFill} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick }]} />
           </>
         ),
         headerStyle: { backgroundColor: colors.surfacePage },

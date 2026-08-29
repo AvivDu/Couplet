@@ -9,7 +9,7 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
-import { Text, TextInput } from '../../components/rn';
+import { Text } from '../../components/rn';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { login, getMe, confirmAndSignIn, finishSync, resendConfirmationCode } from '../../services/api';
@@ -18,6 +18,11 @@ import CoupletLogo from '../../components/CoupletLogo';
 import ConfirmCodeStep from '../../components/ConfirmCodeStep';
 import { friendlyCognitoError } from '../../utils/cognitoErrors';
 import { isValidIsraeliPhone } from '../../utils/validation';
+import AuroraBackground from '../../components/ui/AuroraBackground';
+import GlassPanel from '../../components/ui/GlassPanel';
+import Input from '../../components/ui/Input';
+import Button from '../../components/ui/Button';
+import { colors, radius, spacing } from '../../constants/theme';
 
 export default function LoginScreen() {
   const [step, setStep] = useState<'form' | 'confirm' | 'phone'>('form');
@@ -152,141 +157,121 @@ export default function LoginScreen() {
   return (
     <>
       <LoadingOverlay visible={loading} />
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
-          <View style={styles.brand}>
-            <CoupletLogo size="medium" showTagline />
-          </View>
+      <AuroraBackground>
+        <KeyboardAvoidingView
+          style={styles.container}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
+            <View style={styles.brand}>
+              <CoupletLogo size="medium" showTagline />
+            </View>
 
-          {step === 'form' && (
-            <>
-              <View style={styles.inputWrap}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Email or phone"
-                  placeholderTextColor="#A8997A"
-                  autoCapitalize="none"
-                  value={identifier}
-                  onChangeText={setIdentifier}
-                  returnKeyType="next"
-                />
-              </View>
-              <View style={styles.inputWrap}>
-                <TextInput
-                  style={[styles.input, { paddingRight: 40 }]}
-                  placeholder="Password"
-                  placeholderTextColor="#A8997A"
-                  secureTextEntry={!showPassword}
-                  value={password}
-                  onChangeText={setPassword}
-                  returnKeyType="go"
-                  onSubmitEditing={handleLogin}
-                />
-                <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword(v => !v)}>
-                  <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color="#A8997A" />
-                </TouchableOpacity>
-              </View>
+            <GlassPanel tint="thick" radius={radius['2xl']} padding={spacing.s10}>
+              {step === 'form' && (
+                <>
+                  <Input
+                    label="Email or phone"
+                    placeholder="you@example.com"
+                    autoCapitalize="none"
+                    value={identifier}
+                    onChangeText={setIdentifier}
+                    returnKeyType="next"
+                    wrapperStyle={styles.field}
+                  />
+                  <Input
+                    label="Password"
+                    placeholder="••••••••"
+                    secureTextEntry={!showPassword}
+                    value={password}
+                    onChangeText={setPassword}
+                    returnKeyType="go"
+                    onSubmitEditing={handleLogin}
+                    trailing={
+                      <TouchableOpacity onPress={() => setShowPassword(v => !v)}>
+                        <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color={colors.textMuted} />
+                      </TouchableOpacity>
+                    }
+                    wrapperStyle={styles.field}
+                  />
 
-              <Link href="/(auth)/forgot-password" asChild>
-                <TouchableOpacity style={styles.forgotBtn}>
-                  <Text style={styles.forgotText}>Forgot password?</Text>
-                </TouchableOpacity>
-              </Link>
+                  <Link href="/(auth)/forgot-password" asChild>
+                    <TouchableOpacity style={styles.forgotBtn}>
+                      <Text style={styles.forgotText}>Forgot password?</Text>
+                    </TouchableOpacity>
+                  </Link>
 
-              <TouchableOpacity style={styles.btn} onPress={handleLogin} disabled={loading}>
-                <Text style={styles.btnText}>Log In</Text>
-              </TouchableOpacity>
+                  <Button variant="primary" size="l" block onPress={handleLogin} disabled={loading} style={styles.submitBtn}>
+                    Log In
+                  </Button>
 
-              <Link href="/(auth)/register" asChild>
-                <TouchableOpacity style={styles.linkBtn}>
-                  <Text style={styles.linkText}>
-                    Don't have an account? <Text style={styles.linkBold}>Sign up</Text>
-                  </Text>
-                </TouchableOpacity>
-              </Link>
-            </>
-          )}
+                  <Link href="/(auth)/register" asChild>
+                    <TouchableOpacity style={styles.linkBtn}>
+                      <Text style={styles.linkText}>
+                        Don't have an account? <Text style={styles.linkBold}>Sign up</Text>
+                      </Text>
+                    </TouchableOpacity>
+                  </Link>
+                </>
+              )}
 
-          {step === 'confirm' && (
-            <>
-              <Text style={styles.subtitle}>Your email isn't verified yet - enter the code we just sent you.</Text>
-              <ConfirmCodeStep
-                email={identifier}
-                code={code}
-                setCode={setCode}
-                loading={loading}
-                onVerify={handleVerify}
-                onResend={handleResend}
-              />
-            </>
-          )}
+              {step === 'confirm' && (
+                <>
+                  <Text style={styles.subtitle}>Your email isn't verified yet - enter the code we just sent you.</Text>
+                  <ConfirmCodeStep
+                    email={identifier}
+                    code={code}
+                    setCode={setCode}
+                    loading={loading}
+                    onVerify={handleVerify}
+                    onResend={handleResend}
+                  />
+                </>
+              )}
 
-          {step === 'phone' && (
-            <>
-              <Text style={styles.subtitle}>Almost done - what's your phone number?</Text>
-              <View style={styles.inputWrap}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Phone"
-                  placeholderTextColor="#A8997A"
-                  autoCapitalize="none"
-                  keyboardType="phone-pad"
-                  value={phone}
-                  onChangeText={setPhone}
-                />
-              </View>
-              <TouchableOpacity style={styles.btn} onPress={handleFinishPhone} disabled={loading}>
-                <Text style={styles.btnText}>Continue</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </ScrollView>
-      </KeyboardAvoidingView>
+              {step === 'phone' && (
+                <>
+                  <Text style={styles.subtitle}>Almost done - what's your phone number?</Text>
+                  <Input
+                    label="Phone"
+                    placeholder="050-1234567"
+                    autoCapitalize="none"
+                    keyboardType="phone-pad"
+                    value={phone}
+                    onChangeText={setPhone}
+                    wrapperStyle={styles.field}
+                  />
+                  <Button variant="primary" size="l" block onPress={handleFinishPhone} disabled={loading} style={styles.submitBtn}>
+                    Continue
+                  </Button>
+                </>
+              )}
+            </GlassPanel>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </AuroraBackground>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F0E6' },
-  inner: { flexGrow: 1, paddingHorizontal: 32, paddingBottom: 40 },
+  container: { flex: 1 },
+  inner: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 40 },
   brand: {
     alignItems: 'center',
-    paddingTop: 72,
-    paddingBottom: 48,
+    paddingBottom: 32,
   },
   subtitle: {
     fontSize: 15,
-    color: '#1A2332',
-    opacity: 0.5,
+    color: colors.textBody,
+    opacity: 0.7,
     marginBottom: 24,
   },
-  inputWrap: {
-    borderBottomWidth: 1.5,
-    borderBottomColor: '#C4B8A0',
-    marginBottom: 28,
-  },
-  input: {
-    paddingVertical: 10,
-    fontSize: 16,
-    color: '#1A2332',
-    backgroundColor: 'transparent',
-  },
-  eyeBtn: { position: 'absolute', right: 0, bottom: 8 },
-  forgotBtn: { alignSelf: 'flex-end', marginTop: -20, marginBottom: 20 },
-  forgotText: { color: '#1A2332', fontSize: 13, opacity: 0.6 },
-  btn: {
-    backgroundColor: '#E8604C',
-    borderRadius: 30,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 12,
-    marginBottom: 24,
-  },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  field: { marginBottom: spacing.s7 },
+  forgotBtn: { alignSelf: 'flex-end', marginBottom: 20 },
+  forgotText: { color: colors.textStrong, fontSize: 13, opacity: 0.6 },
+  submitBtn: { marginBottom: 24 },
   linkBtn: { alignItems: 'center' },
-  linkText: { color: '#1A2332', fontSize: 14, opacity: 0.6 },
-  linkBold: { color: '#E8604C', fontWeight: '700', opacity: 1 },
+  linkText: { color: colors.textStrong, fontSize: 14, opacity: 0.6 },
+  linkBold: { color: colors.coral400, fontWeight: '700', opacity: 1 },
 });

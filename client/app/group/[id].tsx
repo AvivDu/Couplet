@@ -7,7 +7,6 @@ import {
   Modal,
   ActivityIndicator,
   Alert,
-  Image,
   Platform,
   RefreshControl,
 } from 'react-native';
@@ -585,6 +584,7 @@ export default function GroupScreen() {
         id: m.user_id,
         name: firstName(m.username),
         initials: getInitials(m.username),
+        image: m.image,
         color: m.user_id === user.userId ? undefined : accentFor(m.user_id),
         you: m.user_id === user.userId,
       }))
@@ -703,6 +703,7 @@ export default function GroupScreen() {
                   status={coupon.status as 'active' | 'used' | 'expired'}
                   sender={senderLabel}
                   senderColor={accent}
+                  senderImage={sender?.image}
                   senderTrailing={isAdmin && !isOwn ? (
                     <TouchableOpacity
                       onPress={() => handleRevokeCoupon(coupon.coupon_id)}
@@ -889,112 +890,92 @@ export default function GroupScreen() {
       </Modal>
 
       {/* Members Bottom Sheet */}
-      <Modal
-        visible={membersSheetVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setMembersSheetVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.sheetOverlay}
-          activeOpacity={1}
-          onPress={() => setMembersSheetVisible(false)}
-        >
-          <View style={styles.sheet} onStartShouldSetResponder={() => true}>
-            <View style={styles.sheetHandle} />
-            <View style={styles.membersSheetHeader}>
-              <Text style={[styles.sheetTitle, { marginBottom: 0 }]}>
-                Members ({group?.members.length ?? 0})
-              </Text>
-              {isAdmin && (
-                <TouchableOpacity
-                  style={styles.addMemberPill}
-                  onPress={() => {
-                    setMembersSheetVisible(false);
-                    setInviteSheetVisible(true);
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="add" size={16} color="#fff" />
-                  <Text style={styles.addMemberPillText}>Add</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              style={{ maxHeight: '80%' }}
+      <Sheet open={membersSheetVisible} onClose={() => setMembersSheetVisible(false)}>
+        <View style={styles.membersSheetHeader}>
+          <Text style={[styles.sheetTitle, { marginBottom: 0 }]}>
+            Members ({group?.members.length ?? 0})
+          </Text>
+          {isAdmin && (
+            <TouchableOpacity
+              style={styles.addMemberPill}
+              onPress={() => {
+                setMembersSheetVisible(false);
+                setInviteSheetVisible(true);
+              }}
+              activeOpacity={0.8}
             >
-              {(group?.members ?? []).map(member => {
-                const isCurrentUser = member.user_id === user.userId;
-                const isGroupAdmin = member.user_id === group?.admin_user_id;
-                return (
-                  <View key={member.user_id} style={styles.memberRow}>
-                    <View style={styles.memberAvatar}>
-                      {member.image
-                        ? <Image source={{ uri: member.image }} style={styles.memberAvatar} />
-                        : <Text style={styles.memberAvatarText}>{getInitials(member.username)}</Text>}
-                    </View>
-                    <View style={styles.memberInfo}>
-                      <Text style={styles.memberName}>
-                        {member.username}
-                        {isCurrentUser ? ' (you)' : ''}
-                      </Text>
-                      {member.phone_number ? (
-                        <Text style={styles.memberEmail}>{member.phone_number}</Text>
-                      ) : null}
-                      {isGroupAdmin && (
-                        <Text style={styles.adminLabel}>Admin</Text>
-                      )}
-                    </View>
-                    {isAdmin && !isCurrentUser && !isGroupAdmin && (
-                      <TouchableOpacity
-                        style={styles.removeBtn}
-                        onPress={() => handleRemoveMember(member)}
-                      >
-                        <Text style={styles.removeBtnText}>Remove</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                );
-              })}
-
-              {(group?.pending_members ?? []).length > 0 && (
-                <>
-                  <Text style={[styles.couponsHeaderLabel, { marginTop: 16, marginBottom: 8 }]}>
-                    PENDING ({group?.pending_members.length})
+              <Ionicons name="add" size={16} color="#fff" />
+              <Text style={styles.addMemberPillText}>Add</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          style={{ maxHeight: 420 }}
+        >
+          {(group?.members ?? []).map(member => {
+            const isCurrentUser = member.user_id === user.userId;
+            const isGroupAdmin = member.user_id === group?.admin_user_id;
+            return (
+              <View key={member.user_id} style={styles.memberRow}>
+                <Avatar initials={getInitials(member.username)} src={member.image} size="m" />
+                <View style={styles.memberInfo}>
+                  <Text style={styles.memberName}>
+                    {member.username}
+                    {isCurrentUser ? ' (you)' : ''}
                   </Text>
-                  {group?.pending_members.map(member => (
-                    <View key={member.user_id} style={styles.memberRow}>
-                      <View style={[styles.memberAvatar, { opacity: 0.5 }]}>
-                        {member.image
-                          ? <Image source={{ uri: member.image }} style={styles.memberAvatar} />
-                          : <Text style={styles.memberAvatarText}>{getInitials(member.username)}</Text>}
-                      </View>
-                      <View style={[styles.memberInfo, { opacity: 0.5 }]}>
-                        <Text style={styles.memberName}>{member.username}</Text>
-                        <Text style={styles.memberEmail}>{member.phone_number ?? member.email}</Text>
-                      </View>
-                      <View style={[styles.pendingBadge, { opacity: 0.5 }]}>
-                        <Text style={styles.pendingBadgeText}>Pending</Text>
-                      </View>
-                      {isAdmin && (
-                        <TouchableOpacity
-                          style={styles.cancelInviteBtn}
-                          onPress={() => handleCancelInvite(member)}
-                        >
-                          <Text style={styles.cancelInviteBtnText}>Cancel</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  ))}
-                </>
-              )}
+                  {member.phone_number ? (
+                    <Text style={styles.memberEmail}>{member.phone_number}</Text>
+                  ) : null}
+                  {isGroupAdmin && (
+                    <Text style={styles.adminLabel}>Admin</Text>
+                  )}
+                </View>
+                {isAdmin && !isCurrentUser && !isGroupAdmin && (
+                  <TouchableOpacity
+                    style={styles.removeBtn}
+                    onPress={() => handleRemoveMember(member)}
+                  >
+                    <Text style={styles.removeBtnText}>Remove</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          })}
 
-              <View style={{ height: 40 }} />
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+          {(group?.pending_members ?? []).length > 0 && (
+            <>
+              <Text style={[styles.couponsHeaderLabel, { marginTop: 16, marginBottom: 8 }]}>
+                PENDING ({group?.pending_members.length})
+              </Text>
+              {group?.pending_members.map(member => (
+                <View key={member.user_id} style={styles.memberRow}>
+                  <View style={{ opacity: 0.5 }}>
+                    <Avatar initials={getInitials(member.username)} src={member.image} size="m" />
+                  </View>
+                  <View style={[styles.memberInfo, { opacity: 0.5 }]}>
+                    <Text style={styles.memberName}>{member.username}</Text>
+                    <Text style={styles.memberEmail}>{member.phone_number ?? member.email}</Text>
+                  </View>
+                  <View style={[styles.pendingBadge, { opacity: 0.5 }]}>
+                    <Text style={styles.pendingBadgeText}>Pending</Text>
+                  </View>
+                  {isAdmin && (
+                    <TouchableOpacity
+                      style={styles.cancelInviteBtn}
+                      onPress={() => handleCancelInvite(member)}
+                    >
+                      <Text style={styles.cancelInviteBtnText}>Cancel</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </>
+          )}
+
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </Sheet>
 
       {/* Invite Member Dialog */}
       <Modal
@@ -1224,73 +1205,58 @@ export default function GroupScreen() {
       </Modal>
 
       {/* Share Coupon Picker */}
-      <Modal
-        visible={couponPickerVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setCouponPickerVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.sheetOverlay}
-          activeOpacity={1}
-          onPress={() => setCouponPickerVisible(false)}
-        >
-          <View style={styles.sheet} onStartShouldSetResponder={() => true}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Share a Coupon</Text>
-            <ScrollView style={{ maxHeight: '80%' }}>
-              {myCoupons.length === 0 ? (
-                <Text style={styles.emptyCoupons}>
-                  No active coupons to share.
-                </Text>
-              ) : (
-                myCoupons.map(coupon => {
-                  const alreadyShared = group?.coupons.some(
-                    c => c.coupon_id === coupon.coupon_id
-                  );
-                  return (
-                    <TouchableOpacity
-                      key={coupon.coupon_id}
-                      style={[
-                        styles.couponPickerRow,
-                        alreadyShared && styles.couponPickerRowShared,
-                      ]}
-                      onPress={() =>
-                        !alreadyShared && handleShareCoupon(coupon.coupon_id)
-                      }
-                      disabled={
-                        alreadyShared || sharingCouponId === coupon.coupon_id
-                      }
-                      activeOpacity={alreadyShared ? 1 : 0.75}
-                    >
-                      <View style={styles.couponPickerInfo}>
-                        <Text style={styles.couponPickerName}>
-                          {coupon.store_name}
-                        </Text>
-                        <Text style={styles.couponPickerSub}>
-                          {coupon.category}
-                        </Text>
-                      </View>
-                      {sharingCouponId === coupon.coupon_id ? (
-                        <ActivityIndicator color={COLORS.coral} size="small" />
-                      ) : alreadyShared ? (
-                        <Text style={styles.alreadySharedText}>Shared</Text>
-                      ) : (
-                        <Ionicons
-                          name="add-circle-outline"
-                          size={22}
-                          color={COLORS.coral}
-                        />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })
-              )}
-              <View style={{ height: 40 }} />
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <Sheet title="Share a Coupon" open={couponPickerVisible} onClose={() => setCouponPickerVisible(false)}>
+        <ScrollView style={{ maxHeight: 420 }}>
+          {myCoupons.length === 0 ? (
+            <Text style={styles.emptyCoupons}>
+              No active coupons to share.
+            </Text>
+          ) : (
+            myCoupons.map(coupon => {
+              const alreadyShared = group?.coupons.some(
+                c => c.coupon_id === coupon.coupon_id
+              );
+              return (
+                <TouchableOpacity
+                  key={coupon.coupon_id}
+                  style={[
+                    styles.couponPickerRow,
+                    alreadyShared && styles.couponPickerRowShared,
+                  ]}
+                  onPress={() =>
+                    !alreadyShared && handleShareCoupon(coupon.coupon_id)
+                  }
+                  disabled={
+                    alreadyShared || sharingCouponId === coupon.coupon_id
+                  }
+                  activeOpacity={alreadyShared ? 1 : 0.75}
+                >
+                  <View style={styles.couponPickerInfo}>
+                    <Text style={styles.couponPickerName}>
+                      {coupon.store_name}
+                    </Text>
+                    <Text style={styles.couponPickerSub}>
+                      {coupon.category}
+                    </Text>
+                  </View>
+                  {sharingCouponId === coupon.coupon_id ? (
+                    <ActivityIndicator color={COLORS.coral} size="small" />
+                  ) : alreadyShared ? (
+                    <Text style={styles.alreadySharedText}>Shared</Text>
+                  ) : (
+                    <Ionicons
+                      name="add-circle-outline"
+                      size={22}
+                      color={COLORS.coral}
+                    />
+                  )}
+                </TouchableOpacity>
+              );
+            })
+          )}
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </Sheet>
 
       {/* Coupon Detail - same experience as My Coupons tab */}
       <CouponDetail

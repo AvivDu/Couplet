@@ -8,6 +8,7 @@ export interface StripMember {
   id: string;
   name: string;
   initials?: string;
+  image?: string | null;
   color?: string;
   you?: boolean;
 }
@@ -31,7 +32,7 @@ export default function MemberStrip({ members, onAdd, showAdd = true }: MemberSt
       )}
       {members.map(m => (
         <View key={m.id} style={styles.item}>
-          <Avatar initials={m.initials ?? m.name.slice(0, 2)} color={m.you ? colors.coral400 : (m.color ?? colors.accentTag)} ring={m.you} />
+          <Avatar initials={m.initials ?? m.name.slice(0, 2)} src={m.image} color={m.you ? colors.coral400 : (m.color ?? colors.accentTag)} ring={m.you} />
           <Text style={styles.name} numberOfLines={1}>{m.you ? 'You' : m.name}</Text>
         </View>
       ))}

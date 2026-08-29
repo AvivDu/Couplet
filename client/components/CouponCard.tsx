@@ -18,6 +18,7 @@ interface Props {
   /** Shown for group-shared coupons: "You" or a member's first name. */
   sender?: string;
   senderColor?: string;
+  senderImage?: string | null;
   sharedAt?: string;
   /** Extra control at the end of the sender row, e.g. an admin's remove affordance. */
   senderTrailing?: React.ReactNode;
@@ -30,7 +31,7 @@ interface Props {
 
 export default function CouponCard({
   store, category, balance, expires, status = 'active',
-  sender, senderColor = colors.coral500, sharedAt, senderTrailing, action, dense = false, onPress,
+  sender, senderColor = colors.coral500, senderImage, sharedAt, senderTrailing, action, dense = false, onPress,
 }: Props) {
   const tint = CATEGORY_COLORS[category] ?? CATEGORY_COLORS.Other;
   const icon = (CATEGORY_ICONS[category] ?? 'ellipsis-horizontal-outline') as keyof typeof Ionicons.glyphMap;
@@ -56,7 +57,7 @@ export default function CouponCard({
       <View style={{ padding: pad, gap: dense ? spacing.s5 : spacing.s6 }}>
         {sender && (
           <View style={styles.senderRow}>
-            <Avatar initials={sender.slice(0, 2)} size="xs" color={senderColor} />
+            <Avatar initials={sender.slice(0, 2)} src={senderImage} size="xs" color={senderColor} />
             <Text style={[styles.senderName, { color: senderColor }]}>{sender}</Text>
             {sharedAt && <Text style={styles.sharedAt}>{sharedAt}</Text>}
             {senderTrailing && <View style={sharedAt ? undefined : styles.senderTrailingAuto}>{senderTrailing}</View>}
