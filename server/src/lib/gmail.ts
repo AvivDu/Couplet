@@ -153,10 +153,18 @@ const CODE_LABEL_PATTERNS = [
   new RegExp(String.raw`\bcode${CONNECTOR}${CODE}`, 'i'),
 ];
 
+// A pure lowercase-letters token is almost always the bare `\bcode` fallback
+// matching ordinary prose ("enter the code below", "your code expires soon") -
+// real codes carry a digit or an uppercase letter (SAVE20, WELCOME15, OLD123).
+const ALL_LOWERCASE_LETTERS = /^[a-z]+$/;
+
 function extractCode(text: string): string | null {
   for (const pattern of CODE_LABEL_PATTERNS) {
     const match = text.match(pattern);
-    if (match) return match[1].trim();
+    if (!match) continue;
+    const code = match[1].trim();
+    if (ALL_LOWERCASE_LETTERS.test(code)) continue;
+    return code;
   }
   return null;
 }

@@ -204,8 +204,21 @@ export default function GmailScanScreen() {
         ? `We found a possible coupon in this email from ${draft.store || candidate.from}. Create a new coupon from it?`
         : `We found an email from ${draft.store || candidate.from} that looks like a coupon, but couldn't detect the code. Create a coupon and fill in the code yourself?`,
       [
-        { text: 'Not now', style: 'cancel', onPress: () => handleDismiss(candidate.message_id) },
+        // Just closes - the candidate isn't dismissed, so it's still here next time.
+        // Permanently hiding it is a separate, explicit action (the row's delete button).
+        { text: 'Not now', style: 'cancel' },
         { text: 'Create coupon', onPress: () => openAddCoupon(candidate, draft) },
+      ]
+    );
+  }
+
+  function handleDeleteCandidate(candidate: GmailCandidate) {
+    Alert.alert(
+      'Remove this candidate?',
+      'This email won\'t be suggested as a coupon again.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => handleDismiss(candidate.message_id) },
       ]
     );
   }
@@ -286,6 +299,9 @@ export default function GmailScanScreen() {
                   <View style={[styles.badge, !hasCode && styles.badgeMuted]}>
                     <Text style={styles.badgeText}>{hasCode ? 'New' : 'No code found'}</Text>
                   </View>
+                  <TouchableOpacity onPress={() => handleDeleteCandidate(item)} hitSlop={8}>
+                    <Ionicons name="close-circle" size={20} color="#A8997A" />
+                  </TouchableOpacity>
                 </View>
                 <Text style={styles.rowHint}>
                   {hasCode
