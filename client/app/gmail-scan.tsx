@@ -12,6 +12,7 @@ import {
   saveDraftFields, getCachedDrafts, getDismissedIds, dismissDraft, getLocalCouponCodes, normalizeCode,
 } from '../storage/gmailDraftStorage';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../constants/categories';
+import GmailEmailPreview from '../components/GmailEmailPreview';
 
 // Best-effort keyword guess so a matching category card is pre-selected on the Add
 // Coupon screen - falls back to leaving the category unset (user must pick) rather
@@ -42,6 +43,7 @@ export default function GmailScanScreen() {
   const [connectedEmail, setConnectedEmail] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [previewCandidate, setPreviewCandidate] = useState<{ candidate: GmailCandidate; draft: GmailDraftFields } | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Fills in `drafts` for a candidate list: fresh extractions from a scan response
@@ -196,20 +198,12 @@ export default function GmailScanScreen() {
     });
   }
 
+  // Opens the email preview instead of a blind confirm alert - lets the user read
+  // the actual email and judge for themselves before creating a coupon from it.
+  // Closing the preview without creating leaves the candidate as-is (not dismissed);
+  // permanently hiding it is the row's separate, explicit delete button.
   function handleDraftPress(candidate: GmailCandidate, draft: GmailDraftFields) {
-    const hasCode = !!draft.code;
-    Alert.alert(
-      'Create a coupon?',
-      hasCode
-        ? `We found a possible coupon in this email from ${draft.store || candidate.from}. Create a new coupon from it?`
-        : `We found an email from ${draft.store || candidate.from} that looks like a coupon, but couldn't detect the code. Create a coupon and fill in the code yourself?`,
-      [
-        // Just closes - the candidate isn't dismissed, so it's still here next time.
-        // Permanently hiding it is a separate, explicit action (the row's delete button).
-        { text: 'Not now', style: 'cancel' },
-        { text: 'Create coupon', onPress: () => openAddCoupon(candidate, draft) },
-      ]
-    );
+    setPreviewCandidate({ candidate, draft });
   }
 
   function handleDeleteCandidate(candidate: GmailCandidate) {
@@ -334,6 +328,18 @@ export default function GmailScanScreen() {
           }
         />
       )}
+
+      <GmailEmailPreview
+        visible={!!previewCandidate}
+        candidate={previewCandidate?.candidate ?? null}
+        draft={previewCandidate?.draft ?? null}
+        onClose={() => setPreviewCandidate(null)}
+        onCreateCoupon={() => {
+          if (!previewCandidate) return;
+          openAddCoupon(previewCandidate.candidate, previewCandidate.draft);
+          setPreviewCandidate(null);
+        }}
+      />
     </SafeAreaView>
   );
 }

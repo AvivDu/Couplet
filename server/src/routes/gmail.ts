@@ -241,4 +241,45 @@ router.post('/candidates/:messageId/extract', async (req: AuthRequest, res: Resp
   }
 });
 
+// Lets the user read the actual email before creating a coupon from it, so they can
+// judge for themselves whether it's really a coupon rather than trusting extraction
+// blind. On-demand only (not bundled into /scan or the extract backfill) so bulk scans
+// don't pay for body text on candidates nobody opens. Same ownership restriction as
+// /extract - message ID must already be in this user's stored candidates. Never
+// persisted, same as the transient draft fields elsewhere in this file.
+const MAX_BODY_CHARS = 4000;
+
+router.get('/candidates/:messageId/body', async (req: AuthRequest, res: Response): Promise<void> => {
+  const { messageId } = req.params;
+  const connection = await getGmailConnection(req.userId!);
+  if (!connection) {
+    res.status(404).json({ error: 'Gmail not connected' });
+    return;
+  }
+  if (!connection.candidates.some(c => c.message_id === messageId)) {
+    res.status(404).json({ error: 'Unknown candidate' });
+    return;
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = await refreshAccessToken(decryptToken(connection.refresh_token_encrypted), credentialsFor(connection.oauth_client ?? 'native'));
+  } catch {
+    res.status(409).json({ error: 'Gmail access expired or was revoked. Please reconnect.' });
+    return;
+  }
+
+  try {
+    const headers = await getMessageHeaders(accessToken, messageId);
+    const fullBody = await getMessageBody(accessToken, messageId);
+    res.json({
+      ...headers,
+      body: fullBody.slice(0, MAX_BODY_CHARS),
+      truncated: fullBody.length > MAX_BODY_CHARS,
+    });
+  } catch {
+    res.status(502).json({ error: 'Could not read this email from Gmail.' });
+  }
+});
+
 export default router;

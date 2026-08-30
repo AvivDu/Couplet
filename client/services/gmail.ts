@@ -83,6 +83,19 @@ export const getGmailCandidates = () => api.get<GmailCandidate[]>('/gmail/candid
 export const extractGmailCandidate = (messageId: string) =>
   api.post<GmailDraftFields>(`/gmail/candidates/${messageId}/extract`);
 
+// Full email content, fetched only when the user opens a candidate to read it -
+// lets them judge for themselves whether it's really a coupon. Same restriction as
+// extractGmailCandidate: message ID must already be a known candidate.
+export interface GmailCandidateBody {
+  from: string;
+  subject: string;
+  date: string;
+  body: string;
+  truncated: boolean;
+}
+export const getGmailCandidateBody = (messageId: string) =>
+  api.get<GmailCandidateBody>(`/gmail/candidates/${messageId}/body`);
+
 export interface GmailStatus {
   connected: boolean;
   gmail_email: string | null;
