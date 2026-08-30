@@ -76,7 +76,7 @@ const COLORS = {
   divider: 'rgba(26,35,50,0.08)',
   tag: '#D6A77A',
   tagTile: 'rgba(214,167,122,0.18)',
-  otherAvatar: '#E07A5F',
+  otherAvatar: theme.accentTag,
 };
 // WhatsApp-style per-sender colored names, assigned by member index.
 const SENDER_ACCENTS = ['#1F7A8C', '#7A4FB7', '#2E8B57', '#C77B30', '#B83A5E'];
@@ -839,7 +839,7 @@ export default function GroupScreen() {
               }}
             />
             <OptionRow
-              icon={<Ionicons name="trash-outline" size={20} color="#D93025" />}
+              icon={<Ionicons name="trash-outline" size={20} color={theme.stateDanger} />}
               label="Delete Group"
               destructive
               divider={false}
@@ -854,7 +854,7 @@ export default function GroupScreen() {
 
         {!isAdmin && (
           <OptionRow
-            icon={<Ionicons name="exit-outline" size={20} color="#D93025" />}
+            icon={<Ionicons name="exit-outline" size={20} color={theme.stateDanger} />}
             label="Leave Group"
             destructive
             divider={false}
@@ -1311,20 +1311,20 @@ const styles = StyleSheet.create({
   },
   removeBtnText: { fontSize: 13, fontWeight: '600', color: COLORS.coral },
   pendingBadge: {
-    backgroundColor: '#F5E6A3',
+    backgroundColor: theme.brandQuiet,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 2,
     marginRight: 8,
   },
-  pendingBadgeText: { fontSize: 11, fontWeight: '700', color: '#8A7200' },
+  pendingBadgeText: { fontSize: 11, fontWeight: '700', color: theme.stateWarn },
   cancelInviteBtn: {
-    backgroundColor: '#FF5252',
+    backgroundColor: theme.stateDanger,
     borderRadius: 20,
     paddingVertical: 8,
     paddingHorizontal: 16,
     elevation: 2,
-    shadowColor: '#FF5252',
+    shadowColor: theme.stateDanger,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.35,
     shadowRadius: 4,
@@ -1354,12 +1354,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#F0EBE0',
+    borderColor: theme.surfaceSunken,
   },
   suggestion: {
     padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0EBE0',
+    borderBottomColor: theme.surfaceSunken,
   },
   suggestionName: { fontSize: 14, fontWeight: '600', color: COLORS.ink },
   suggestionEmail: { fontSize: 12, color: COLORS.muted },

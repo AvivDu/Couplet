@@ -22,7 +22,7 @@ import AuroraBackground from '../../components/ui/AuroraBackground';
 import GlassPanel from '../../components/ui/GlassPanel';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
-import { colors, radius, spacing } from '../../constants/theme';
+import { colors, radius, spacing, fontFamily, fontSize } from '../../constants/theme';
 
 export default function LoginScreen() {
   const [step, setStep] = useState<'form' | 'confirm' | 'phone'>('form');
@@ -262,7 +262,8 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   subtitle: {
-    fontSize: 15,
+    fontFamily: fontFamily.ui,
+    fontSize: fontSize.body,
     color: colors.textBody,
     opacity: 0.7,
     marginBottom: 24,
@@ -272,6 +273,6 @@ const styles = StyleSheet.create({
   forgotText: { color: colors.textStrong, fontSize: 13, opacity: 0.6 },
   submitBtn: { marginBottom: 24 },
   linkBtn: { alignItems: 'center' },
-  linkText: { color: colors.textStrong, fontSize: 14, opacity: 0.6 },
-  linkBold: { color: colors.coral400, fontWeight: '700', opacity: 1 },
+  linkText: { fontFamily: fontFamily.ui, color: colors.textStrong, fontSize: fontSize.bodyS, opacity: 0.6 },
+  linkBold: { fontFamily: fontFamily.uiBold, color: colors.coral400, opacity: 1 },
 });

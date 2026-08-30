@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import GlassEdge from './ui/GlassEdge';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +28,7 @@ export default function GroupCard({ group, currentUserId, imageUri, onPress }: P
     <Pressable onPress={onPress} style={[styles.root, elevation.raised as object]}>
       <BlurView intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />
       <View style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick }]} />
+      <GlassEdge />
       <LinearGradient
         pointerEvents="none"
         colors={glass.sheenColors as unknown as [string, string, string]}
@@ -54,6 +56,6 @@ const styles = StyleSheet.create({
   content: { flexDirection: 'row', alignItems: 'center', gap: spacing.s7, padding: spacing.s8 },
   info: { flex: 1, minWidth: 0 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.s4, marginBottom: 3 },
-  name: { fontFamily: fontFamily.uiBold, fontSize: 16, color: colors.textStrong, flexShrink: 1 },
+  name: { fontFamily: fontFamily.uiBold, fontSize: fontSize.subheading, color: colors.textStrong, flexShrink: 1 },
   sub: { fontFamily: fontFamily.ui, fontSize: fontSize.caption, color: colors.textMuted },
 });

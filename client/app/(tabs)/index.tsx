@@ -564,8 +564,8 @@ export default function HomeScreen() {
 
               <View style={styles.drawerFooter}>
                 <TouchableOpacity style={styles.drawerItem} onPress={() => closeDrawer(signOut)}>
-                  <Ionicons name="log-out-outline" size={20} color="#C0857A" />
-                  <Text style={[styles.drawerItemText, { color: '#C0857A' }]}>Log Out</Text>
+                  <Ionicons name="log-out-outline" size={20} color={colors.stateDanger} />
+                  <Text style={[styles.drawerItemText, { color: colors.stateDanger }]}>Log Out</Text>
                 </TouchableOpacity>
               </View>
             </Animated.View>
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: 300,
     gap: 14,
-    shadowColor: '#000',
+    shadowColor: colors.ink900,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.15,
     shadowRadius: 20,
@@ -660,7 +660,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     paddingTop: 56,
     paddingBottom: 32,
-    shadowColor: '#000',
+    shadowColor: colors.ink900,
     shadowOffset: { width: -2, height: 0 },
     shadowOpacity: 0.15,
     shadowRadius: 10,

@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, ViewStyle, StyleProp, GestureResponderEvent } from 'react-native';
+import GlassEdge from './GlassEdge';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, glass, blur, radius, spacing, elevation, fontFamily, motion } from '../../constants/theme';
@@ -66,6 +67,7 @@ export default function Button({
       {variant === 'glass' && (
         <BlurView intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />
       )}
+      {variant === 'glass' && <GlassEdge />}
       {icon}
       {typeof children === 'string' ? (
         <Text style={[styles.label, { color: textColor, fontSize: pad.fontSize }]}>{children}</Text>

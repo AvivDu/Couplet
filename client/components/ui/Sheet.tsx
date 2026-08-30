@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import GlassEdge from './GlassEdge';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, glass, blur, radius, spacing, fontFamily, fontSize, letterSpacingRatio, motion } from '../../constants/theme';
+import { colors, glass, blur, radius, spacing, fontFamily, fontSize, letterSpacingRatio, motion, easing } from '../../constants/theme';
+import { useReducedMotion, duration } from '../../hooks/useReducedMotion';
 
 interface SheetProps {
   title?: string;
@@ -22,19 +24,18 @@ interface SheetProps {
 export default function Sheet({ title, open, onClose, onDismiss, footer, children }: SheetProps) {
   const [visible, setVisible] = useState(open);
   const anim = useRef(new Animated.Value(0)).current;
+  const reduced = useReducedMotion();
 
   useEffect(() => {
     if (open) {
       setVisible(true);
-      Animated.timing(anim, { toValue: 1, duration: motion.durBase, useNativeDriver: true }).start();
+      Animated.timing(anim, { toValue: 1, duration: duration(motion.durBase, reduced), easing: easing.settle, useNativeDriver: true }).start();
     } else if (visible) {
-      Animated.timing(anim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => setVisible(false));
+      Animated.timing(anim, { toValue: 0, duration: duration(motion.durFast, reduced), easing: easing.out, useNativeDriver: true }).start(() => setVisible(false));
     }
   }, [open]);
 
   if (!visible) return null;
-
-  const screenHeight = Dimensions.get('window').height;
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} onDismiss={onDismiss}>
@@ -54,13 +55,14 @@ export default function Sheet({ title, open, onClose, onDismiss, footer, childre
           style={[
             styles.sheet,
             {
-              opacity: anim,
-              transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [screenHeight, 0] }) }],
+              opacity: anim.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }),
+              transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }],
             },
           ]}
         >
           <BlurView intensity={blur.l} tint="light" style={StyleSheet.absoluteFill} />
           <View style={[StyleSheet.absoluteFill, styles.sheetTint]} />
+          <GlassEdge />
           <LinearGradient
             pointerEvents="none"
             colors={glass.sheenColors as unknown as [string, string, string]}

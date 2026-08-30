@@ -47,9 +47,13 @@ export default function Avatar({ initials = '', src, size = 'm', color = colors.
 
 const styles = StyleSheet.create({
   ring: {
-    borderWidth: 2,
-    borderColor: '#fff',
-    // Approximates the CSS double-ring (white gap + coral halo) with a single coral border.
+    // The reference draws two rings OUTSIDE the avatar (2px white, then coral at 25%).
+    // A border would draw inside and shrink the image by 4px, so ringed avatars ("You",
+    // everywhere) rendered smaller than their neighbours in the same strip. outlineWidth
+    // sits outside the box, keeping every avatar in a strip the same diameter.
+    outlineWidth: 2,
+    outlineColor: '#fff',
+    outlineStyle: 'solid',
     shadowColor: '#E76F51',
     shadowOpacity: 0.25,
     shadowRadius: 3,
