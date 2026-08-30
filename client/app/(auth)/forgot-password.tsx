@@ -9,11 +9,16 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
-import { Text, TextInput } from '../../components/rn';
+import { Text } from '../../components/rn';
 import { Ionicons } from '@expo/vector-icons';
 import { requestPasswordReset, confirmPasswordReset } from '../../services/api';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { friendlyCognitoError } from '../../utils/cognitoErrors';
+import AuroraBackground from '../../components/ui/AuroraBackground';
+import GlassPanel from '../../components/ui/GlassPanel';
+import Input from '../../components/ui/Input';
+import Button from '../../components/ui/Button';
+import { colors, radius, spacing } from '../../constants/theme';
 
 export default function ForgotPasswordScreen() {
   const [step, setStep] = useState<'request' | 'confirm'>('request');
@@ -70,149 +75,130 @@ export default function ForgotPasswordScreen() {
   return (
     <>
       <LoadingOverlay visible={loading} />
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
-          <Text style={styles.title}>Reset Password</Text>
-          <Text style={styles.subtitle}>
-            {step === 'request'
-              ? "Enter your email and we'll send you a code."
-              : 'Enter the code we emailed you and choose a new password.'}
-          </Text>
+      <AuroraBackground>
+        <KeyboardAvoidingView
+          style={styles.container}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
+            <Text style={styles.title}>Reset Password</Text>
+            <Text style={styles.subtitle}>
+              {step === 'request'
+                ? "Enter your email and we'll send you a code."
+                : 'Enter the code we emailed you and choose a new password.'}
+            </Text>
 
-          {step === 'request' ? (
-            <>
-              <View style={styles.inputWrap}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Email"
-                  placeholderTextColor="#A8997A"
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  value={email}
-                  onChangeText={setEmail}
-                  returnKeyType="go"
-                  onSubmitEditing={handleRequestCode}
-                />
-              </View>
-              <TouchableOpacity style={styles.btn} onPress={handleRequestCode} disabled={loading}>
-                <Text style={styles.btnText}>Send Code</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <Text style={[styles.hint, { color: '#4CAF50', marginTop: 0 }]}>Code sent to {email}</Text>
-              <View style={styles.inputWrap}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Verification code"
-                  placeholderTextColor="#A8997A"
-                  keyboardType="number-pad"
-                  value={code}
-                  onChangeText={setCode}
-                />
-              </View>
-              <View style={styles.inputWrap}>
-                <TextInput
-                  style={[styles.input, { paddingRight: 40 }]}
-                  placeholder="New password"
-                  placeholderTextColor="#A8997A"
-                  secureTextEntry={!showPassword}
-                  value={newPassword}
-                  onChangeText={setNewPassword}
-                />
-                <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword(v => !v)}>
-                  <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color="#A8997A" />
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.hint}>Min 8 characters · uppercase · lowercase · number · symbol</Text>
-              <View style={styles.inputWrap}>
-                <TextInput
-                  style={[styles.input, { paddingRight: 40 }]}
-                  placeholder="Confirm new password"
-                  placeholderTextColor="#A8997A"
-                  secureTextEntry={!showPassword}
-                  value={confirmPassword}
-                  onChangeText={setConfirmPassword}
-                />
-                <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword(v => !v)}>
-                  <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color="#A8997A" />
-                </TouchableOpacity>
-              </View>
-              {confirmPassword.length > 0 && (
-                <Text style={[styles.hint, { color: newPassword === confirmPassword ? '#4CAF50' : '#E8604C' }]}>
-                  {newPassword === confirmPassword ? 'Passwords match' : 'Passwords do not match'}
-                </Text>
+            <GlassPanel tint="thick" radius={radius['2xl']} padding={spacing.s10}>
+              {step === 'request' ? (
+                <>
+                  <Input
+                    label="Email"
+                    placeholder="you@example.com"
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    value={email}
+                    onChangeText={setEmail}
+                    returnKeyType="go"
+                    onSubmitEditing={handleRequestCode}
+                    wrapperStyle={styles.field}
+                  />
+                  <Button variant="primary" size="l" block onPress={handleRequestCode} disabled={loading} style={styles.submitBtn}>
+                    Send Code
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.sentHint}>Code sent to {email}</Text>
+                  <Input
+                    label="Verification code"
+                    placeholder="123456"
+                    keyboardType="number-pad"
+                    value={code}
+                    onChangeText={setCode}
+                    wrapperStyle={styles.field}
+                  />
+                  <Input
+                    label="New password"
+                    placeholder="••••••••"
+                    secureTextEntry={!showPassword}
+                    value={newPassword}
+                    onChangeText={setNewPassword}
+                    trailing={
+                      <TouchableOpacity onPress={() => setShowPassword(v => !v)}>
+                        <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color={colors.textMuted} />
+                      </TouchableOpacity>
+                    }
+                    hint="Min 8 characters · uppercase · lowercase · number · symbol"
+                    wrapperStyle={styles.field}
+                  />
+                  <Input
+                    label="Confirm new password"
+                    placeholder="••••••••"
+                    secureTextEntry={!showPassword}
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    trailing={
+                      <TouchableOpacity onPress={() => setShowPassword(v => !v)}>
+                        <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color={colors.textMuted} />
+                      </TouchableOpacity>
+                    }
+                    invalid={confirmPassword.length > 0 && newPassword !== confirmPassword}
+                    hint={confirmPassword.length > 0 ? (newPassword === confirmPassword ? 'Passwords match' : 'Passwords do not match') : undefined}
+                    wrapperStyle={styles.field}
+                  />
+
+                  <Button
+                    variant="primary"
+                    size="l"
+                    block
+                    onPress={handleConfirmReset}
+                    disabled={loading || (confirmPassword.length > 0 && newPassword !== confirmPassword)}
+                    style={styles.submitBtn}
+                  >
+                    Reset Password
+                  </Button>
+                  <TouchableOpacity style={styles.linkBtn} onPress={handleRequestCode} disabled={loading}>
+                    <Text style={styles.linkText}>
+                      Didn't get a code? <Text style={styles.linkBold}>Resend</Text>
+                    </Text>
+                  </TouchableOpacity>
+                </>
               )}
 
-              <TouchableOpacity
-                style={styles.btn}
-                onPress={handleConfirmReset}
-                disabled={loading || (confirmPassword.length > 0 && newPassword !== confirmPassword)}
-              >
-                <Text style={styles.btnText}>Reset Password</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.linkBtn} onPress={handleRequestCode} disabled={loading}>
-                <Text style={styles.linkText}>
-                  Didn't get a code? <Text style={styles.linkBold}>Resend</Text>
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
-
-          <Link href="/(auth)/login" asChild>
-            <TouchableOpacity style={styles.linkBtn}>
-              <Text style={styles.linkText}>
-                Remember your password? <Text style={styles.linkBold}>Log in</Text>
-              </Text>
-            </TouchableOpacity>
-          </Link>
-        </ScrollView>
-      </KeyboardAvoidingView>
+              <Link href="/(auth)/login" asChild>
+                <TouchableOpacity style={styles.linkBtn}>
+                  <Text style={styles.linkText}>
+                    Remember your password? <Text style={styles.linkBold}>Log in</Text>
+                  </Text>
+                </TouchableOpacity>
+              </Link>
+            </GlassPanel>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </AuroraBackground>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F0E6' },
-  inner: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 32, paddingVertical: 40 },
+  container: { flex: 1 },
+  inner: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 40 },
   title: {
     fontSize: 32,
     fontWeight: '800',
-    color: '#1A2332',
+    color: colors.textStrong,
     marginBottom: 6,
   },
   subtitle: {
     fontSize: 15,
-    color: '#1A2332',
-    opacity: 0.5,
-    marginBottom: 40,
-  },
-  inputWrap: {
-    borderBottomWidth: 1.5,
-    borderBottomColor: '#C4B8A0',
-    marginBottom: 28,
-  },
-  input: {
-    paddingVertical: 10,
-    fontSize: 16,
-    color: '#1A2332',
-    backgroundColor: 'transparent',
-  },
-  eyeBtn: { position: 'absolute', right: 0, bottom: 8 },
-  btn: {
-    backgroundColor: '#E8604C',
-    borderRadius: 30,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 12,
+    color: colors.textBody,
+    opacity: 0.7,
     marginBottom: 24,
   },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  field: { marginBottom: spacing.s7 },
+  submitBtn: { marginTop: 12, marginBottom: 24 },
+  sentHint: { fontSize: 12, color: colors.stateSuccess, fontWeight: '600', marginBottom: 16 },
   linkBtn: { alignItems: 'center', marginBottom: 12 },
-  linkText: { color: '#1A2332', fontSize: 14, opacity: 0.6 },
-  linkBold: { color: '#E8604C', fontWeight: '700', opacity: 1 },
-  hint: { fontSize: 12, color: '#A8997A', marginBottom: 16, marginTop: -16 },
+  linkText: { color: colors.textStrong, fontSize: 14, opacity: 0.6 },
+  linkBold: { color: colors.coral400, fontWeight: '700', opacity: 1 },
 });

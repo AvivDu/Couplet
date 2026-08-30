@@ -4,17 +4,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Modal,
+  Keyboard,
   ActivityIndicator,
   Alert,
-  Image,
   Platform,
   RefreshControl,
-  Animated,
-  Dimensions,
 } from 'react-native';
-import { Text, TextInput } from '../../components/rn';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Text } from '../../components/rn';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
@@ -50,6 +46,21 @@ import CouponDetail from '../../components/CouponDetail';
 import type { CouponWithCode } from '../../components/CouponDetail/types';
 import { CATEGORY_DEFS, SORT_OPTIONS, sortCoupons, type SortOption } from '../../constants/categories';
 import { formatBalance } from '../../utils/format';
+import AuroraBackground from '../../components/ui/AuroraBackground';
+import ScreenHeader from '../../components/ui/ScreenHeader';
+import IconButton from '../../components/ui/IconButton';
+import Avatar from '../../components/ui/Avatar';
+import MemberStrip, { type StripMember } from '../../components/ui/MemberStrip';
+import SectionLabel from '../../components/ui/SectionLabel';
+import Button from '../../components/ui/Button';
+import Sheet from '../../components/ui/Sheet';
+import CategoryTile from '../../components/ui/CategoryTile';
+import OptionRow from '../../components/ui/OptionRow';
+import Chip from '../../components/ui/Chip';
+import GlassPanel from '../../components/ui/GlassPanel';
+import Input from '../../components/ui/Input';
+import CouponCard from '../../components/CouponCard';
+import { colors as theme } from '../../constants/theme';
 
 // ── Design tokens (group page redesign) ───────────────────────────
 // Reuses the app's established palette; handoff-specific values (sender
@@ -80,7 +91,6 @@ export default function GroupScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [savingPhoto, setSavingPhoto] = useState(false);
-  const [pendingPhotoPick, setPendingPhotoPick] = useState(false);
 
   const [settingsSheetVisible, setSettingsSheetVisible] = useState(false);
   const [membersSheetVisible, setMembersSheetVisible] = useState(false);
@@ -108,7 +118,6 @@ export default function GroupScreen() {
   const [filterMember, setFilterMember] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [filterSort, setFilterSort] = useState<SortOption | null>(null);
-  const filterSheetAnim = useRef(new Animated.Value(0)).current;
 
   const isAdmin = group?.admin_user_id === user?.userId;
 
@@ -536,6 +545,19 @@ export default function GroupScreen() {
     return SENDER_ACCENTS[Math.max(0, i) % SENDER_ACCENTS.length];
   }
 
+  // The invite/rename dialogs are centred in a full-screen overlay, so the keyboard
+  // covers their lower half. KeyboardAvoidingView measures its own parent-relative
+  // frame and gets the offset wrong for an absolutely-filled overlay - taking the
+  // height straight off the keyboard event is exact on both platforms.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvent, e => setKeyboardHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+
   function closeInviteSheet() {
     setInviteSheetVisible(false);
     setMemberQuery('');
@@ -563,57 +585,53 @@ export default function GroupScreen() {
 
   function openFilterSheet() {
     setFilterSheetVisible(true);
-    Animated.timing(filterSheetAnim, { toValue: 1, duration: 260, useNativeDriver: true }).start();
   }
 
   function closeFilterSheet() {
-    Animated.timing(filterSheetAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
-      setFilterSheetVisible(false);
-    });
+    setFilterSheetVisible(false);
   }
 
   if (!user) return null;
 
-  return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.replace('/(tabs)/connections')}
-          style={styles.headerIconBtn}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Ionicons name="chevron-back" size={24} color={COLORS.ink} />
-        </TouchableOpacity>
+  const memberStripData: StripMember[] = group
+    ? group.members.map(m => ({
+        id: m.user_id,
+        name: firstName(m.username),
+        initials: getInitials(m.username),
+        image: m.image,
+        color: m.user_id === user.userId ? undefined : accentFor(m.user_id),
+        you: m.user_id === user.userId,
+      }))
+    : [];
 
-        {/* The group name is the single entry point to group settings. */}
-        <TouchableOpacity
-          style={styles.headerCenter}
-          onPress={() => setSettingsSheetVisible(true)}
-          activeOpacity={0.7}
-        >
-          {group?.image ? (
-            <Image source={{ uri: group.image }} style={styles.headerAvatar} />
-          ) : (
-            <View style={styles.headerAvatarFallback}>
-              <Text style={styles.headerAvatarText}>
-                {group ? getInitials(group.name) : ''}
-              </Text>
-            </View>
-          )}
-          {savingPhoto && (
-            <View style={styles.headerAvatarSaving}>
-              <ActivityIndicator size="small" color="#fff" />
-            </View>
-          )}
-          <View style={styles.headerTitleWrap}>
-            <Text style={styles.headerTitle} numberOfLines={1}>
-              {group?.name ?? ''}
-            </Text>
-          </View>
-          <Ionicons name="chevron-down" size={18} color={COLORS.muted} />
-        </TouchableOpacity>
-      </View>
+  return (
+    <AuroraBackground>
+      {/* Header - tapping the avatar or the settings gear both open group settings */}
+      <ScreenHeader
+        back
+        onBack={() => router.replace('/(tabs)/connections')}
+        title={group?.name ?? ''}
+        subtitle="Tap photo to edit"
+        leading={
+          <TouchableOpacity onPress={() => setSettingsSheetVisible(true)} activeOpacity={0.7} style={styles.headerAvatarWrap}>
+            <Avatar
+              initials={group ? getInitials(group.name) : ''}
+              src={group?.image ?? undefined}
+              size="l"
+            />
+            {savingPhoto && (
+              <View style={styles.headerAvatarSaving}>
+                <ActivityIndicator size="small" color="#fff" />
+              </View>
+            )}
+          </TouchableOpacity>
+        }
+        actions={
+          <IconButton label="Group settings" variant="bare" size="l" onPress={() => setSettingsSheetVisible(true)}>
+            <Ionicons name="settings-outline" size={20} color={theme.textStrong} />
+          </IconButton>
+        }
+      />
 
       {loading || !group ? (
         <ActivityIndicator color={COLORS.coral} style={{ marginTop: 80 }} />
@@ -630,94 +648,44 @@ export default function GroupScreen() {
             />
           }
         >
-          {/* Members section label */}
-          <View style={styles.membersLabelRow}>
-            <Text style={styles.membersLabel}>MEMBERS · {group.members.length}</Text>
-            <TouchableOpacity
-              style={styles.viewAllBtn}
-              onPress={() => setMembersSheetVisible(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.viewAllText}>View all</Text>
-              <Ionicons name="chevron-forward" size={14} color={COLORS.coral} />
-            </TouchableOpacity>
-          </View>
-
-          {/* Members strip (horizontal) */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.strip}
-          >
-            {isAdmin && (
-              <TouchableOpacity
-                style={styles.stripItem}
-                onPress={() => setInviteSheetVisible(true)}
-                activeOpacity={0.75}
-              >
-                <View style={styles.addChip}>
-                  <Ionicons name="add" size={22} color={COLORS.coral} />
-                </View>
-                <Text style={styles.addChipLabel} numberOfLines={1}>Add</Text>
+          {/* Members */}
+          <SectionLabel
+            count={group.members.length}
+            action={
+              <TouchableOpacity style={styles.viewAllBtn} onPress={() => setMembersSheetVisible(true)} activeOpacity={0.7}>
+                <Text style={styles.viewAllText}>View all</Text>
+                <Ionicons name="chevron-forward" size={14} color={COLORS.coral} />
               </TouchableOpacity>
-            )}
-            {group.members.map(member => {
-              const isYou = member.user_id === user.userId;
-              return (
-                <TouchableOpacity
-                  key={member.user_id}
-                  style={styles.stripItem}
-                  onPress={() => setMembersSheetVisible(true)}
-                  activeOpacity={0.75}
-                >
-                  <View
-                    style={[
-                      styles.stripAvatar,
-                      { backgroundColor: isYou ? COLORS.coral : COLORS.otherAvatar },
-                      isYou && styles.stripAvatarRing,
-                    ]}
-                  >
-                    {member.image
-                      ? <Image source={{ uri: member.image }} style={styles.stripAvatar} />
-                      : <Text style={styles.stripAvatarText}>{getInitials(member.username)}</Text>}
-                  </View>
-                  <Text style={styles.stripName} numberOfLines={1}>
-                    {isYou ? 'You' : firstName(member.username)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+            }
+          >
+            Members
+          </SectionLabel>
+          <TouchableOpacity activeOpacity={0.85} onPress={() => setMembersSheetVisible(true)}>
+            <MemberStrip
+              members={memberStripData}
+              showAdd={isAdmin}
+              onAdd={() => setInviteSheetVisible(true)}
+            />
+          </TouchableOpacity>
 
           {/* Share a Coupon */}
           <View style={styles.shareWrap}>
-            <TouchableOpacity
-              style={styles.shareBtn}
-              onPress={handleOpenCouponPicker}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="pricetag" size={22} color="#fff" />
-              <Text style={styles.shareBtnText}>Share a Coupon</Text>
-            </TouchableOpacity>
+            <Button variant="primary" size="l" block onPress={handleOpenCouponPicker} icon={<Ionicons name="pricetag-outline" size={20} color="#fff" />}>
+              Share a Coupon
+            </Button>
           </View>
 
-          {/* Shared Coupons header */}
-          <View style={styles.couponsHeaderRow}>
-            <Text style={styles.couponsHeaderLabel}>
-              SHARED COUPONS ({filteredCoupons.length})
-            </Text>
-            <TouchableOpacity
-              style={[styles.filterBtn, hasFilter && styles.filterBtnActive]}
-              onPress={openFilterSheet}
-              activeOpacity={0.75}
-            >
-              <Ionicons
-                name="options-outline"
-                size={20}
-                color={hasFilter ? '#fff' : COLORS.coral}
-              />
-            </TouchableOpacity>
-          </View>
+          {/* Shared Coupons */}
+          <SectionLabel
+            count={filteredCoupons.length}
+            action={
+              <IconButton label="Filter" active={hasFilter} onPress={openFilterSheet}>
+                <Ionicons name="options-outline" size={18} color={hasFilter ? '#fff' : COLORS.coral} />
+              </IconButton>
+            }
+          >
+            Shared coupons
+          </SectionLabel>
 
           {/* Coupon feed */}
           {filteredCoupons.length === 0 ? (
@@ -727,452 +695,291 @@ export default function GroupScreen() {
                 : 'No coupons shared to this group yet.'}
             </Text>
           ) : (
-            filteredCoupons.map(coupon => {
+            <View style={styles.couponList}>
+            {filteredCoupons.map(coupon => {
               const isOwn = coupon.owner_id === user.userId;
               const sender = group.members.find(m => m.user_id === coupon.owner_id);
               const senderLabel = isOwn ? 'You' : sender ? firstName(sender.username) : 'Member';
-              const senderInitials = getInitials(sender?.username ?? 'M');
               const accent = isOwn ? COLORS.coralDeep : accentFor(coupon.owner_id);
               const expiry = coupon.expiration_date
                 ? new Date(coupon.expiration_date + 'T00:00:00').toLocaleDateString()
-                : null;
+                : undefined;
               const isLoading = loadingCouponId === coupon.coupon_id;
               const isUsed = coupon.status !== 'active';
 
               return (
-                <View key={coupon.coupon_id} style={[styles.card, isUsed && styles.cardUsed]}>
-                  {/* Sender attribution */}
-                  <View style={styles.senderRow}>
-                    <View
-                      style={[
-                        styles.senderAvatar,
-                        { backgroundColor: isOwn ? COLORS.coral : COLORS.otherAvatar },
-                      ]}
+                <CouponCard
+                  key={coupon.coupon_id}
+                  store={coupon.store_name}
+                  category={coupon.category}
+                  balance={isUsed ? null : coupon.balance}
+                  expires={expiry}
+                  status={coupon.status as 'active' | 'used' | 'expired'}
+                  sender={senderLabel}
+                  senderColor={accent}
+                  senderImage={sender?.image}
+                  senderTrailing={isAdmin && !isOwn ? (
+                    <TouchableOpacity
+                      onPress={() => handleRevokeCoupon(coupon.coupon_id)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      {sender?.image
-                        ? <Image source={{ uri: sender.image }} style={styles.senderAvatar} />
-                        : <Text style={styles.senderAvatarText}>{senderInitials}</Text>}
-                    </View>
-                    <Text style={[styles.senderName, { color: accent }]}>{senderLabel}</Text>
-                    {/* Admins may remove others' coupons (own coupons use the Revoke CTA). */}
-                    {isAdmin && !isOwn && (
-                      <TouchableOpacity
-                        style={styles.adminRemoveBtn}
-                        onPress={() => handleRevokeCoupon(coupon.coupon_id)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons name="trash-outline" size={16} color={COLORS.muted} />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-
-                  {/* Coupon body */}
-                  <TouchableOpacity
-                    style={styles.cardBody}
-                    onPress={() => handleOpenCouponDetail(coupon)}
-                    activeOpacity={0.75}
-                    disabled={isLoading}
-                  >
-                    <View style={styles.tagTile}>
-                      <Ionicons name="pricetag-outline" size={26} color={COLORS.tag} />
-                    </View>
-                    <View style={styles.cardText}>
-                      <Text style={styles.brandName} numberOfLines={1}>{coupon.store_name}</Text>
-                      <Text style={styles.category}>{coupon.category}</Text>
-                      {expiry && <Text style={styles.expiry}>Expires {expiry}</Text>}
-                      {isUsed && (
-                        <View style={styles.usedBadge}>
-                          <Text style={styles.usedText}>{coupon.status.toUpperCase()}</Text>
-                        </View>
-                      )}
-                    </View>
-                    {/* Right-aligned so it fills space the row already has,
-                        keeping card height unchanged. Hidden when there's no
-                        tracked balance (a code-only coupon) or when the coupon
-                        is done - the USED badge already says that. */}
-                    {!isUsed && coupon.balance != null && (
-                      <Text style={styles.cardBalance}>₪{formatBalance(coupon.balance)}</Text>
-                    )}
-                  </TouchableOpacity>
-
-                  {/* Action */}
-                  <TouchableOpacity
-                    style={[
-                      styles.actionBtn,
-                      isOwn ? styles.actionBtnRevoke : styles.actionBtnUse,
-                      isUsed && !isOwn && styles.actionBtnUsed,
-                    ]}
-                    onPress={() =>
-                      isOwn
-                        ? handleRevokeCoupon(coupon.coupon_id)
-                        : handleOpenCouponDetail(coupon)
-                    }
-                    disabled={isLoading || (isUsed && !isOwn)}
-                    activeOpacity={0.8}
-                  >
-                    {isLoading ? (
-                      <ActivityIndicator size="small" color={COLORS.coralDeep} />
-                    ) : (
-                      <Text style={styles.actionBtnText}>
-                        {isOwn ? 'Revoke' : isUsed ? 'Used' : 'Use coupon'}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
+                      <Ionicons name="trash-outline" size={16} color={COLORS.muted} />
+                    </TouchableOpacity>
+                  ) : undefined}
+                  onPress={() => handleOpenCouponDetail(coupon)}
+                  action={isOwn ? (
+                    <Button variant="danger" block disabled={isLoading} onPress={() => handleRevokeCoupon(coupon.coupon_id)}>
+                      {isLoading ? <ActivityIndicator size="small" color={COLORS.coralDeep} /> : 'Revoke'}
+                    </Button>
+                  ) : (
+                    <Button variant="quiet" block disabled={isLoading || isUsed} onPress={() => handleOpenCouponDetail(coupon)}>
+                      {isLoading ? <ActivityIndicator size="small" color={COLORS.coral} /> : isUsed ? 'Used' : 'Use coupon'}
+                    </Button>
+                  )}
+                />
               );
-            })
+            })}
+            </View>
           )}
         </ScrollView>
       )}
 
       {/* Filter Sheet */}
-      <Modal
-        visible={filterSheetVisible}
-        transparent
-        animationType="none"
-        onRequestClose={closeFilterSheet}
+      <Sheet
+        title="Filter Coupons"
+        open={filterSheetVisible}
+        onClose={closeFilterSheet}
+        footer={<Button variant="primary" block onPress={closeFilterSheet}>Done</Button>}
       >
-        <View style={styles.filterSheetOverlay}>
-          <Animated.View
-            style={[StyleSheet.absoluteFill, styles.filterSheetBackdrop, { opacity: filterSheetAnim }]}
-          />
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeFilterSheet} />
-          <Animated.View
-            style={[
-              styles.sheet,
-              {
-                transform: [{ translateY: filterSheetAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [Dimensions.get('window').height, 0],
-                }) }],
-              },
-            ]}
+        {hasFilter && (
+          <TouchableOpacity onPress={clearFilters} style={styles.clearFilterBtn}>
+            <Text style={styles.clearFilterText}>Clear</Text>
+          </TouchableOpacity>
+        )}
+        <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+          <SectionLabel>Category</SectionLabel>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryScroll}
           >
-            <View style={styles.sheetHandle} />
-            <View style={styles.filterHeaderRow}>
-              <Text style={[styles.sheetTitle, { marginBottom: 0 }]}>Filter Coupons</Text>
-              {hasFilter && (
-                <TouchableOpacity onPress={clearFilters}>
-                  <Text style={styles.clearFilterText}>Clear</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+            {CATEGORY_DEFS.map(cat => (
+              <CategoryTile
+                key={cat.filter}
+                label={cat.label}
+                category={cat.filter}
+                icon={cat.icon}
+                active={filterCategory === cat.filter}
+                onPress={() => setFilterCategory(cat.filter)}
+              />
+            ))}
+          </ScrollView>
 
-            <ScrollView style={{ maxHeight: '78%' }} showsVerticalScrollIndicator={false}>
-              <Text style={styles.filterGroupLabel}>CATEGORY</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.categoryScroll}
-              >
-                {CATEGORY_DEFS.map(cat => {
-                  const active = filterCategory === cat.filter;
-                  return (
-                    <TouchableOpacity
-                      key={cat.filter}
-                      style={[styles.categoryCard, active && { backgroundColor: cat.color, borderColor: cat.color }]}
-                      onPress={() => setFilterCategory(cat.filter)}
-                      activeOpacity={0.75}
-                    >
-                      <Ionicons name={cat.icon} size={24} color={active ? '#444444' : COLORS.ink} />
-                      <Text style={[styles.categoryCardLabel, active && styles.categoryCardLabelActive]}>
-                        {cat.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+          <SectionLabel>Sort by</SectionLabel>
+          {SORT_OPTIONS.map((opt, i) => {
+            const active = filterSort === opt.value;
+            return (
+              <OptionRow
+                key={opt.value}
+                icon={<Ionicons name={opt.icon} size={20} color={active ? COLORS.coral : COLORS.ink} />}
+                label={opt.label}
+                selected={active}
+                divider={i < SORT_OPTIONS.length - 1}
+                onPress={() => setFilterSort(active ? null : opt.value)}
+              />
+            );
+          })}
 
-              <Text style={styles.filterGroupLabel}>SORT BY</Text>
-              {SORT_OPTIONS.map(opt => {
-                const active = filterSort === opt.value;
-                return (
-                  <TouchableOpacity
-                    key={opt.value}
-                    style={[styles.sortOption, active && styles.sortOptionActive]}
-                    onPress={() => setFilterSort(active ? null : opt.value)}
-                    activeOpacity={0.75}
-                  >
-                    <View style={styles.sortOptionLeft}>
-                      <Ionicons name={opt.icon} size={20} color={active ? COLORS.coral : COLORS.ink} />
-                      <Text style={[styles.sortOptionText, active && styles.sortOptionTextActive]}>
-                        {opt.label}
-                      </Text>
-                    </View>
-                    {active && <Ionicons name="checkmark" size={18} color={COLORS.coral} />}
-                  </TouchableOpacity>
-                );
-              })}
-
-              <Text style={styles.filterGroupLabel}>MEMBER</Text>
-              <View style={styles.chipWrap}>
-                {(group?.members ?? []).map(m => {
-                  const active = filterMember === m.user_id;
-                  const isYou = m.user_id === user.userId;
-                  return (
-                    <TouchableOpacity
-                      key={m.user_id}
-                      style={[styles.filterChip, active && styles.filterChipActive]}
-                      onPress={() => setFilterMember(active ? null : m.user_id)}
-                    >
-                      <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>
-                        {isYou ? 'You' : firstName(m.username)}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </ScrollView>
-
-            <TouchableOpacity
-              style={styles.filterDoneBtn}
-              onPress={closeFilterSheet}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.filterDoneBtnText}>Done</Text>
-            </TouchableOpacity>
-            <View style={{ height: 24 }} />
-          </Animated.View>
-        </View>
-      </Modal>
+          <SectionLabel>Member</SectionLabel>
+          <View style={styles.chipWrap}>
+            {(group?.members ?? []).map(m => {
+              const active = filterMember === m.user_id;
+              const isYou = m.user_id === user.userId;
+              return (
+                <Chip key={m.user_id} active={active} onPress={() => setFilterMember(active ? null : m.user_id)}>
+                  {isYou ? 'You' : firstName(m.username)}
+                </Chip>
+              );
+            })}
+          </View>
+        </ScrollView>
+      </Sheet>
 
       {/* Settings Bottom Sheet */}
-      <Modal
-        visible={settingsSheetVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setSettingsSheetVisible(false)}
-        onDismiss={() => {
-          // iOS: runs after the sheet has fully closed - safe to present the picker now.
-          if (pendingPhotoPick) {
-            setPendingPhotoPick(false);
-            handlePickImage();
-          }
-        }}
+      <Sheet
+        title="Group Settings"
+        open={settingsSheetVisible}
+        onClose={() => setSettingsSheetVisible(false)}
       >
-        <TouchableOpacity
-          style={styles.sheetOverlay}
-          activeOpacity={1}
-          onPress={() => setSettingsSheetVisible(false)}
-        >
-          <View style={styles.sheet} onStartShouldSetResponder={() => true}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Group Settings</Text>
+        {isAdmin && (
+          <>
+            <OptionRow
+              icon={<Ionicons name="image-outline" size={20} color={COLORS.coral} />}
+              label="Change Group Photo"
+              trailing={<Ionicons name="chevron-forward" size={16} color="#C4B8A0" />}
+              onPress={() => {
+                // iOS can't present the image picker while the settings sheet is still
+                // on screen, so launch it only AFTER the sheet has fully dismissed
+                // (via Sheet's onDismiss). Android has no such restriction.
+                // iOS can't present the image picker while the sheet's Modal is still
+                // mounted, and Sheet unmounts rather than dismissing (so onDismiss never
+                // fires) - wait out its 200ms close animation instead.
+                setSettingsSheetVisible(false);
+                setTimeout(() => handlePickImage(), 350);
+              }}
+            />
+            <OptionRow
+              icon={<Ionicons name="pencil-outline" size={20} color={COLORS.coral} />}
+              label="Rename Group"
+              trailing={<Ionicons name="chevron-forward" size={16} color="#C4B8A0" />}
+              onPress={() => {
+                setSettingsSheetVisible(false);
+                setNewGroupName(group?.name ?? '');
+                setRenameModalVisible(true);
+              }}
+            />
+            <OptionRow
+              icon={<Ionicons name="trash-outline" size={20} color="#D93025" />}
+              label="Delete Group"
+              destructive
+              divider={false}
+              trailing={<Ionicons name="chevron-forward" size={16} color="#C4B8A0" />}
+              onPress={() => {
+                setSettingsSheetVisible(false);
+                setDeleteConfirmVisible(true);
+              }}
+            />
+          </>
+        )}
 
-            {isAdmin && (
-              <>
-                <TouchableOpacity
-                  style={styles.settingsRow}
-                  onPress={() => {
-                    // iOS can't present the image picker while the settings Modal is still
-                    // on screen, so launch it only AFTER the Modal has fully dismissed
-                    // (via the Modal's onDismiss). Android has no such restriction.
-                    setSettingsSheetVisible(false);
-                    if (Platform.OS === 'ios') {
-                      setPendingPhotoPick(true);
-                    } else {
-                      setTimeout(() => handlePickImage(), 250);
-                    }
-                  }}
-                  activeOpacity={0.75}
-                >
-                  <Ionicons name="image-outline" size={20} color={COLORS.coral} />
-                  <Text style={styles.settingsRowText}>Change Group Photo</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#C4B8A0" style={styles.settingsRowChevron} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.settingsRow}
-                  onPress={() => {
-                    setSettingsSheetVisible(false);
-                    setNewGroupName(group?.name ?? '');
-                    setRenameModalVisible(true);
-                  }}
-                  activeOpacity={0.75}
-                >
-                  <Ionicons name="pencil-outline" size={20} color={COLORS.coral} />
-                  <Text style={styles.settingsRowText}>Rename Group</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#C4B8A0" style={styles.settingsRowChevron} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.settingsRow, styles.settingsRowLast]}
-                  onPress={() => {
-                    setSettingsSheetVisible(false);
-                    setDeleteConfirmVisible(true);
-                  }}
-                  activeOpacity={0.75}
-                >
-                  <Ionicons name="trash-outline" size={20} color="#D93025" />
-                  <Text style={[styles.settingsRowText, styles.settingsRowTextDestructive]}>
-                    Delete Group
-                  </Text>
-                  <Ionicons name="chevron-forward" size={16} color="#C4B8A0" style={styles.settingsRowChevron} />
-                </TouchableOpacity>
-              </>
-            )}
-
-            {!isAdmin && (
-              <TouchableOpacity
-                style={[styles.settingsRow, styles.settingsRowLast]}
-                onPress={() => {
-                  setSettingsSheetVisible(false);
-                  handleLeaveGroup();
-                }}
-                activeOpacity={0.75}
-              >
-                <Ionicons name="exit-outline" size={20} color="#D93025" />
-                <Text style={[styles.settingsRowText, styles.settingsRowTextDestructive]}>
-                  Leave Group
-                </Text>
-                <Ionicons name="chevron-forward" size={16} color="#C4B8A0" style={styles.settingsRowChevron} />
-              </TouchableOpacity>
-            )}
-
-            <View style={{ height: 24 }} />
-          </View>
-        </TouchableOpacity>
-      </Modal>
+        {!isAdmin && (
+          <OptionRow
+            icon={<Ionicons name="exit-outline" size={20} color="#D93025" />}
+            label="Leave Group"
+            destructive
+            divider={false}
+            trailing={<Ionicons name="chevron-forward" size={16} color="#C4B8A0" />}
+            onPress={() => {
+              setSettingsSheetVisible(false);
+              handleLeaveGroup();
+            }}
+          />
+        )}
+      </Sheet>
 
       {/* Members Bottom Sheet */}
-      <Modal
-        visible={membersSheetVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setMembersSheetVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.sheetOverlay}
-          activeOpacity={1}
-          onPress={() => setMembersSheetVisible(false)}
-        >
-          <View style={styles.sheet} onStartShouldSetResponder={() => true}>
-            <View style={styles.sheetHandle} />
-            <View style={styles.membersSheetHeader}>
-              <Text style={[styles.sheetTitle, { marginBottom: 0 }]}>
-                Members ({group?.members.length ?? 0})
-              </Text>
-              {isAdmin && (
-                <TouchableOpacity
-                  style={styles.addMemberPill}
-                  onPress={() => {
-                    setMembersSheetVisible(false);
-                    setInviteSheetVisible(true);
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="add" size={16} color="#fff" />
-                  <Text style={styles.addMemberPillText}>Add</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              style={{ maxHeight: '80%' }}
+      <Sheet open={membersSheetVisible} onClose={() => setMembersSheetVisible(false)}>
+        <View style={styles.membersSheetHeader}>
+          <Text style={[styles.sheetTitle, { marginBottom: 0 }]}>
+            Members ({group?.members.length ?? 0})
+          </Text>
+          {isAdmin && (
+            <TouchableOpacity
+              style={styles.addMemberPill}
+              onPress={() => {
+                setMembersSheetVisible(false);
+                setInviteSheetVisible(true);
+              }}
+              activeOpacity={0.8}
             >
-              {(group?.members ?? []).map(member => {
-                const isCurrentUser = member.user_id === user.userId;
-                const isGroupAdmin = member.user_id === group?.admin_user_id;
-                return (
-                  <View key={member.user_id} style={styles.memberRow}>
-                    <View style={styles.memberAvatar}>
-                      {member.image
-                        ? <Image source={{ uri: member.image }} style={styles.memberAvatar} />
-                        : <Text style={styles.memberAvatarText}>{getInitials(member.username)}</Text>}
-                    </View>
-                    <View style={styles.memberInfo}>
-                      <Text style={styles.memberName}>
-                        {member.username}
-                        {isCurrentUser ? ' (you)' : ''}
-                      </Text>
-                      {member.phone_number ? (
-                        <Text style={styles.memberEmail}>{member.phone_number}</Text>
-                      ) : null}
-                      {isGroupAdmin && (
-                        <Text style={styles.adminLabel}>Admin</Text>
-                      )}
-                    </View>
-                    {isAdmin && !isCurrentUser && !isGroupAdmin && (
-                      <TouchableOpacity
-                        style={styles.removeBtn}
-                        onPress={() => handleRemoveMember(member)}
-                      >
-                        <Text style={styles.removeBtnText}>Remove</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                );
-              })}
-
-              {(group?.pending_members ?? []).length > 0 && (
-                <>
-                  <Text style={[styles.couponsHeaderLabel, { marginTop: 16, marginBottom: 8 }]}>
-                    PENDING ({group?.pending_members.length})
+              <Ionicons name="add" size={16} color="#fff" />
+              <Text style={styles.addMemberPillText}>Add</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          style={{ maxHeight: 420 }}
+        >
+          {(group?.members ?? []).map(member => {
+            const isCurrentUser = member.user_id === user.userId;
+            const isGroupAdmin = member.user_id === group?.admin_user_id;
+            return (
+              <View key={member.user_id} style={styles.memberRow}>
+                <Avatar initials={getInitials(member.username)} src={member.image} size="m" />
+                <View style={styles.memberInfo}>
+                  <Text style={styles.memberName}>
+                    {member.username}
+                    {isCurrentUser ? ' (you)' : ''}
                   </Text>
-                  {group?.pending_members.map(member => (
-                    <View key={member.user_id} style={styles.memberRow}>
-                      <View style={[styles.memberAvatar, { opacity: 0.5 }]}>
-                        {member.image
-                          ? <Image source={{ uri: member.image }} style={styles.memberAvatar} />
-                          : <Text style={styles.memberAvatarText}>{getInitials(member.username)}</Text>}
-                      </View>
-                      <View style={[styles.memberInfo, { opacity: 0.5 }]}>
-                        <Text style={styles.memberName}>{member.username}</Text>
-                        <Text style={styles.memberEmail}>{member.phone_number ?? member.email}</Text>
-                      </View>
-                      <View style={[styles.pendingBadge, { opacity: 0.5 }]}>
-                        <Text style={styles.pendingBadgeText}>Pending</Text>
-                      </View>
-                      {isAdmin && (
-                        <TouchableOpacity
-                          style={styles.cancelInviteBtn}
-                          onPress={() => handleCancelInvite(member)}
-                        >
-                          <Text style={styles.cancelInviteBtnText}>Cancel</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  ))}
-                </>
-              )}
+                  {member.phone_number ? (
+                    <Text style={styles.memberEmail}>{member.phone_number}</Text>
+                  ) : null}
+                  {isGroupAdmin && (
+                    <Text style={styles.adminLabel}>Admin</Text>
+                  )}
+                </View>
+                {isAdmin && !isCurrentUser && !isGroupAdmin && (
+                  <TouchableOpacity
+                    style={styles.removeBtn}
+                    onPress={() => handleRemoveMember(member)}
+                  >
+                    <Text style={styles.removeBtnText}>Remove</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          })}
 
-              <View style={{ height: 40 }} />
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+          {(group?.pending_members ?? []).length > 0 && (
+            <>
+              <Text style={[styles.couponsHeaderLabel, { marginTop: 16, marginBottom: 8 }]}>
+                PENDING ({group?.pending_members.length})
+              </Text>
+              {group?.pending_members.map(member => (
+                <View key={member.user_id} style={styles.memberRow}>
+                  <View style={{ opacity: 0.5 }}>
+                    <Avatar initials={getInitials(member.username)} src={member.image} size="m" />
+                  </View>
+                  <View style={[styles.memberInfo, { opacity: 0.5 }]}>
+                    <Text style={styles.memberName}>{member.username}</Text>
+                    <Text style={styles.memberEmail}>{member.phone_number ?? member.email}</Text>
+                  </View>
+                  <View style={[styles.pendingBadge, { opacity: 0.5 }]}>
+                    <Text style={styles.pendingBadgeText}>Pending</Text>
+                  </View>
+                  {isAdmin && (
+                    <TouchableOpacity
+                      style={styles.cancelInviteBtn}
+                      onPress={() => handleCancelInvite(member)}
+                    >
+                      <Text style={styles.cancelInviteBtnText}>Cancel</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </>
+          )}
 
-      {/* Invite Member Dialog */}
-      <Modal
-        visible={inviteSheetVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeInviteSheet}
-      >
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </Sheet>
+
+      {/* Invite Member Dialog - View overlay, not a Modal, for the same reason as the
+          rename dialog below: the members sheet is itself a Modal, and opening a second
+          one while it closes leaves an invisible Modal on iOS that swallows every touch.
+          The KeyboardAvoidingView keeps the centred panel clear of the keyboard. */}
+      {inviteSheetVisible && (
         <TouchableOpacity
-          style={styles.dialogOverlay}
+          style={[StyleSheet.absoluteFill, styles.dialogOverlay, { paddingBottom: keyboardHeight }]}
           activeOpacity={1}
           onPress={closeInviteSheet}
         >
-          <View style={styles.dialog} onStartShouldSetResponder={() => true}>
+          <View style={styles.dialogPanelWrap} onStartShouldSetResponder={() => true}>
+          <GlassPanel tint="thick" radius={24} padding={24}>
             <View style={styles.dialogHeader}>
               <Text style={styles.dialogTitle}>Add Member</Text>
-              <TouchableOpacity
-                onPress={closeInviteSheet}
-                style={styles.dialogCloseBtn}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="close" size={20} color={COLORS.ink} />
-              </TouchableOpacity>
+              <IconButton label="Close" size="s" onPress={closeInviteSheet}>
+                <Ionicons name="close" size={18} color={COLORS.ink} />
+              </IconButton>
             </View>
-            <TextInput
-              style={styles.dialogInput}
+            <Input
               placeholder="Email or username"
-              placeholderTextColor="#A8997A"
               value={memberQuery}
               onChangeText={setMemberQuery}
               autoCapitalize="none"
               autoFocus
+              wrapperStyle={{ marginBottom: suggestions.length > 0 ? 12 : 20 }}
             />
             {suggestions.length > 0 && (
               <View style={styles.suggestions}>
@@ -1191,81 +998,70 @@ export default function GroupScreen() {
                 ))}
               </View>
             )}
-            <TouchableOpacity
-              style={[
-                styles.dialogInviteBtn,
-                (addingMember || !memberQuery.trim()) && styles.dialogInviteBtnDisabled,
-              ]}
+            <Button
+              variant="primary"
+              block
               onPress={() => memberQuery.trim() && handleAddMember(memberQuery.trim())}
               disabled={addingMember || !memberQuery.trim()}
-              activeOpacity={0.8}
+              style={{ marginBottom: 12 }}
             >
-              {addingMember ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.dialogInviteBtnText}>Invite</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.addFromContactsBtn}
+              {addingMember ? <ActivityIndicator color="#fff" size="small" /> : 'Invite'}
+            </Button>
+            <Button
+              variant="glass"
+              block
               onPress={handleOpenContacts}
-              activeOpacity={0.8}
+              icon={<Ionicons name="people-outline" size={16} color={COLORS.coral} />}
             >
-              <Ionicons name="people-outline" size={16} color={COLORS.coral} />
-              <Text style={styles.addFromContactsBtnText}>Add from Contacts</Text>
-            </TouchableOpacity>
+              Add from Contacts
+            </Button>
+          </GlassPanel>
           </View>
         </TouchableOpacity>
-      </Modal>
+      )}
 
       {/* Rename Dialog - View overlay avoids nested-Modal iOS conflict */}
       {renameModalVisible && (
         <TouchableOpacity
-          style={[StyleSheet.absoluteFill, styles.dialogOverlay]}
+          style={[StyleSheet.absoluteFill, styles.dialogOverlay, { paddingBottom: keyboardHeight }]}
           activeOpacity={1}
           onPress={() => {
             setRenameModalVisible(false);
             setNewGroupName('');
           }}
         >
-          <View style={styles.dialog} onStartShouldSetResponder={() => true}>
+          <View style={styles.dialogPanelWrap} onStartShouldSetResponder={() => true}>
+          <GlassPanel tint="thick" radius={24} padding={24}>
             <View style={styles.dialogHeader}>
               <Text style={styles.dialogTitle}>Rename Group</Text>
-              <TouchableOpacity
+              <IconButton
+                label="Close"
+                size="s"
                 onPress={() => {
                   setRenameModalVisible(false);
                   setNewGroupName('');
                 }}
-                style={styles.dialogCloseBtn}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Ionicons name="close" size={20} color={COLORS.ink} />
-              </TouchableOpacity>
+                <Ionicons name="close" size={18} color={COLORS.ink} />
+              </IconButton>
             </View>
-            <TextInput
-              style={styles.dialogInput}
+            <Input
               placeholder="New group name"
-              placeholderTextColor="#A8997A"
               value={newGroupName}
               onChangeText={setNewGroupName}
               autoFocus
               maxLength={60}
+              wrapperStyle={{ marginBottom: 20 }}
             />
-            <TouchableOpacity
-              style={[
-                styles.dialogInviteBtn,
-                (!newGroupName.trim() || renaming) && styles.dialogInviteBtnDisabled,
-              ]}
+            <Button
+              variant="primary"
+              block
               onPress={handleRenameGroup}
               disabled={!newGroupName.trim() || renaming}
-              activeOpacity={0.8}
             >
-              {renaming ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.dialogInviteBtnText}>Save</Text>
-              )}
-            </TouchableOpacity>
+              {renaming ? <ActivityIndicator color="#fff" size="small" /> : 'Save'}
+            </Button>
+          </GlassPanel>
           </View>
         </TouchableOpacity>
       )}
@@ -1277,166 +1073,120 @@ export default function GroupScreen() {
           activeOpacity={1}
           onPress={() => setDeleteConfirmVisible(false)}
         >
-          <View style={styles.dialog} onStartShouldSetResponder={() => true}>
+          <View style={styles.dialogPanelWrap} onStartShouldSetResponder={() => true}>
+          <GlassPanel tint="thick" radius={24} padding={24}>
             <View style={styles.dialogHeader}>
               <Text style={styles.dialogTitle}>Delete Group?</Text>
-              <TouchableOpacity
-                onPress={() => setDeleteConfirmVisible(false)}
-                style={styles.dialogCloseBtn}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="close" size={20} color={COLORS.ink} />
-              </TouchableOpacity>
+              <IconButton label="Close" size="s" onPress={() => setDeleteConfirmVisible(false)}>
+                <Ionicons name="close" size={18} color={COLORS.ink} />
+              </IconButton>
             </View>
             <Text style={styles.deleteWarningText}>
               Are you sure you want to delete "{group?.name}"? This action is
               permanent and will remove all members.
             </Text>
             <View style={styles.deleteDialogActions}>
-              <TouchableOpacity
-                style={styles.deleteCancelBtn}
-                onPress={() => setDeleteConfirmVisible(false)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.deleteCancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.deleteConfirmBtn,
-                  deleting && styles.dialogInviteBtnDisabled,
-                ]}
-                onPress={handleDeleteGroup}
-                disabled={deleting}
-                activeOpacity={0.8}
-              >
-                {deleting ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.deleteConfirmBtnText}>Delete</Text>
-                )}
-              </TouchableOpacity>
+              <View style={styles.deleteDialogCol}>
+                <Button variant="ghost" block onPress={() => setDeleteConfirmVisible(false)}>
+                  Cancel
+                </Button>
+              </View>
+              <View style={styles.deleteDialogCol}>
+                <Button variant="danger" block onPress={handleDeleteGroup} disabled={deleting}>
+                  {deleting ? <ActivityIndicator color={theme.stateDanger} size="small" /> : 'Delete'}
+                </Button>
+              </View>
             </View>
+          </GlassPanel>
           </View>
         </TouchableOpacity>
       )}
 
       {/* Add from Contacts Sheet */}
-      <Modal
-        visible={contactsSheetVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setContactsSheetVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.sheetOverlay}
-          activeOpacity={1}
-          onPress={() => setContactsSheetVisible(false)}
-        >
-          <View style={styles.sheet} onStartShouldSetResponder={() => true}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Your Contacts on Couplet</Text>
-            {contactsLoading ? (
-              <ActivityIndicator color={COLORS.coral} style={{ marginVertical: 32 }} />
-            ) : contactMatches.length === 0 ? (
-              <Text style={styles.emptyCoupons}>None of your contacts are on Couplet yet.</Text>
-            ) : (
-              <ScrollView style={{ maxHeight: '80%' }}>
-                {contactMatches.map(match => (
-                  <View key={match.user_id} style={styles.memberRow}>
-                    <View style={styles.memberAvatar}>
-                      <Text style={styles.memberAvatarText}>{getInitials(match.contactName)}</Text>
-                    </View>
-                    <View style={styles.memberInfo}>
-                      <Text style={styles.memberName}>{match.contactName}</Text>
-                      <Text style={styles.memberEmail}>@{match.username}</Text>
-                    </View>
-                    <TouchableOpacity
-                      style={[styles.inviteContactBtn, invitingContactUserId === match.user_id && { opacity: 0.4 }]}
-                      onPress={() => handleInviteContact(match)}
-                      disabled={invitingContactUserId === match.user_id}
-                      activeOpacity={0.8}
-                    >
-                      {invitingContactUserId === match.user_id
-                        ? <ActivityIndicator color="#fff" size="small" />
-                        : <Text style={styles.inviteContactBtnText}>Invite</Text>}
-                    </TouchableOpacity>
-                  </View>
-                ))}
-                <View style={{ height: 40 }} />
-              </ScrollView>
-            )}
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <Sheet title="Your Contacts on Couplet" open={contactsSheetVisible} onClose={() => setContactsSheetVisible(false)}>
+        {contactsLoading ? (
+          <ActivityIndicator color={COLORS.coral} style={{ marginVertical: 32 }} />
+        ) : contactMatches.length === 0 ? (
+          <Text style={styles.emptyCoupons}>None of your contacts are on Couplet yet.</Text>
+        ) : (
+          <ScrollView style={{ maxHeight: 420 }}>
+            {contactMatches.map(match => (
+              <View key={match.user_id} style={styles.memberRow}>
+                <Avatar initials={getInitials(match.contactName)} size="m" />
+                <View style={styles.memberInfo}>
+                  <Text style={styles.memberName}>{match.contactName}</Text>
+                  <Text style={styles.memberEmail}>@{match.username}</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.inviteContactBtn, invitingContactUserId === match.user_id && { opacity: 0.4 }]}
+                  onPress={() => handleInviteContact(match)}
+                  disabled={invitingContactUserId === match.user_id}
+                  activeOpacity={0.8}
+                >
+                  {invitingContactUserId === match.user_id
+                    ? <ActivityIndicator color="#fff" size="small" />
+                    : <Text style={styles.inviteContactBtnText}>Invite</Text>}
+                </TouchableOpacity>
+              </View>
+            ))}
+            <View style={{ height: 40 }} />
+          </ScrollView>
+        )}
+      </Sheet>
 
       {/* Share Coupon Picker */}
-      <Modal
-        visible={couponPickerVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setCouponPickerVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.sheetOverlay}
-          activeOpacity={1}
-          onPress={() => setCouponPickerVisible(false)}
-        >
-          <View style={styles.sheet} onStartShouldSetResponder={() => true}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Share a Coupon</Text>
-            <ScrollView style={{ maxHeight: '80%' }}>
-              {myCoupons.length === 0 ? (
-                <Text style={styles.emptyCoupons}>
-                  No active coupons to share.
-                </Text>
-              ) : (
-                myCoupons.map(coupon => {
-                  const alreadyShared = group?.coupons.some(
-                    c => c.coupon_id === coupon.coupon_id
-                  );
-                  return (
-                    <TouchableOpacity
-                      key={coupon.coupon_id}
-                      style={[
-                        styles.couponPickerRow,
-                        alreadyShared && styles.couponPickerRowShared,
-                      ]}
-                      onPress={() =>
-                        !alreadyShared && handleShareCoupon(coupon.coupon_id)
-                      }
-                      disabled={
-                        alreadyShared || sharingCouponId === coupon.coupon_id
-                      }
-                      activeOpacity={alreadyShared ? 1 : 0.75}
-                    >
-                      <View style={styles.couponPickerInfo}>
-                        <Text style={styles.couponPickerName}>
-                          {coupon.store_name}
-                        </Text>
-                        <Text style={styles.couponPickerSub}>
-                          {coupon.category}
-                        </Text>
-                      </View>
-                      {sharingCouponId === coupon.coupon_id ? (
-                        <ActivityIndicator color={COLORS.coral} size="small" />
-                      ) : alreadyShared ? (
-                        <Text style={styles.alreadySharedText}>Shared</Text>
-                      ) : (
-                        <Ionicons
-                          name="add-circle-outline"
-                          size={22}
-                          color={COLORS.coral}
-                        />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })
-              )}
-              <View style={{ height: 40 }} />
-            </ScrollView>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <Sheet title="Share a Coupon" open={couponPickerVisible} onClose={() => setCouponPickerVisible(false)}>
+        <ScrollView style={{ maxHeight: 420 }}>
+          {myCoupons.length === 0 ? (
+            <Text style={styles.emptyCoupons}>
+              No active coupons to share.
+            </Text>
+          ) : (
+            myCoupons.map(coupon => {
+              const alreadyShared = group?.coupons.some(
+                c => c.coupon_id === coupon.coupon_id
+              );
+              return (
+                <TouchableOpacity
+                  key={coupon.coupon_id}
+                  style={[
+                    styles.couponPickerRow,
+                    alreadyShared && styles.couponPickerRowShared,
+                  ]}
+                  onPress={() =>
+                    !alreadyShared && handleShareCoupon(coupon.coupon_id)
+                  }
+                  disabled={
+                    alreadyShared || sharingCouponId === coupon.coupon_id
+                  }
+                  activeOpacity={alreadyShared ? 1 : 0.75}
+                >
+                  <View style={styles.couponPickerInfo}>
+                    <Text style={styles.couponPickerName}>
+                      {coupon.store_name}
+                    </Text>
+                    <Text style={styles.couponPickerSub}>
+                      {coupon.category}
+                    </Text>
+                  </View>
+                  {sharingCouponId === coupon.coupon_id ? (
+                    <ActivityIndicator color={COLORS.coral} size="small" />
+                  ) : alreadyShared ? (
+                    <Text style={styles.alreadySharedText}>Shared</Text>
+                  ) : (
+                    <Ionicons
+                      name="add-circle-outline"
+                      size={22}
+                      color={COLORS.coral}
+                    />
+                  )}
+                </TouchableOpacity>
+              );
+            })
+          )}
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </Sheet>
 
       {/* Coupon Detail - same experience as My Coupons tab */}
       <CouponDetail
@@ -1458,32 +1208,15 @@ export default function GroupScreen() {
           bump();
         }}
       />
-    </SafeAreaView>
+    </AuroraBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
 
-  // Header
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingTop: 8,
-    paddingBottom: 14,
-    paddingLeft: 14,
-    paddingRight: 18,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
-  },
-  headerIconBtn: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerAvatarWrap: { position: 'relative' },
+  couponList: { gap: 12, paddingHorizontal: 20 },
   headerAvatar: { width: 44, height: 44, borderRadius: 22 },
   headerAvatarSaving: {
     position: 'absolute',
@@ -1495,127 +1228,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerAvatarFallback: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.coral,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerAvatarText: { fontSize: 16, fontWeight: '700', color: '#fff', letterSpacing: 0.3 },
-  headerTitleWrap: { flex: 1, minWidth: 0 },
-  headerTitle: { fontSize: 19, fontWeight: '700', color: COLORS.ink },
 
   body: { paddingBottom: 48 },
 
-  // Members section label
-  membersLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: 14,
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-  },
-  membersLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.muted,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
   viewAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   viewAllText: { fontSize: 13, fontWeight: '600', color: COLORS.coral },
 
-  // Members strip
-  strip: {
-    gap: 14,
-    paddingHorizontal: 16,
-    paddingBottom: 14,
-  },
-  stripItem: { alignItems: 'center', gap: 6, width: 56 },
-  stripAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stripAvatarRing: {
-    borderWidth: 2,
-    borderColor: '#fff',
-    shadowColor: COLORS.coral,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  stripAvatarText: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  stripName: { fontSize: 11, fontWeight: '600', color: COLORS.ink, maxWidth: 56 },
-  addChip: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.coralPale,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: COLORS.coral,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addChipLabel: { fontSize: 11, fontWeight: '600', color: COLORS.coral },
-
   // Share button
   shareWrap: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 14 },
-  shareBtn: {
-    height: 60,
-    borderRadius: 18,
-    backgroundColor: COLORS.coral,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    shadowColor: COLORS.coral,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  shareBtnText: { fontSize: 17, fontWeight: '700', color: '#fff', letterSpacing: 0.2 },
-
-  // Shared Coupons header
-  couponsHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 18,
-    paddingTop: 10,
-    paddingBottom: 12,
-  },
-  couponsHeaderLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.muted,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  filterBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: COLORS.cardWhite,
-    borderWidth: 1,
-    borderColor: COLORS.divider,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  filterBtnActive: { backgroundColor: COLORS.coral, borderColor: COLORS.coral },
 
   emptyCoupons: {
     fontSize: 14,
@@ -1624,186 +1244,23 @@ const styles = StyleSheet.create({
     marginVertical: 24,
     paddingHorizontal: 16,
   },
-
-  // Coupon card
-  card: {
-    backgroundColor: COLORS.cardWhite,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.divider,
-    padding: 14,
-    marginHorizontal: 16,
-    marginBottom: 12,
-    gap: 12,
-    shadowColor: COLORS.ink,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  senderRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  senderAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  senderAvatarText: { fontSize: 9, fontWeight: '700', color: '#fff' },
-  senderName: { fontSize: 13, fontWeight: '700' },
-  adminRemoveBtn: { marginLeft: 'auto' },
-
-  cardBody: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  tagTile: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
-    backgroundColor: COLORS.tagTile,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardUsed: { opacity: 0.5 },
-  cardText: { flex: 1, minWidth: 0 },
-  cardBalance: { fontSize: 16, fontWeight: '700', color: COLORS.ink, marginLeft: 8 },
-  brandName: { fontSize: 17, fontWeight: '700', color: COLORS.ink },
-  category: { fontSize: 13, color: COLORS.muted, marginTop: 2 },
-  expiry: { fontSize: 12, color: COLORS.muted, marginTop: 4 },
-  usedBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(26,35,50,0.15)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginTop: 4,
-  },
-  usedText: { fontSize: 10, fontWeight: '700', color: COLORS.ink, letterSpacing: 0.5 },
-
-  actionBtn: {
-    borderRadius: 10,
-    paddingVertical: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionBtnUse: { backgroundColor: COLORS.coralPale },
-  actionBtnRevoke: { backgroundColor: 'rgba(216,90,60,0.10)' },
-  actionBtnUsed: { backgroundColor: COLORS.divider },
-  actionBtnText: { fontSize: 14, fontWeight: '700', color: COLORS.coralDeep },
-
-  // Filter sheet
-  filterHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  clearFilterText: { fontSize: 14, fontWeight: '600', color: COLORS.coral },
-  filterGroupLabel: {
-    fontSize: 12,
+  // Still used as a generic uppercase section label inside the Members sheet
+  // ("PENDING (N)") - not touched by the header/coupon-list redesign.
+  couponsHeaderLabel: {
+    fontSize: 13,
     fontWeight: '700',
     color: COLORS.muted,
-    letterSpacing: 0.8,
-    marginBottom: 10,
-    marginTop: 4,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
-  // Category cards (mirrors My Coupons filter)
+
+  // Filter sheet
+  clearFilterBtn: { alignSelf: 'flex-end', marginBottom: 8 },
+  clearFilterText: { fontSize: 14, fontWeight: '600', color: COLORS.coral },
   categoryScroll: { gap: 10, paddingBottom: 4, paddingRight: 4, marginBottom: 8 },
-  categoryCard: {
-    width: 80,
-    height: 80,
-    borderRadius: 16,
-    backgroundColor: '#EDE8DC',
-    borderWidth: 1.5,
-    borderColor: '#E0D8CA',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-  },
-  categoryCardLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: COLORS.ink,
-    textAlign: 'center',
-    opacity: 0.7,
-    paddingHorizontal: 4,
-  },
-  categoryCardLabelActive: { color: '#444444', opacity: 1 },
-  // Sort rows (mirrors My Coupons sort sheet)
-  sortOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    paddingHorizontal: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0D8CA',
-  },
-  sortOptionActive: { backgroundColor: 'rgba(232,96,76,0.06)', borderRadius: 12 },
-  sortOptionLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  sortOptionText: { fontSize: 15, fontWeight: '500', color: COLORS.ink },
-  sortOptionTextActive: { color: COLORS.coral, fontWeight: '700' },
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16, marginTop: 4 },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: COLORS.cardWhite,
-    borderWidth: 1,
-    borderColor: COLORS.divider,
-  },
-  filterChipActive: { backgroundColor: COLORS.coral, borderColor: COLORS.coral },
-  filterChipText: { fontSize: 13, fontWeight: '600', color: COLORS.ink },
-  filterChipTextActive: { color: '#fff' },
-  filterDoneBtn: {
-    backgroundColor: COLORS.coral,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  filterDoneBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 
   // Settings sheet rows
-  settingsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(196,184,160,0.25)',
-  },
-  settingsRowLast: { borderBottomWidth: 0 },
-  settingsRowText: { flex: 1, fontSize: 15, fontWeight: '600', color: COLORS.ink },
-  settingsRowTextDestructive: { color: '#D93025' },
-  settingsRowChevron: { marginLeft: 'auto' as any },
-
-  // Bottom sheets
-  sheetOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(26,35,50,0.5)',
-    justifyContent: 'flex-end',
-  },
-  filterSheetOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  filterSheetBackdrop: {
-    backgroundColor: 'rgba(26,35,50,0.5)',
-  },
-  sheet: {
-    backgroundColor: COLORS.bg,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingBottom: 0,
-  },
-  sheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#C4B8A0',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
   sheetTitle: { fontSize: 18, fontWeight: '800', color: COLORS.ink, marginBottom: 16 },
 
   membersSheetHeader: {
@@ -1882,17 +1339,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 24,
   },
-  dialog: {
-    width: '100%',
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    elevation: 12,
-  },
+  dialogPanelWrap: { width: '100%' },
   dialogHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1900,32 +1347,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   dialogTitle: { fontSize: 18, fontWeight: '800', color: COLORS.ink },
-  dialogCloseBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F0EBE0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dialogInput: {
-    backgroundColor: COLORS.bg,
-    borderRadius: 12,
-    paddingVertical: 13,
-    paddingHorizontal: 16,
-    fontSize: 15,
-    color: COLORS.ink,
-    marginBottom: 12,
-  },
-  dialogInviteBtn: {
-    backgroundColor: COLORS.coral,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  dialogInviteBtnDisabled: { opacity: 0.4 },
-  dialogInviteBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   suggestions: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -1952,23 +1373,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   deleteDialogActions: { flexDirection: 'row', gap: 12 },
-  deleteCancelBtn: {
-    flex: 1,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: '#C4B8A0',
-  },
-  deleteCancelBtnText: { fontSize: 15, fontWeight: '600', color: COLORS.ink },
-  deleteConfirmBtn: {
-    flex: 1,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    backgroundColor: '#D93025',
-  },
-  deleteConfirmBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  deleteDialogCol: { flex: 1 },
 
   // Coupon picker
   couponPickerRow: {
@@ -1992,17 +1397,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   inviteContactBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
-
-  addFromContactsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 10,
-    borderWidth: 1.5,
-    borderColor: COLORS.coral,
-    borderRadius: 14,
-    paddingVertical: 13,
-  },
-  addFromContactsBtnText: { fontSize: 15, fontWeight: '600', color: COLORS.coral },
 });

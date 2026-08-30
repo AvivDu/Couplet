@@ -3,6 +3,7 @@ import {
   View,
   TouchableOpacity,
   TouchableWithoutFeedback,
+  Pressable,
   StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
@@ -10,10 +11,8 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
-  Modal,
   Image,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text, TextInput } from '../../components/rn';
 import * as ImagePicker from 'expo-image-picker';
 import ImageCropModal from '../../components/ImageCropModal';
@@ -23,9 +22,17 @@ import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { createCoupon } from '../../services/api';
 import { saveCouponCode, saveCouponImage } from '../../storage/couponStorage';
 import { dismissDraft } from '../../storage/gmailDraftStorage';
-import { CATEGORY_COLORS } from '../../constants/categories';
 import { matchGeneralGiftCard, type GeneralGiftCard } from '../../constants/generalGiftCards';
 import { maskBalanceInput } from '../../utils/format';
+import AuroraBackground from '../../components/ui/AuroraBackground';
+import ScreenHeader from '../../components/ui/ScreenHeader';
+import Input from '../../components/ui/Input';
+import CategoryTile from '../../components/ui/CategoryTile';
+import GlassPanel from '../../components/ui/GlassPanel';
+import Button from '../../components/ui/Button';
+import Sheet from '../../components/ui/Sheet';
+import SectionLabel from '../../components/ui/SectionLabel';
+import { colors, glass, radius, spacing, fontFamily, fontSize } from '../../constants/theme';
 
 const ADD_CATEGORIES: { label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { label: 'General',     icon: 'gift-outline'                },
@@ -212,56 +219,69 @@ export default function AddCouponScreen() {
         onCancel={() => setCropUri(null)}
       />
     )}
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <AuroraBackground>
+      <ScreenHeader title="Add Coupon" subtitle="Stays on this device" />
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <KeyboardAvoidingView
           style={styles.container}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
-          <Text style={styles.screenTitle}>Add New Coupon</Text>
 
-          {/* Coupon Name */}
-          <View style={styles.inputWrap}>
-            <TextInput
-              style={styles.input}
-              placeholder="Coupon Name"
-              placeholderTextColor="#A8997A"
-              value={couponName}
-              onChangeText={handleCouponNameChange}
-            />
-          </View>
+          <Input
+            label="Coupon Name"
+            placeholder="e.g. Super-Pharm"
+            value={couponName}
+            onChangeText={handleCouponNameChange}
+            wrapperStyle={styles.field}
+          />
           {matchedGeneralCard && (
             <Text style={styles.matchHint}>
               Recognized as {matchedGeneralCard.canonicalName} → classified as General
             </Text>
           )}
 
-          {/* Coupon Code */}
-          <View style={styles.inputWrap}>
-            <TextInput
-              style={styles.input}
-              placeholder="Coupon Code"
-              placeholderTextColor="#A8997A"
-              autoCapitalize="characters"
-              value={code}
-              onChangeText={setCode}
+          <Input
+            label="Coupon Code"
+            placeholder="Paste or scan"
+            autoCapitalize="characters"
+            value={code}
+            onChangeText={setCode}
+            wrapperStyle={styles.field}
+          />
+
+          <View style={[styles.row, styles.field]}>
+            <Input
+              label="Balance"
+              placeholder="0"
+              icon={<Ionicons name="cash-outline" size={17} color={colors.textMuted} />}
+              value={maskBalanceInput(balance)}
+              onChangeText={text => setBalance(text.replace(/,/g, ''))}
+              keyboardType="decimal-pad"
+              wrapperStyle={{ flex: 1 }}
             />
+            <Pressable style={{ flex: 1 }} onPress={() => setShowDatePicker(true)}>
+              <View pointerEvents="none">
+                <Input
+                  label="Expires"
+                  placeholder="dd/mm/yyyy"
+                  icon={<Ionicons name="calendar-outline" size={17} color={colors.textMuted} />}
+                  value={expiryDate ? expiryDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}
+                  editable={false}
+                />
+              </View>
+            </Pressable>
           </View>
 
-          {/* Dynamic Gift Card Link */}
-          <Text style={styles.sectionLabel}>Dynamic Gift Card Link (optional)</Text>
-          <View style={styles.inputWrap}>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. https://www.buyme.co.il/..."
-              placeholderTextColor="#A8997A"
-              autoCapitalize="none"
-              keyboardType="url"
-              value={giftUrl}
-              onChangeText={setGiftUrl}
-            />
-          </View>
+          <Input
+            label="Dynamic Gift Card Link (optional)"
+            placeholder="e.g. https://www.buyme.co.il/..."
+            autoCapitalize="none"
+            keyboardType="url"
+            value={giftUrl}
+            onChangeText={setGiftUrl}
+            wrapperStyle={styles.field}
+          />
 
           {/* Barcode / QR Image (optional) */}
           <Text style={styles.sectionLabel}>Barcode / QR Image (optional)</Text>
@@ -290,7 +310,7 @@ export default function AddCouponScreen() {
                 </>
               ) : (
                 <View style={styles.imageEmpty}>
-                  <Ionicons name="qr-code-outline" size={32} color="#A8997A" />
+                  <Ionicons name="qr-code-outline" size={32} color={colors.textMuted} />
                   <Text style={styles.imageEmptyText}>Add barcode or QR image</Text>
                   <Text style={styles.imageEmptyHint}>Camera or Photo Library</Text>
                 </View>
@@ -302,65 +322,37 @@ export default function AddCouponScreen() {
                 onPress={() => { setImageUri(null); setImageNatSize(null); }}
                 hitSlop={8}
               >
-                <Ionicons name="close-circle" size={22} color="#E8604C" />
+                <Ionicons name="close-circle" size={22} color={colors.coral400} />
               </TouchableOpacity>
             )}
           </View>
 
-          {/* Expiration Date */}
-          <Text style={styles.sectionLabel}>Expiration Date</Text>
-          <View style={styles.dateRow}>
-            <TouchableOpacity
-              style={[styles.datePill, expiryDate ? styles.datePillFilled : null]}
-              onPress={() => setShowDatePicker(true)}
-            >
-              <Text style={[styles.datePillText, expiryDate ? styles.datePillTextFilled : null]}>
-                {expiryDate
-                  ? expiryDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-                  : 'Select date'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Balance */}
-          <View style={styles.inputWrap}>
-            <TextInput
-              style={styles.input}
-              placeholder="Balance (optional)"
-              placeholderTextColor="#A8997A"
-              value={maskBalanceInput(balance)}
-              onChangeText={text => setBalance(text.replace(/,/g, ''))}
-              keyboardType="decimal-pad"
-            />
-          </View>
-
-          {/* Category selector */}
-          <Text style={styles.sectionLabel}>Category</Text>
+          <SectionLabel>Category</SectionLabel>
           <View style={styles.categoryRow}>
-            {ADD_CATEGORIES.map(cat => {
-              const active = category === cat.label;
-              const color = CATEGORY_COLORS[cat.label] ?? '#EDE8DC';
-              return (
-                <TouchableOpacity
-                  key={cat.label}
-                  style={[styles.categoryCard, { borderColor: color }, active && { backgroundColor: color }]}
-                  onPress={() => handleCategoryPress(cat.label)}
-                  activeOpacity={0.75}
-                >
-                  <Ionicons name={cat.icon} size={24} color="#444444" />
-                  <Text style={styles.categoryCardLabel}>{cat.label}</Text>
-                </TouchableOpacity>
-              );
-            })}
+            {ADD_CATEGORIES.map(cat => (
+              <CategoryTile
+                key={cat.label}
+                label={cat.label}
+                category={cat.label}
+                icon={cat.icon}
+                active={category === cat.label}
+                onPress={() => handleCategoryPress(cat.label)}
+              />
+            ))}
           </View>
 
-          <TouchableOpacity style={styles.btn} onPress={handleAdd} disabled={loading}>
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.btnText}>Save Coupon</Text>
-            )}
-          </TouchableOpacity>
+          <GlassPanel tint="brand" radius={radius.l} padding={spacing.s7} sheen={false} style={styles.privacyPanel}>
+            <View style={styles.privacyRow}>
+              <Ionicons name="lock-closed-outline" size={18} color={colors.coral500} style={{ marginTop: 2 }} />
+              <Text style={styles.privacyText}>
+                The code is written to this phone's secure storage. Our servers only ever see the store name, category and balance.
+              </Text>
+            </View>
+          </GlassPanel>
+
+          <Button variant="primary" size="l" block onPress={handleAdd} disabled={loading}>
+            {loading ? <ActivityIndicator color="#fff" /> : 'Save Coupon'}
+          </Button>
 
         </ScrollView>
 
@@ -378,185 +370,82 @@ export default function AddCouponScreen() {
         )}
 
         {/* iOS: date picker in bottom sheet */}
-        <Modal
-          visible={Platform.OS === 'ios' && showDatePicker}
-          animationType="slide"
-          transparent
-          onRequestClose={() => setShowDatePicker(false)}
-        >
-          <TouchableOpacity
-            style={styles.modalOverlay}
-            activeOpacity={1}
-            onPress={() => setShowDatePicker(false)}
-          >
-            <View style={[styles.pickerSheet, { paddingBottom: 32 }]}>
-              <View style={styles.pickerHandle} />
-              <Text style={styles.pickerTitle}>Select Date</Text>
-              <DateTimePicker
-                value={expiryDate ?? new Date()}
-                mode="date"
-                display="inline"
-                minimumDate={new Date()}
-                themeVariant="light"
-                accentColor="#E8604C"
-                onChange={(_, date) => { if (date) setExpiryDate(date); }}
-                style={{ alignSelf: 'center' }}
-              />
-              <TouchableOpacity
-                style={[styles.btn, { marginTop: 12 }]}
-                onPress={() => setShowDatePicker(false)}
-              >
-                <Text style={styles.btnText}>Done</Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        </Modal>
+        {Platform.OS === 'ios' && (
+          <Sheet title="Select Date" open={showDatePicker} onClose={() => setShowDatePicker(false)}>
+            <DateTimePicker
+              value={expiryDate ?? new Date()}
+              mode="date"
+              display="inline"
+              minimumDate={new Date()}
+              themeVariant="light"
+              accentColor={colors.coral400}
+              onChange={(_, date) => { if (date) setExpiryDate(date); }}
+              style={{ alignSelf: 'center' }}
+            />
+            <Button variant="primary" block style={{ marginTop: spacing.s6 }} onPress={() => setShowDatePicker(false)}>
+              Done
+            </Button>
+          </Sheet>
+        )}
 
         </KeyboardAvoidingView>
       </TouchableWithoutFeedback>
-    </SafeAreaView>
+    </AuroraBackground>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F5F0E6' },
-  container: { flex: 1, backgroundColor: '#F5F0E6' },
-  inner: { padding: 20, paddingBottom: 48 },
-  screenTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1A2332',
-    marginBottom: 32,
-    marginTop: 8,
-  },
-  inputWrap: {
-    borderBottomWidth: 1.5,
-    borderBottomColor: '#C4B8A0',
-    marginBottom: 28,
-  },
-  input: {
-    paddingVertical: 10,
-    fontSize: 16,
-    color: '#1A2332',
-    backgroundColor: 'transparent',
-  },
+  container: { flex: 1 },
+  inner: { padding: spacing.gutterScreen, paddingBottom: 130 },
+  field: { marginBottom: spacing.s14 },
+  row: { flexDirection: 'row', gap: spacing.s6 },
   sectionLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#A8997A',
+    fontFamily: fontFamily.uiBold,
+    fontSize: fontSize.micro,
+    color: colors.textMuted,
     letterSpacing: 0.5,
-    marginBottom: 10,
+    marginBottom: spacing.s5,
   },
   matchHint: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#E8604C',
-    marginBottom: 20,
-  },
-  dateRow: {
-    marginBottom: 28,
-  },
-  datePill: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 24,
-    borderWidth: 1.5,
-    borderColor: '#C4B8A0',
-    alignItems: 'center',
-  },
-  datePillFilled: {
-    borderColor: '#E8604C',
-    backgroundColor: 'rgba(232,96,76,0.08)',
-  },
-  datePillText: {
-    fontSize: 14,
-    color: '#A8997A',
-    fontWeight: '500',
-  },
-  datePillTextFilled: {
-    color: '#1A2332',
-    fontWeight: '600',
+    fontFamily: fontFamily.uiSemibold,
+    fontSize: fontSize.micro,
+    color: colors.coral400,
+    marginTop: -spacing.s10,
+    marginBottom: spacing.s10,
   },
   categoryRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
-    marginBottom: 36,
+    marginBottom: spacing.s16,
     marginTop: 4,
   },
-  categoryCard: {
-    width: 78,
-    height: 78,
-    borderRadius: 16,
-    backgroundColor: '#F5F0E6',
-    borderWidth: 1.5,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-  },
-  categoryCardLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#444444',
-    textAlign: 'center',
-    paddingHorizontal: 4,
-  },
-  btn: {
-    backgroundColor: '#E8604C',
-    borderRadius: 30,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  pickerSheet: {
-    backgroundColor: '#F5F0E6',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-  },
-  pickerHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#C4B8A0',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  pickerTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1A2332',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(26,35,50,0.5)',
-    justifyContent: 'flex-end',
-  },
+  privacyPanel: { marginBottom: spacing.s10 },
+  privacyRow: { flexDirection: 'row', gap: spacing.s6, alignItems: 'flex-start' },
+  privacyText: { flex: 1, fontFamily: fontFamily.ui, fontSize: fontSize.caption, color: colors.textBody, lineHeight: fontSize.caption * 1.4 },
   imagePickerWrap: {
     position: 'relative',
-    marginBottom: 28,
+    marginBottom: spacing.s14,
   },
   imagePickerBase: {
-    borderRadius: 14,
+    borderRadius: radius.l,
     borderWidth: 1.5,
-    borderColor: '#C4B8A0',
+    borderColor: colors.lineStrong,
     borderStyle: 'dashed',
     overflow: 'hidden',
-    backgroundColor: '#FDFAF4',
+    backgroundColor: 'rgba(255,255,255,.5)',
     width: '100%',
     maxHeight: 150,
   },
   imagePicker: {
-    borderRadius: 14,
+    borderRadius: radius.l,
     borderWidth: 1.5,
-    borderColor: '#C4B8A0',
+    borderColor: colors.lineStrong,
     borderStyle: 'dashed',
     height: 120,
     overflow: 'hidden',
-    backgroundColor: '#FDFAF4',
+    backgroundColor: 'rgba(255,255,255,.5)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -564,7 +453,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -8,
     right: -8,
-    backgroundColor: '#F5F0E6',
+    backgroundColor: colors.surfacePage,
     borderRadius: 11,
   },
   imagePreview: {
@@ -582,21 +471,22 @@ const styles = StyleSheet.create({
   },
   imageChangeText: {
     color: '#fff',
+    fontFamily: fontFamily.uiSemibold,
     fontSize: 12,
-    fontWeight: '600',
   },
   imageEmpty: {
     alignItems: 'center',
     gap: 6,
   },
   imageEmptyText: {
+    fontFamily: fontFamily.uiSemibold,
     fontSize: 13,
-    fontWeight: '600',
-    color: '#1A2332',
+    color: colors.textStrong,
     opacity: 0.55,
   },
   imageEmptyHint: {
+    fontFamily: fontFamily.ui,
     fontSize: 11,
-    color: '#A8997A',
+    color: colors.textMuted,
   },
 });

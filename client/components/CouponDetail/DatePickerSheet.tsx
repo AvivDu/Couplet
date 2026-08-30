@@ -1,5 +1,6 @@
-import { Modal, TouchableOpacity, View, FlatList, StyleSheet } from 'react-native';
-import { Text } from '../rn';
+import { FlatList } from 'react-native';
+import Sheet from '../ui/Sheet';
+import OptionRow from '../ui/OptionRow';
 
 interface PickerItem {
   label: string;
@@ -24,83 +25,23 @@ export default function DatePickerSheet({
   onClose,
 }: DatePickerSheetProps) {
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <TouchableOpacity style={styles.pickerOverlay} activeOpacity={1} onPress={onClose}>
-        <View style={styles.pickerSheet}>
-          <View style={styles.pickerHandle} />
-          <Text style={styles.pickerTitle}>{title}</Text>
-          <FlatList
-            data={items}
-            keyExtractor={item => item.value}
-            style={styles.pickerList}
-            renderItem={({ item }) => {
-              const selected = selectedValue === item.value;
-              return (
-                <TouchableOpacity
-                  style={[styles.pickerItem, selected && styles.pickerItemSelected]}
-                  onPress={() => {
-                    onSelect(item.value);
-                    onClose();
-                  }}
-                >
-                  <Text style={[styles.pickerItemText, selected && styles.pickerItemTextSelected]}>
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              );
+    <Sheet title={title} open={visible} onClose={onClose}>
+      <FlatList
+        data={items}
+        keyExtractor={item => item.value}
+        style={{ maxHeight: 320 }}
+        renderItem={({ item, index }) => (
+          <OptionRow
+            label={item.label}
+            selected={selectedValue === item.value}
+            divider={index < items.length - 1}
+            onPress={() => {
+              onSelect(item.value);
+              onClose();
             }}
           />
-        </View>
-      </TouchableOpacity>
-    </Modal>
+        )}
+      />
+    </Sheet>
   );
 }
-
-const styles = StyleSheet.create({
-  pickerOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(26,35,50,0.5)',
-    justifyContent: 'flex-end',
-  },
-  pickerSheet: {
-    backgroundColor: '#F5F0E6',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingBottom: 40,
-    maxHeight: '60%',
-  },
-  pickerHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#C4B8A0',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  pickerTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#1A2332',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  pickerList: { flexGrow: 0 },
-  pickerItem: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-  },
-  pickerItemSelected: {
-    backgroundColor: 'rgba(232,96,76,0.12)',
-  },
-  pickerItemText: {
-    fontSize: 16,
-    color: '#1A2332',
-    textAlign: 'center',
-  },
-  pickerItemTextSelected: {
-    color: '#E8604C',
-    fontWeight: '700',
-  },
-});

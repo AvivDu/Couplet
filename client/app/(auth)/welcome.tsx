@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
-  TouchableOpacity,
   StyleSheet,
   Animated,
 } from 'react-native';
-import { Text } from '../../components/rn';
 import { useRouter } from 'expo-router';
 import CSymbol from '../../components/CSymbol';
+import AuroraBackground from '../../components/ui/AuroraBackground';
+import Button from '../../components/ui/Button';
 
 const C_SIZE = 78;
 const FONT_SIZE = 40;
@@ -86,7 +86,8 @@ export default function WelcomeScreen() {
   }, [rowMeasured]);
 
   return (
-    <View style={styles.container}>
+    <AuroraBackground>
+      <View style={styles.container}>
       <View style={styles.logoArea}>
         {/* Logo row — measured once to compute centering offset */}
         <View style={styles.logoRow} onLayout={onLogoRowLayout}>
@@ -123,21 +124,18 @@ export default function WelcomeScreen() {
 
       {/* CTA — appears after full animation */}
       <Animated.View style={[styles.btnWrap, { opacity: btnOpacity }]}>
-        <TouchableOpacity
-          style={styles.btn}
-          onPress={() => router.push('/(auth)/login')}
-        >
-          <Text style={styles.btnText}>Log In / Sign Up</Text>
-        </TouchableOpacity>
+        <Button variant="primary" size="l" block onPress={() => router.push('/(auth)/login')}>
+          Log In / Sign Up
+        </Button>
       </Animated.View>
-    </View>
+      </View>
+    </AuroraBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F0E6',
     alignItems: 'center',
   },
   logoArea: {
@@ -172,16 +170,5 @@ const styles = StyleSheet.create({
     bottom: 60,
     left: 32,
     right: 32,
-  },
-  btn: {
-    backgroundColor: '#E8604C',
-    borderRadius: 30,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  btnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
   },
 });

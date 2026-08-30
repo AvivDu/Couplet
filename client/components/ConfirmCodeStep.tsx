@@ -1,5 +1,8 @@
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
-import { Text, TextInput } from './rn';
+import { TouchableOpacity, StyleSheet } from 'react-native';
+import { Text } from './rn';
+import Input from './ui/Input';
+import Button from './ui/Button';
+import { colors, fontFamily, fontSize, spacing } from '../constants/theme';
 
 interface ConfirmCodeStepProps {
   email: string;
@@ -23,20 +26,18 @@ export default function ConfirmCodeStep({
   return (
     <>
       <Text style={styles.sentHint}>Code sent to {email}</Text>
-      <View style={styles.inputWrap}>
-        <TextInput
-          style={styles.input}
-          placeholder="Verification code"
-          placeholderTextColor="#A8997A"
-          keyboardType="number-pad"
-          value={code}
-          onChangeText={setCode}
-        />
-      </View>
+      <Input
+        label="Verification code"
+        placeholder="123456"
+        keyboardType="number-pad"
+        value={code}
+        onChangeText={setCode}
+        wrapperStyle={styles.field}
+      />
 
-      <TouchableOpacity style={styles.btn} onPress={onVerify} disabled={loading}>
-        <Text style={styles.btnText}>{verifyLabel}</Text>
-      </TouchableOpacity>
+      <Button variant="primary" size="l" block onPress={onVerify} disabled={loading} style={styles.submitBtn}>
+        {verifyLabel}
+      </Button>
       <TouchableOpacity style={styles.linkBtn} onPress={onResend} disabled={loading}>
         <Text style={styles.linkText}>
           Didn't get a code? <Text style={styles.linkBold}>Resend</Text>
@@ -47,28 +48,10 @@ export default function ConfirmCodeStep({
 }
 
 const styles = StyleSheet.create({
-  sentHint: { fontSize: 12, color: '#4CAF50', marginBottom: 16 },
-  inputWrap: {
-    borderBottomWidth: 1.5,
-    borderBottomColor: '#C4B8A0',
-    marginBottom: 28,
-  },
-  input: {
-    paddingVertical: 10,
-    fontSize: 16,
-    color: '#1A2332',
-    backgroundColor: 'transparent',
-  },
-  btn: {
-    backgroundColor: '#E8604C',
-    borderRadius: 30,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 12,
-    marginBottom: 24,
-  },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  sentHint: { fontFamily: fontFamily.uiSemibold, fontSize: 12, color: colors.stateSuccess, marginBottom: 16 },
+  field: { marginBottom: spacing.s7 },
+  submitBtn: { marginBottom: 24 },
   linkBtn: { alignItems: 'center', marginBottom: 12 },
-  linkText: { color: '#1A2332', fontSize: 14, opacity: 0.6 },
-  linkBold: { color: '#E8604C', fontWeight: '700', opacity: 1 },
+  linkText: { color: colors.textStrong, fontSize: 14, opacity: 0.6 },
+  linkBold: { color: colors.coral400, fontWeight: '700', opacity: 1 },
 });

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, TouchableOpacity, StyleSheet, FlatList, Alert, ActivityIndicator, AppState, AppStateStatus } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '../components/rn';
@@ -13,6 +12,13 @@ import {
 } from '../storage/gmailDraftStorage';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../constants/categories';
 import GmailEmailPreview from '../components/GmailEmailPreview';
+import AuroraBackground from '../components/ui/AuroraBackground';
+import ScreenHeader from '../components/ui/ScreenHeader';
+import GlassPanel from '../components/ui/GlassPanel';
+import Button from '../components/ui/Button';
+import Badge from '../components/ui/Badge';
+import EmptyState from '../components/ui/EmptyState';
+import { colors, radius, spacing, fontFamily, fontSize } from '../constants/theme';
 
 // Best-effort keyword guess so a matching category card is pre-selected on the Add
 // Coupon screen - falls back to leaving the category unset (user must pick) rather
@@ -233,47 +239,50 @@ export default function GmailScanScreen() {
     return !localCodes.has(normalizeCode(draft.code));
   });
 
+  const emptyHint = candidates.length === 0
+    ? 'Connect Gmail, then tap "Scan now" to look for coupon emails.'
+    : backfilling
+      ? 'Looking for coupon codes - this only takes a moment.'
+      : "Everything we found is either already in your wallet or didn't look like a coupon.";
+  const emptyTitle = candidates.length === 0
+    ? 'No candidates yet'
+    : backfilling
+      ? 'Reading your emails…'
+      : 'No new coupons found';
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Ionicons name="chevron-back" size={26} color="#1A2332" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Gmail Scanner</Text>
-        <View style={{ width: 26 }} />
-      </View>
+    <AuroraBackground>
+      <ScreenHeader back onBack={() => router.back()} title="Gmail Scanner" />
 
       <View style={styles.actions}>
-        <TouchableOpacity
-          style={styles.connectBtn}
+        <Button
+          variant="primary"
+          block
           onPress={handleConnect}
           disabled={connecting}
-          activeOpacity={0.8}
+          icon={connecting ? undefined : <Ionicons name="mail-outline" size={18} color="#fff" />}
         >
-          {connecting ? <ActivityIndicator color="#fff" /> : (
-            <>
-              <Ionicons name="mail-outline" size={18} color="#fff" />
-              <Text style={styles.connectBtnText}>{connectedEmail ? `Connected: ${connectedEmail}` : 'Connect Gmail'}</Text>
-            </>
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.scanBtn} onPress={handleScan} disabled={scanning} activeOpacity={0.8}>
-          {scanning ? <ActivityIndicator color="#E8604C" /> : (
-            <>
-              <Ionicons name="search-outline" size={16} color="#E8604C" />
-              <Text style={styles.scanBtnText}>Scan now</Text>
-            </>
-          )}
-        </TouchableOpacity>
+          {connecting ? <ActivityIndicator color="#fff" /> : (connectedEmail ? `Connected: ${connectedEmail}` : 'Connect Gmail')}
+        </Button>
+        <Button
+          variant="outline"
+          block
+          onPress={handleScan}
+          disabled={scanning}
+          icon={scanning ? undefined : <Ionicons name="search-outline" size={16} color={colors.coral500} />}
+        >
+          {scanning ? <ActivityIndicator color={colors.coral500} /> : 'Scan now'}
+        </Button>
       </View>
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 40 }} color="#E8604C" />
+        <ActivityIndicator style={{ marginTop: 40 }} color={colors.coral400} />
       ) : (
         <FlatList
           data={visibleCandidates}
           keyExtractor={c => c.message_id}
           contentContainerStyle={visibleCandidates.length === 0 ? styles.emptyContainer : styles.list}
+          ItemSeparatorComponent={() => <View style={{ height: spacing.s5 }} />}
           renderItem={({ item }) => {
             const draft = drafts[item.message_id]!;
             const hasCode = !!draft.code;
@@ -281,51 +290,33 @@ export default function GmailScanScreen() {
             const icon = (category ? CATEGORY_ICONS[category] : null) ?? 'pricetag-outline';
             const color = category ? CATEGORY_COLORS[category] : '#EDE8DC';
             return (
-              <TouchableOpacity style={styles.row} activeOpacity={0.8} onPress={() => handleDraftPress(item, draft)}>
-                <View style={styles.rowTop}>
-                  <View style={[styles.rowIcon, { backgroundColor: color }]}>
-                    <Ionicons name={icon as any} size={20} color="#1A2332" />
+              <TouchableOpacity activeOpacity={0.85} onPress={() => handleDraftPress(item, draft)}>
+                <GlassPanel tint="regular" radius={radius.l} padding={spacing.s7} sheen={false}>
+                  <View style={styles.rowTop}>
+                    <View style={[styles.rowIcon, { backgroundColor: color }]}>
+                      <Ionicons name={icon as any} size={20} color={colors.textStrong} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.rowStore} numberOfLines={1}>{draft.store || item.from}</Text>
+                      <Text style={styles.rowSubject} numberOfLines={1}>{item.subject || '(no subject)'}</Text>
+                    </View>
+                    <Badge tone={hasCode ? 'brand' : 'glass'} uppercase>
+                      {hasCode ? 'New' : 'No code found'}
+                    </Badge>
+                    <TouchableOpacity onPress={() => handleDeleteCandidate(item)} hitSlop={8}>
+                      <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+                    </TouchableOpacity>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.rowStore} numberOfLines={1}>{draft.store || item.from}</Text>
-                    <Text style={styles.rowSubject} numberOfLines={1}>{item.subject || '(no subject)'}</Text>
-                  </View>
-                  <View style={[styles.badge, !hasCode && styles.badgeMuted]}>
-                    <Text style={styles.badgeText}>{hasCode ? 'New' : 'No code found'}</Text>
-                  </View>
-                  <TouchableOpacity onPress={() => handleDeleteCandidate(item)} hitSlop={8}>
-                    <Ionicons name="close-circle" size={20} color="#A8997A" />
-                  </TouchableOpacity>
-                </View>
-                <Text style={styles.rowHint}>
-                  {hasCode
-                    ? `Received ${formatDate(item.date)} - tap to create a coupon from this email.`
-                    : 'We found an email that looks like a coupon but couldn\'t detect the code - tap to fill it in manually.'}
-                </Text>
+                  <Text style={styles.rowHint}>
+                    {hasCode
+                      ? `Received ${formatDate(item.date)} - tap to create a coupon from this email.`
+                      : "We found an email that looks like a coupon but couldn't detect the code - tap to fill it in manually."}
+                  </Text>
+                </GlassPanel>
               </TouchableOpacity>
             );
           }}
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyIcon}>📬</Text>
-              {candidates.length === 0 ? (
-                <>
-                  <Text style={styles.emptyText}>No candidates yet</Text>
-                  <Text style={styles.emptyHint}>Connect Gmail, then tap "Scan now" to look for coupon emails.</Text>
-                </>
-              ) : backfilling ? (
-                <>
-                  <Text style={styles.emptyText}>Reading your emails…</Text>
-                  <Text style={styles.emptyHint}>Looking for coupon codes - this only takes a moment.</Text>
-                </>
-              ) : (
-                <>
-                  <Text style={styles.emptyText}>No new coupons found</Text>
-                  <Text style={styles.emptyHint}>Everything we found is either already in your wallet or didn't look like a coupon.</Text>
-                </>
-              )}
-            </View>
-          }
+          ListEmptyComponent={<EmptyState icon="mail-open-outline" title={emptyTitle} hint={emptyHint} />}
         />
       )}
 
@@ -340,71 +331,23 @@ export default function GmailScanScreen() {
           setPreviewCandidate(null);
         }}
       />
-    </SafeAreaView>
+    </AuroraBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F5F0E6' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-  },
-  headerTitle: { fontSize: 18, fontWeight: '800', color: '#1A2332' },
-  actions: { paddingHorizontal: 20, gap: 10, marginBottom: 8 },
-  connectBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#E8604C',
-    borderRadius: 14,
-    paddingVertical: 13,
-  },
-  connectBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  scanBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#E8604C',
-    paddingVertical: 11,
-  },
-  scanBtnText: { color: '#E8604C', fontWeight: '700', fontSize: 14 },
-  list: { paddingHorizontal: 20, paddingBottom: 40, gap: 10 },
-  row: {
-    backgroundColor: '#EDE8DC',
-    borderRadius: 14,
-    padding: 14,
-    gap: 8,
-  },
-  rowTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  actions: { paddingHorizontal: spacing.gutterScreen, gap: spacing.s6, marginBottom: spacing.s5, marginTop: spacing.s5 },
+  list: { paddingHorizontal: spacing.gutterScreen, paddingBottom: 40 },
+  rowTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.s6 },
   rowIcon: {
     width: 38,
     height: 38,
-    borderRadius: 12,
+    borderRadius: radius.tile,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rowStore: { fontSize: 15, fontWeight: '700', color: '#1A2332' },
-  rowSubject: { fontSize: 13, color: '#1A2332', opacity: 0.6, marginTop: 2 },
-  rowHint: { fontSize: 12, color: '#1A2332', opacity: 0.45 },
-  badge: {
-    backgroundColor: '#E8604C',
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  badgeMuted: { backgroundColor: '#A8997A' },
-  badgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  rowStore: { fontFamily: fontFamily.uiBold, fontSize: fontSize.body, color: colors.textStrong },
+  rowSubject: { fontFamily: fontFamily.ui, fontSize: fontSize.caption, color: colors.textMuted, marginTop: 2 },
+  rowHint: { fontFamily: fontFamily.ui, fontSize: fontSize.micro, color: colors.textMuted, marginTop: spacing.s5 },
   emptyContainer: { flex: 1, justifyContent: 'center' },
-  empty: { alignItems: 'center', gap: 8, paddingHorizontal: 40 },
-  emptyIcon: { fontSize: 44 },
-  emptyText: { fontSize: 17, fontWeight: '700', color: '#1A2332' },
-  emptyHint: { fontSize: 13, color: '#1A2332', opacity: 0.5, textAlign: 'center' },
 });
