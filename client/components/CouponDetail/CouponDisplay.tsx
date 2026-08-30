@@ -4,8 +4,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
   Image,
   Alert,
   FlatList,
@@ -335,12 +333,16 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
       {/* Secondary actions - Edit + Share (owner-only server-side) */}
       {isOwner && (
         <View style={styles.actionRow}>
-          <Button variant="glass" block onPress={onEdit} icon={<Ionicons name="pencil-outline" size={16} color={colors.coral500} />}>
-            Edit Coupon
-          </Button>
-          <Button variant="glass" block onPress={handleShareToGroup} icon={<Ionicons name="share-social-outline" size={16} color={colors.coral500} />}>
-            Share to Group
-          </Button>
+          <View style={styles.actionCol}>
+            <Button variant="glass" block onPress={onEdit} icon={<Ionicons name="pencil-outline" size={16} color={colors.coral500} />}>
+              Edit Coupon
+            </Button>
+          </View>
+          <View style={styles.actionCol}>
+            <Button variant="glass" block onPress={handleShareToGroup} icon={<Ionicons name="share-social-outline" size={16} color={colors.coral500} />}>
+              Share to Group
+            </Button>
+          </View>
         </View>
       )}
 
@@ -368,7 +370,7 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
       open={redeemModalVisible}
       onClose={() => { setRedeemModalVisible(false); setPartialAmount(''); }}
     >
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <>
         <Text style={styles.confirmTitle}>
           {canPartialRedeem ? 'How would you like to redeem?' : 'Redeem this coupon?'}
         </Text>
@@ -417,7 +419,7 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
         >
           <Text style={styles.cancelLinkText}>Cancel</Text>
         </TouchableOpacity>
-      </KeyboardAvoidingView>
+      </>
     </Sheet>
 
     {/* Group picker sheet */}
@@ -526,6 +528,7 @@ const styles = StyleSheet.create({
   // Actions
   redeemBtn: { marginTop: spacing.s4 },
   actionRow: { flexDirection: 'row', gap: 10 },
+  actionCol: { flex: 1 },
   whereBtn: {},
   deleteBtn: {},
 

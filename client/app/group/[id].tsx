@@ -4,7 +4,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Modal,
+  Keyboard,
   ActivityIndicator,
   Alert,
   Platform,
@@ -546,6 +546,19 @@ export default function GroupScreen() {
     return SENDER_ACCENTS[Math.max(0, i) % SENDER_ACCENTS.length];
   }
 
+  // The invite/rename dialogs are centred in a full-screen overlay, so the keyboard
+  // covers their lower half. KeyboardAvoidingView measures its own parent-relative
+  // frame and gets the offset wrong for an absolutely-filled overlay - taking the
+  // height straight off the keyboard event is exact on both platforms.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const show = Keyboard.addListener(showEvent, e => setKeyboardHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+
   function closeInviteSheet() {
     setInviteSheetVisible(false);
     setMemberQuery('');
@@ -951,15 +964,13 @@ export default function GroupScreen() {
         </ScrollView>
       </Sheet>
 
-      {/* Invite Member Dialog */}
-      <Modal
-        visible={inviteSheetVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeInviteSheet}
-      >
+      {/* Invite Member Dialog - View overlay, not a Modal, for the same reason as the
+          rename dialog below: the members sheet is itself a Modal, and opening a second
+          one while it closes leaves an invisible Modal on iOS that swallows every touch.
+          The KeyboardAvoidingView keeps the centred panel clear of the keyboard. */}
+      {inviteSheetVisible && (
         <TouchableOpacity
-          style={styles.dialogOverlay}
+          style={[StyleSheet.absoluteFill, styles.dialogOverlay, { paddingBottom: keyboardHeight }]}
           activeOpacity={1}
           onPress={closeInviteSheet}
         >
@@ -1016,12 +1027,12 @@ export default function GroupScreen() {
           </GlassPanel>
           </View>
         </TouchableOpacity>
-      </Modal>
+      )}
 
       {/* Rename Dialog - View overlay avoids nested-Modal iOS conflict */}
       {renameModalVisible && (
         <TouchableOpacity
-          style={[StyleSheet.absoluteFill, styles.dialogOverlay]}
+          style={[StyleSheet.absoluteFill, styles.dialogOverlay, { paddingBottom: keyboardHeight }]}
           activeOpacity={1}
           onPress={() => {
             setRenameModalVisible(false);

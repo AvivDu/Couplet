@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, TextInput, StyleSheet, ViewStyle, StyleProp, TextInputProps } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { colors, glass, blur, radius, spacing, fontFamily, fontSize, letterSpacingRatio } from '../../constants/theme';
+import { colors, glass, blur, radius, spacing, fontFamily, fontSize, letterSpacingRatio, motion } from '../../constants/theme';
 
 export type InputVariant = 'glass' | 'underline';
 
@@ -16,8 +16,21 @@ interface InputProps extends TextInputProps {
 }
 
 export default function Input({
-  label, hint, icon, trailing, variant = 'glass', invalid = false, wrapperStyle, style, ...rest
+  label, hint, icon, trailing, variant = 'glass', invalid = false, wrapperStyle, style, autoFocus, ...rest
 }: InputProps) {
+  const inputRef = useRef<TextInput>(null);
+
+  // Deferred on purpose. Every autoFocus in the app sits inside a Sheet, and a native
+  // autoFocus raises the keyboard while the Modal is still presenting - the Sheet's
+  // KeyboardAvoidingView then never measures a stable frame, so the sheet stays pinned
+  // under the keyboard. Focusing after the present + slide-up gives it something to
+  // measure. Matches the sheet's own open duration.
+  useEffect(() => {
+    if (!autoFocus) return;
+    const timer = setTimeout(() => inputRef.current?.focus(), motion.durBase + 80);
+    return () => clearTimeout(timer);
+  }, [autoFocus]);
+
   const isGlass = variant === 'glass';
   const borderColor = invalid ? colors.stateDanger : (isGlass ? glass.edge : colors.lineStrong);
 
@@ -36,6 +49,7 @@ export default function Input({
         {isGlass && <View style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick }]} />}
         {icon && <View style={styles.icon}>{icon}</View>}
         <TextInput
+          ref={inputRef}
           style={[styles.input, style]}
           placeholderTextColor={colors.textMuted}
           {...rest}

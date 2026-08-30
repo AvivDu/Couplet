@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Dimensions, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, glass, blur, radius, spacing, fontFamily, fontSize, letterSpacingRatio, motion } from '../../constants/theme';
@@ -38,7 +38,13 @@ export default function Sheet({ title, open, onClose, onDismiss, footer, childre
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} onDismiss={onDismiss}>
-      <View style={styles.overlay}>
+      {/* The sheet is bottom-anchored, so shrinking this full-screen overlay by the
+          keyboard height is what lifts it clear - a KeyboardAvoidingView on the sheet's
+          own content can't work, since the sheet sizes to its content. */}
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
         <Animated.View style={[StyleSheet.absoluteFill, { opacity: anim }]}>
           <BlurView intensity={blur.s} tint="dark" style={StyleSheet.absoluteFill} />
           <View style={[StyleSheet.absoluteFill, styles.scrimTint]} />
@@ -69,7 +75,7 @@ export default function Sheet({ title, open, onClose, onDismiss, footer, childre
             {footer && <View style={styles.footer}>{footer}</View>}
           </View>
         </Animated.View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
