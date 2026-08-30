@@ -91,7 +91,6 @@ export default function GroupScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [savingPhoto, setSavingPhoto] = useState(false);
-  const [pendingPhotoPick, setPendingPhotoPick] = useState(false);
 
   const [settingsSheetVisible, setSettingsSheetVisible] = useState(false);
   const [membersSheetVisible, setMembersSheetVisible] = useState(false);
@@ -811,13 +810,6 @@ export default function GroupScreen() {
         title="Group Settings"
         open={settingsSheetVisible}
         onClose={() => setSettingsSheetVisible(false)}
-        onDismiss={() => {
-          // iOS: runs after the sheet has fully closed - safe to present the picker now.
-          if (pendingPhotoPick) {
-            setPendingPhotoPick(false);
-            handlePickImage();
-          }
-        }}
       >
         {isAdmin && (
           <>
@@ -829,12 +821,11 @@ export default function GroupScreen() {
                 // iOS can't present the image picker while the settings sheet is still
                 // on screen, so launch it only AFTER the sheet has fully dismissed
                 // (via Sheet's onDismiss). Android has no such restriction.
+                // iOS can't present the image picker while the sheet's Modal is still
+                // mounted, and Sheet unmounts rather than dismissing (so onDismiss never
+                // fires) - wait out its 200ms close animation instead.
                 setSettingsSheetVisible(false);
-                if (Platform.OS === 'ios') {
-                  setPendingPhotoPick(true);
-                } else {
-                  setTimeout(() => handlePickImage(), 250);
-                }
+                setTimeout(() => handlePickImage(), 350);
               }}
             />
             <OptionRow
@@ -1095,12 +1086,16 @@ export default function GroupScreen() {
               permanent and will remove all members.
             </Text>
             <View style={styles.deleteDialogActions}>
-              <Button variant="ghost" block onPress={() => setDeleteConfirmVisible(false)} style={styles.deleteCancelBtn}>
-                Cancel
-              </Button>
-              <Button variant="danger" block onPress={handleDeleteGroup} disabled={deleting} style={{ flex: 1 }}>
-                {deleting ? <ActivityIndicator color={theme.stateDanger} size="small" /> : 'Delete'}
-              </Button>
+              <View style={styles.deleteDialogCol}>
+                <Button variant="ghost" block onPress={() => setDeleteConfirmVisible(false)}>
+                  Cancel
+                </Button>
+              </View>
+              <View style={styles.deleteDialogCol}>
+                <Button variant="danger" block onPress={handleDeleteGroup} disabled={deleting}>
+                  {deleting ? <ActivityIndicator color={theme.stateDanger} size="small" /> : 'Delete'}
+                </Button>
+              </View>
             </View>
           </GlassPanel>
           </View>
@@ -1378,7 +1373,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   deleteDialogActions: { flexDirection: 'row', gap: 12 },
-  deleteCancelBtn: { flex: 1 },
+  deleteDialogCol: { flex: 1 },
 
   // Coupon picker
   couponPickerRow: {
