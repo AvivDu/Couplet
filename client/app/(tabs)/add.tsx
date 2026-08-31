@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Text, TextInput } from '../../components/rn';
 import * as ImagePicker from 'expo-image-picker';
+import * as Clipboard from 'expo-clipboard';
 import ImageCropModal from '../../components/ImageCropModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +25,7 @@ import { saveCouponCode, saveCouponImage } from '../../storage/couponStorage';
 import { dismissDraft } from '../../storage/gmailDraftStorage';
 import { matchGeneralGiftCard, type GeneralGiftCard } from '../../constants/generalGiftCards';
 import { maskBalanceInput } from '../../utils/format';
+import { extractCouponFieldsFromText } from '../../utils/couponTextExtraction';
 import AuroraBackground from '../../components/ui/AuroraBackground';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import Input from '../../components/ui/Input';
@@ -59,6 +61,9 @@ export default function AddCouponScreen() {
   const [imageNatSize, setImageNatSize] = useState<{ w: number; h: number } | null>(null);
   const [giftUrl, setGiftUrl] = useState('');
   const [matchedGeneralCard, setMatchedGeneralCard] = useState<GeneralGiftCard | null>(null);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickAddMode, setQuickAddMode] = useState<'choose' | 'paste'>('choose');
+  const [pastedText, setPastedText] = useState('');
   const categoryTouchedRef = useRef(false);
   // Route params on a tab screen persist across focuses (there's no unmount to reset
   // them) - without this, the fromGmail branch below would re-populate the same draft
@@ -120,6 +125,39 @@ export default function AddCouponScreen() {
   function handleCategoryPress(label: string) {
     categoryTouchedRef.current = true;
     setCategory(label);
+  }
+
+  function openQuickAdd() {
+    setQuickAddMode('choose');
+    setPastedText('');
+    setQuickAddOpen(true);
+  }
+
+  function handleQuickAddGmail() {
+    setQuickAddOpen(false);
+    router.push('/gmail-scan');
+  }
+
+  async function handlePasteFromClipboard() {
+    const text = await Clipboard.getStringAsync();
+    if (text) setPastedText(text);
+  }
+
+  // Runs entirely on-device - the pasted text (which may contain a coupon code)
+  // never goes to the server, same invariant as the Gmail draft flow. Unlike that
+  // flow, store detection here can only recognize a known brand (matchGeneralGiftCard) -
+  // there's no email "From" header to fall back to for an arbitrary store name.
+  function handleAnalyzePastedText() {
+    const fields = extractCouponFieldsFromText(pastedText);
+    const match = matchGeneralGiftCard(pastedText);
+    setCode(fields.code ?? '');
+    setCouponName(fields.store ?? '');
+    setMatchedGeneralCard(match);
+    setCategory(match ? 'General' : '');
+    setExpiryDate(fields.expiration ? new Date(fields.expiration) : null);
+    setBalance(fields.amount != null ? String(fields.amount) : '');
+    categoryTouchedRef.current = false;
+    setQuickAddOpen(false);
   }
 
   const expiryString = expiryDate
@@ -220,7 +258,20 @@ export default function AddCouponScreen() {
       />
     )}
     <AuroraBackground>
-      <ScreenHeader title="Add Coupon" subtitle="Stays on this device" />
+      <ScreenHeader
+        title="Add Coupon"
+        subtitle="Stays on this device"
+        actions={
+          <Button
+            variant="glass"
+            size="s"
+            icon={<Ionicons name="flash-outline" size={16} color={colors.coral400} />}
+            onPress={openQuickAdd}
+          >
+            Quick Add
+          </Button>
+        }
+      />
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <KeyboardAvoidingView
           style={styles.container}
@@ -387,6 +438,52 @@ export default function AddCouponScreen() {
             </Button>
           </Sheet>
         )}
+
+        <Sheet
+          title={quickAddMode === 'paste' ? 'Paste Coupon Text' : 'Quick Add'}
+          open={quickAddOpen}
+          onClose={() => setQuickAddOpen(false)}
+        >
+          {quickAddMode === 'choose' ? (
+            <View style={{ gap: spacing.s6 }}>
+              <Button
+                variant="glass"
+                size="l"
+                block
+                icon={<Ionicons name="mail-outline" size={18} color={colors.coral400} />}
+                onPress={handleQuickAddGmail}
+              >
+                Scan Gmail for Coupons
+              </Button>
+              <Button
+                variant="glass"
+                size="l"
+                block
+                icon={<Ionicons name="clipboard-outline" size={18} color={colors.coral400} />}
+                onPress={() => setQuickAddMode('paste')}
+              >
+                Paste Text
+              </Button>
+            </View>
+          ) : (
+            <View style={{ gap: spacing.s10 }}>
+              <Input
+                placeholder="Paste a coupon email, SMS, or message here..."
+                value={pastedText}
+                onChangeText={setPastedText}
+                multiline
+                numberOfLines={5}
+                style={{ minHeight: 110, textAlignVertical: 'top' }}
+              />
+              <Button variant="outline" block onPress={handlePasteFromClipboard}>
+                Paste from Clipboard
+              </Button>
+              <Button variant="primary" block disabled={!pastedText.trim()} onPress={handleAnalyzePastedText}>
+                Analyze
+              </Button>
+            </View>
+          )}
+        </Sheet>
 
         </KeyboardAvoidingView>
       </TouchableWithoutFeedback>
