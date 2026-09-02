@@ -1,0 +1,36 @@
+#!/bin/sh
+# Refuse direct pushes to shared branches.
+#
+# Runs for EVERY client - CLI, VS Code's push/sync button, JetBrains, GitHub Desktop -
+# which is the point: push.default only guards the CLI, and this repo's rule
+# ("never commit directly to main, prefer PRs") was bypassed by an IDE button that
+# pushed HEAD to its tracked upstream (integration/v2-rc) regardless of branch name.
+#
+# Override for a deliberate, agreed push:
+#   ALLOW_PROTECTED_PUSH=1 git push origin <branch>
+
+protected='^refs/heads/(main|master|integration/.*)$'
+blocked=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "$remote_ref" ] && continue
+  if printf '%s' "$remote_ref" | grep -Eq "$protected"; then
+    if [ "$ALLOW_PROTECTED_PUSH" = "1" ]; then
+      printf 'pre-push: override active, allowing push to %s\n' "${remote_ref#refs/heads/}" >&2
+    else
+      blocked=1
+      printf '\n  BLOCKED: refusing to push directly to "%s".\n' "${remote_ref#refs/heads/}" >&2
+    fi
+  fi
+done
+
+if [ "$blocked" = "1" ]; then
+  printf '\n  Team rule: work on feature/<name> or fix/<name> and open a PR.\n' >&2
+  printf '  Push your own branch instead:\n' >&2
+  printf '      git push -u origin "$(git branch --show-current)"\n' >&2
+  printf '\n  If this push really is intended:\n' >&2
+  printf '      ALLOW_PROTECTED_PUSH=1 git push origin <branch>\n\n' >&2
+  exit 1
+fi
+
+exit 0

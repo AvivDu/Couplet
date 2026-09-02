@@ -43,6 +43,7 @@ Server coordinates P2P sessions but never relays coupon data.
 Login/Register · Forgot Password · Home (coupon list, search, filters) · Coupon Detail (QR/barcode, balance, expiry) · Add Coupon · Connections (groups list) · Group Coupons · Gmail Scan
 
 ## Git Rules
+- **One-time per clone: `git config core.hooksPath .githooks`** - installs the `pre-push` guard that refuses direct pushes to `main` and `integration/*`. Needed because IDE push/sync buttons push to the tracked upstream regardless of branch name, which `push.default` does not catch. Deliberate push: `ALLOW_PROTECTED_PUSH=1 git push origin <branch>`.
 - Never commit directly to `main`. All work on `feature/<name>` or `fix/<name>` branches.
 - Sync with main before starting work and before opening a PR.
 - Prefer PRs over direct merges - 3-person team, give teammates review window.
