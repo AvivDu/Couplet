@@ -4,6 +4,12 @@ import {
   AuthenticationDetails,
   CognitoUserAttribute,
 } from 'amazon-cognito-identity-js';
+import { installFastSrpMath } from './srpFastMath';
+
+// Must run after the import above, since that is what installs enhance-rn.js's own
+// modPow wrapper - this replaces it and keeps it as the fallback. Without it, SRP on
+// Android overruns Cognito's 30s challenge window; see srpFastMath.ts.
+installFastSrpMath();
 
 const userPool = new CognitoUserPool({
   UserPoolId: process.env.EXPO_PUBLIC_COGNITO_USER_POOL_ID!,
@@ -65,16 +71,13 @@ export function cognitoSignIn(email: string, password: string): Promise<{ token:
     const user = new CognitoUser({ Username: email, Pool: userPool });
     const authDetails = new AuthenticationDetails({ Username: email, Password: password });
 
-    // CURRENT: SRP (Secure Remote Password) - more secure.
-    // The password never leaves the device; only a mathematical proof is sent to Cognito.
-    // Downside: heavy BigInt computation (~9-11s on device) blocks the JS thread.
+    // SRP (Secure Remote Password): the password never leaves the device, only a
+    // mathematical proof is sent to Cognito. The bignum work runs on native BigInt
+    // (installFastSrpMath, above) instead of the library's pure-JS fallback, which
+    // keeps sign-in at ~1-2s on both platforms.
     //
-    // TO SWITCH TO FASTER (USER_PASSWORD_AUTH):
-    //   1. AWS Cognito Console → User Pool → App Client → enable ALLOW_USER_PASSWORD_AUTH
-    //   2. Uncomment the line below:
-    //      user.setAuthenticationFlowType('USER_PASSWORD_AUTH');
-    //   Trade-off: password is sent in plaintext to Cognito (still protected by TLS, but
-    //   strictly less secure than SRP). Login drops from ~12s to ~1-2s.
+    // Do NOT switch to USER_PASSWORD_AUTH for speed: it sends the password to Cognito
+    // in the request body, and since srpFastMath there is no speed left to gain by it.
     user.authenticateUser(authDetails, {
       onSuccess: (session) => resolve({
         token: session.getAccessToken().getJwtToken(),
