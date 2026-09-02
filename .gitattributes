@@ -1,0 +1,2 @@
+# Shell hooks must keep LF endings - CRLF makes the shebang fail on macOS/Linux
+.githooks/** text eol=lf
