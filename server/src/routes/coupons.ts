@@ -1,9 +1,10 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { getCouponsByOwner, getCouponById, insertCoupon, updateCoupon, deleteCoupon } from '../repositories/coupons';
-import { removeCouponFromAllGroups } from '../repositories/groups';
+import { removeCouponFromAllGroups, pushCouponUpdated, getGroupsContainingCoupon } from '../repositories/groups';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { crawlRedeemableStores } from '../services/crawler';
+import { applyRedemption, parseRedeemAction, notifyCouponRedeemed } from '../services/redemption';
 
 const router = Router();
 
@@ -48,6 +49,10 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
 
 const VALID_STATUSES = ['active', 'expired', 'used'];
 
+// The fields GET /groups/:id exposes to members - only these are worth a
+// live refresh on other people's devices.
+const GROUP_VISIBLE_FIELDS = ['category', 'store_name', 'expiration_date', 'balance', 'status', 'giftcard_url'];
+
 router.patch('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   const { category, store_name, expiration_date, balance, status, giftcard_url } = req.body;
 
@@ -64,13 +69,54 @@ router.patch('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   if (status !== undefined) fields.status = status;
   if (giftcard_url !== undefined) fields.giftcard_url = giftcard_url;
 
+  // This is the general-purpose edit endpoint, so an absolute balance is the
+  // right semantic here. Redeeming goes through /:id/redeem below, which is
+  // atomic. The notify is kept as a safety net for anything that sets 'used'
+  // through this route directly.
+  const wasAlreadyUsed = status === 'used'
+    ? (await getCouponById(req.params.id))?.status === 'used'
+    : false;
+
   const updated = await updateCoupon(req.params.id, req.userId!, fields);
   if (!updated) {
     res.status(404).json({ error: 'Coupon not found' });
     return;
   }
 
+  if (status === 'used' && !wasAlreadyUsed) {
+    await notifyCouponRedeemed(updated, req.userId!, { kind: 'full' });
+  } else if (GROUP_VISIBLE_FIELDS.some(f => f in fields)) {
+    // Edits change what group members see on their group screen, which
+    // otherwise sits stale until they navigate away and back. This is a
+    // live refresh only - no notification row, no banner (see
+    // pushCouponUpdated). Awaited for the same Lambda-freeze reason.
+    await pushCouponUpdated(req.params.id, req.userId!);
+  }
+
   res.json(updated);
+});
+
+// POST /coupons/:id/redeem - owner redeems their own coupon.
+// Body: { redeem_all: true } or { amount: <number > 0> }.
+router.post('/:id/redeem', async (req: AuthRequest, res: Response): Promise<void> => {
+  const parsed = parseRedeemAction(req.body);
+  if ('error' in parsed) {
+    res.status(400).json({ error: parsed.error });
+    return;
+  }
+
+  const coupon = await getCouponById(req.params.id);
+  if (!coupon || coupon.owner_id !== req.userId!) {
+    res.status(404).json({ error: 'Coupon not found' });
+    return;
+  }
+
+  const outcome = await applyRedemption(req.params.id, req.userId!, parsed);
+  if (outcome.status !== 200) {
+    res.status(outcome.status).json({ error: outcome.error });
+    return;
+  }
+  res.json(outcome.coupon);
 });
 
 router.delete('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
@@ -82,6 +128,21 @@ router.delete('/:id', async (req: AuthRequest, res: Response): Promise<void> => 
   // Clean up stale group references in the background
   removeCouponFromAllGroups(req.params.id).catch(() => {});
   res.status(204).send();
+});
+
+// GET /coupons/:id/groups - owner-only. Which groups this coupon is
+// currently shared to, so the client knows where to redeliver an edited code
+// (see POST /groups/:id/coupons/:couponId's code_updated branch). The code
+// itself never touches the server, so only the owner's device - the one that
+// holds it - can drive this redelivery; the server just needs to say where.
+router.get('/:id/groups', async (req: AuthRequest, res: Response): Promise<void> => {
+  const coupon = await getCouponById(req.params.id);
+  if (!coupon || coupon.owner_id !== req.userId!) {
+    res.status(404).json({ error: 'Coupon not found' });
+    return;
+  }
+  const groups = await getGroupsContainingCoupon(req.params.id);
+  res.json(groups.map(g => ({ group_id: g.group_id, name: g.name })));
 });
 
 router.get('/:id/locations', async (req: AuthRequest, res: Response): Promise<void> => {

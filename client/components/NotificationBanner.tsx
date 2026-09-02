@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { Text } from './rn';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { colors, glass, blur, radius, fontFamily, fontSize, elevation } from '../constants/theme';
 
 export type BannerData = {
   id: string;
@@ -58,13 +60,15 @@ export default function NotificationBanner({
             onPress(data);
           }}
         >
-          <Ionicons name={data.icon ?? 'notifications'} size={22} color="#E8604C" />
+          <BlurView intensity={blur.l} tint="light" style={StyleSheet.absoluteFill} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick }]} />
+          <Ionicons name={data.icon ?? 'notifications'} size={22} color={colors.coral400} style={styles.icon} />
           <View style={styles.textBlock}>
             <Text style={styles.title} numberOfLines={1}>{data.title}</Text>
             <Text style={styles.body} numberOfLines={2}>{data.body}</Text>
           </View>
-          <TouchableOpacity onPress={hide} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons name="close" size={18} color="#8A7A65" />
+          <TouchableOpacity style={styles.closeBtn} onPress={hide} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="close" size={18} color={colors.tan600} />
           </TouchableOpacity>
         </TouchableOpacity>
       </SafeAreaView>
@@ -78,20 +82,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: radius.card,
     borderWidth: 1.5,
-    borderColor: '#C4B8A0',
+    borderColor: glass.edge,
+    overflow: 'hidden',
     paddingVertical: 14,
     paddingHorizontal: 16,
     marginTop: 6,
-    shadowColor: '#1A2332',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
+    ...(elevation.panel as object),
   },
+  icon: {},
+  closeBtn: {},
   textBlock: { flex: 1 },
-  title: { fontSize: 15, fontWeight: '800', color: '#1A2332', marginBottom: 2 },
-  body: { fontSize: 13, fontWeight: '500', color: '#4A3F30', lineHeight: 17 },
+  title: { fontFamily: fontFamily.uiBlack, fontSize: fontSize.bodyS, color: colors.textStrong, marginBottom: 2 },
+  body: { fontFamily: fontFamily.ui, fontSize: fontSize.caption, color: colors.textBody, lineHeight: 17 },
 });

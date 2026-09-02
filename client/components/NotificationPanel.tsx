@@ -1,9 +1,13 @@
 import { View, StyleSheet, Modal, ScrollView, TouchableOpacity } from 'react-native';
-import { Text } from './rn';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { CATEGORY_COLORS } from '../constants/categories';
+import AuroraBackground from './ui/AuroraBackground';
+import ScreenHeader from './ui/ScreenHeader';
+import IconButton from './ui/IconButton';
+import NotificationCard from './ui/NotificationCard';
+import EmptyState from './ui/EmptyState';
+import Button from './ui/Button';
+import { colors, spacing } from '../constants/theme';
 
 export type NotificationItem = {
   id: string;
@@ -45,39 +49,24 @@ function NotifCard({ item, onAccept, onDecline, onDismiss, onPress }: {
   onDismiss: () => void;
   onPress: () => void;
 }) {
-  const stripeColor =
-    item.type === 'coupon'
-      ? (CATEGORY_COLORS[item.category ?? ''] ?? CATEGORY_COLORS.Other)
-      : '#FFB7B2';
-
-  const icon: keyof typeof Ionicons.glyphMap =
-    item.type === 'coupon' ? 'time-outline' : 'people-outline';
-
   // Invite cards use Accept/Decline; any other card with a group target taps to navigate.
   const navigable = item.actionType !== 'group_invite' && !!item.navigateGroupId;
 
-  const cardInner = (
-    <View style={[styles.card, item.read && styles.cardRead]}>
-      <View style={[styles.stripe, { backgroundColor: stripeColor }]} />
-      <View style={styles.cardBody}>
-        <Ionicons name={icon} size={22} color="#E8604C" />
-        <View style={styles.textBlock}>
-          <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
-          <Text style={styles.cardSub}>{item.body}</Text>
-          {item.actionType === 'group_invite' && (
-            <View style={styles.actionRow}>
-              <TouchableOpacity style={styles.acceptBtn} onPress={onAccept}>
-                <Text style={styles.acceptBtnText}>Accept</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.declineBtn} onPress={onDecline}>
-                <Text style={styles.declineBtnText}>Decline</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-        {navigable && <Ionicons name="chevron-forward" size={18} color="#C4B8A0" />}
-      </View>
-    </View>
+  const card = (
+    <NotificationCard
+      kind={item.type}
+      category={item.category}
+      title={item.title}
+      body={item.body}
+      read={item.read}
+      navigable={navigable}
+      actions={item.actionType === 'group_invite' ? (
+        <>
+          <Button size="s" onPress={onAccept}>Accept</Button>
+          <Button size="s" variant="outline" onPress={onDecline}>Decline</Button>
+        </>
+      ) : undefined}
+    />
   );
 
   return (
@@ -90,9 +79,9 @@ function NotifCard({ item, onAccept, onDecline, onDismiss, onPress }: {
       containerStyle={styles.swipeContainer}
     >
       {navigable ? (
-        <TouchableOpacity activeOpacity={0.85} onPress={onPress}>{cardInner}</TouchableOpacity>
+        <TouchableOpacity activeOpacity={0.85} onPress={onPress}>{card}</TouchableOpacity>
       ) : (
-        cardInner
+        card
       )}
     </Swipeable>
   );
@@ -106,19 +95,19 @@ export default function NotificationPanel({ visible, notifications, onClose, onA
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Notifications</Text>
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons name="close" size={22} color="#1A2332" />
-          </TouchableOpacity>
-        </View>
+      <AuroraBackground>
+        <ScreenHeader
+          title="Notifications"
+          actions={
+            <IconButton label="Close" variant="bare" size="l" onPress={onClose}>
+              <Ionicons name="close" size={22} color={colors.textStrong} />
+            </IconButton>
+          }
+        />
 
         {notifications.length === 0 ? (
           <View style={styles.empty}>
-            <Ionicons name="notifications-off-outline" size={52} color="#C4B8A0" />
-            <Text style={styles.emptyTitle}>All caught up!</Text>
-            <Text style={styles.emptyHint}>No new notifications.</Text>
+            <EmptyState icon="notifications-off-outline" title="All caught up!" hint="No new notifications." />
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.list}>
@@ -134,67 +123,19 @@ export default function NotificationPanel({ visible, notifications, onClose, onA
             ))}
           </ScrollView>
         )}
-      </SafeAreaView>
+      </AuroraBackground>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#EDE7D9' },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1.5,
-    borderBottomColor: '#C4B8A0',
-  },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: '#1A2332' },
-  closeBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  list: { paddingVertical: 12, paddingBottom: 60 },
+  empty: { flex: 1, justifyContent: 'center' },
+  list: { paddingVertical: spacing.s6, paddingHorizontal: spacing.gutterScreen, gap: spacing.s6, paddingBottom: 60 },
   swipeContainer: {
-    marginHorizontal: 16,
-    marginVertical: 6,
     borderRadius: 16,
   },
-  card: {
-    flexDirection: 'row',
-    borderRadius: 16,
-    backgroundColor: '#FFFFFF',
-    overflow: 'hidden',
-    borderWidth: 1.5,
-    borderColor: '#C4B8A0',
-    shadowColor: '#1A2332',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  cardRead: { backgroundColor: '#F7F2EA', borderColor: '#D6CCBA' },
-  stripe: { width: 8, alignSelf: 'stretch' },
-  cardBody: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingVertical: 18,
-    paddingHorizontal: 16,
-  },
-  textBlock: { flex: 1 },
-  cardTitle: { fontSize: 15, fontWeight: '800', color: '#1A2332', marginBottom: 3 },
-  cardSub: { fontSize: 13, fontWeight: '500', color: '#4A3F30', lineHeight: 18 },
-  empty: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#1A2332' },
-  emptyHint: { fontSize: 14, color: '#7A6A55' },
-  actionRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  acceptBtn: { backgroundColor: '#E8604C', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 7 },
-  acceptBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
-  declineBtn: { borderWidth: 1.5, borderColor: '#8A7A65', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 7 },
-  declineBtnText: { fontSize: 13, fontWeight: '700', color: '#1A2332' },
   deleteAction: {
-    backgroundColor: '#C0392B',
+    backgroundColor: colors.stateDanger,
     justifyContent: 'center',
     alignItems: 'center',
     width: 72,

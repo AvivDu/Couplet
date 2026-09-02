@@ -1,6 +1,12 @@
-import { View, TouchableOpacity, StyleSheet, Image } from 'react-native';
-import { Text } from './rn';
+import React from 'react';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import Avatar from './ui/Avatar';
+import Badge from './ui/Badge';
 import type { GroupMeta } from '../services/api';
+import { colors, glass, blur, radius, spacing, fontFamily, fontSize, elevation } from '../constants/theme';
 
 interface Props {
   group: GroupMeta;
@@ -12,74 +18,42 @@ interface Props {
 export default function GroupCard({ group, currentUserId, imageUri, onPress }: Props) {
   const isAdmin = group.admin_user_id === currentUserId;
   const initials = group.name.slice(0, 2).toUpperCase();
+  const memberCount = group.user_id_list.length;
+  const couponCount = group.coupon_id_list.length;
+  const sub = `${memberCount} ${memberCount === 1 ? 'member' : 'members'}`
+    + (couponCount > 0 ? ` · ${couponCount} coupon${couponCount === 1 ? '' : 's'} shared` : '');
 
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.82}>
-      <View style={styles.left}>
-        {imageUri ? (
-          <Image source={{ uri: imageUri }} style={styles.groupImage} />
-        ) : (
-          <View style={styles.groupImageFallback}>
-            <Text style={styles.fallbackText}>{initials}</Text>
+    <Pressable onPress={onPress} style={[styles.root, elevation.raised as object]}>
+      <BlurView intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick }]} />
+      <LinearGradient
+        pointerEvents="none"
+        colors={glass.sheenColors as unknown as [string, string, string]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={styles.content}>
+        <Avatar initials={initials} src={imageUri} size="xl" />
+        <View style={styles.info}>
+          <View style={styles.nameRow}>
+            <Text style={styles.name} numberOfLines={1}>{group.name}</Text>
+            {isAdmin && <Badge>Admin</Badge>}
           </View>
-        )}
-      </View>
-      <View style={styles.info}>
-        <View style={styles.nameRow}>
-          <Text style={styles.name}>{group.name}</Text>
-          {isAdmin && <View style={styles.adminBadge}><Text style={styles.adminBadgeText}>Admin</Text></View>}
+          <Text style={styles.sub}>{sub}</Text>
         </View>
-        <Text style={styles.sub}>
-          {group.user_id_list.length} {group.user_id_list.length === 1 ? 'member' : 'members'}
-          {group.coupon_id_list.length > 0
-            ? ` · ${group.coupon_id_list.length} coupon${group.coupon_id_list.length === 1 ? '' : 's'} shared`
-            : ''}
-        </Text>
+        <Ionicons name="chevron-forward" size={20} color={colors.cream400} />
       </View>
-      <Text style={styles.arrow}>›</Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#1A2332',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  left: { marginRight: 14 },
-  groupImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
-  groupImageFallback: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#E8604C',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fallbackText: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  info: { flex: 1 },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3 },
-  name: { fontSize: 16, fontWeight: '700', color: '#1A2332' },
-  adminBadge: {
-    backgroundColor: 'rgba(232,96,76,0.12)',
-    borderRadius: 10,
-    paddingVertical: 2,
-    paddingHorizontal: 8,
-  },
-  adminBadgeText: { fontSize: 11, fontWeight: '700', color: '#E8604C' },
-  sub: { fontSize: 13, color: '#A8997A' },
-  arrow: { fontSize: 22, color: '#C4B8A0', marginLeft: 8 },
+  root: { borderRadius: radius.card, borderWidth: 1, borderColor: glass.edge, overflow: 'hidden' },
+  content: { flexDirection: 'row', alignItems: 'center', gap: spacing.s7, padding: spacing.s8 },
+  info: { flex: 1, minWidth: 0 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.s4, marginBottom: 3 },
+  name: { fontFamily: fontFamily.uiBold, fontSize: 16, color: colors.textStrong, flexShrink: 1 },
+  sub: { fontFamily: fontFamily.ui, fontSize: fontSize.caption, color: colors.textMuted },
 });

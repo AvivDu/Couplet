@@ -3,13 +3,19 @@ import { AppState, AppStateStatus } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from './AuthContext';
 import { buildNotificationsSocketUrl, deleteNotification, getNotifications } from '../services/api';
-import { saveCouponCode } from '../storage/couponStorage';
 import { configureNotifications, presentLocalNotification, Notifications } from '../services/notifications';
 import NotificationBanner, { type BannerData } from '../components/NotificationBanner';
+import { handleOffer, handleAnswer, handleIceCandidate, handleCancel, type SendSignal } from '../services/webrtc';
 
 interface NotificationsContextType {
   // Bumped on every live event so screens can re-run their own load() to refresh.
   revision: number;
+  // Sends a signaling/keepalive payload over the live socket; no-ops if closed.
+  sendSignal: SendSignal;
+  // Manually bump revision after a local mutation (e.g. this device's own
+  // redeem action) so any other mounted screen picks it up via
+  // useRefreshOnNotification, without waiting on a round-trip notification.
+  bump: () => void;
 }
 
 const NotificationsContext = createContext<NotificationsContextType | null>(null);
@@ -19,7 +25,7 @@ const MAX_BACKOFF_MS = 30 * 1000;
 const CATCHUP_OS_CAP = 3; // at most this many individual OS notifications on catch-up; rest summarized
 
 // Minimal shape the dispatch pipeline needs from a server notification.
-type DispatchNotif = { notification_id: string; title: string; body: string; group_id?: string };
+type DispatchNotif = { notification_id: string; type?: string; title: string; body: string; group_id?: string };
 
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -40,6 +46,11 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   const bump = useCallback(() => setRevision(r => r + 1), []);
 
+  const sendSignal = useCallback<SendSignal>((payload) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+  }, []);
+
   const clearTimers = useCallback(() => {
     if (pingRef.current) { clearInterval(pingRef.current); pingRef.current = null; }
     if (reconnectRef.current) { clearTimeout(reconnectRef.current); reconnectRef.current = null; }
@@ -59,8 +70,15 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     if (seenIdsRef.current.has(n.notification_id)) return;
     seenIdsRef.current.add(n.notification_id);
 
+    // Internal carrier row (a silent coupon-code redelivery, see
+    // services/couponSharing.ts) is never surfaced - but it still bumps, so
+    // the screens that actually consume a fallback code re-run and pick the
+    // new one up promptly instead of leaving a stale code in place.
+    const silent = n.type === 'coupon_code_sync';
     const useOS = opts.forceOS || AppState.currentState !== 'active';
-    if (useOS) {
+    if (silent) {
+      // no banner, no OS notification
+    } else if (useOS) {
       presentLocalNotification({
         title: n.title,
         body: n.body,
@@ -83,15 +101,37 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       return;
     }
 
-    if (msg.event === 'coupon_transfer' && msg.coupon_id && msg.code) {
-      // Silent code delivery: persist to local storage and refresh, but raise NO
-      // alert of its own — the user is already told via the group_share
-      // notification, so the code landing in the wallet is an implementation detail.
-      await saveCouponCode(msg.coupon_id, msg.code);
+    // Silent refresh: a shared coupon's metadata changed (someone edited it).
+    // Deliberately no banner and no OS notification - it only re-fetches
+    // whatever screens are open so they stop showing stale details.
+    if (msg.event === 'coupon_updated') {
       bump();
       return;
     }
-  }, [dispatchServerNotification, bump]);
+
+    // WebRTC signaling relay - the actual coupon code never appears in any of
+    // these frames, only opaque SDP/ICE payloads; the code itself is exchanged
+    // directly between devices once the RTCDataChannel opens (see services/webrtc.ts).
+    if (msg.event === 'webrtc-offer' && msg.session_id && msg.from_user_id && msg.sdp) {
+      // Silent on receipt - the user is already told via the accompanying
+      // group_share notification, so the code landing in the wallet is an
+      // implementation detail (matches the old coupon_transfer behavior).
+      await handleOffer(sendSignal, msg, bump);
+      return;
+    }
+    if (msg.event === 'webrtc-answer' && msg.session_id && msg.sdp) {
+      await handleAnswer(msg);
+      return;
+    }
+    if (msg.event === 'webrtc-ice-candidate' && msg.session_id) {
+      await handleIceCandidate(msg);
+      return;
+    }
+    if (msg.event === 'webrtc-cancel' && msg.session_id) {
+      handleCancel(msg);
+      return;
+    }
+  }, [dispatchServerNotification, bump, sendSignal]);
 
   // Poll the server for anything missed while the socket was down/suspended.
   // First run establishes a baseline (no OS notifications); later runs fire OS
@@ -127,7 +167,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const connect = useCallback(() => {
     if (!token) return;
     const url = buildNotificationsSocketUrl(token);
-    if (!url) return; // WS not configured — fall back to poll-on-focus
+    if (!url) return; // WS not configured - fall back to poll-on-focus
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       return;
     }
@@ -185,7 +225,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, [token, connect, disconnect]);
 
   // On return to the foreground: reconnect (if dropped) and catch up. We do NOT
-  // force-close on background — the socket is left to survive the brief grace
+  // force-close on background - the socket is left to survive the brief grace
   // window so a just-in-time event can still fire an OS notification; the OS
   // suspends JS shortly after anyway, and 410s are pruned server-side.
   useEffect(() => {
@@ -212,7 +252,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, [dismissAndNavigate]);
 
   return (
-    <NotificationsContext.Provider value={{ revision }}>
+    <NotificationsContext.Provider value={{ revision, sendSignal, bump }}>
       {children}
       <NotificationBanner data={banner} onPress={handleBannerPress} onDismiss={() => setBanner(null)} />
     </NotificationsContext.Provider>

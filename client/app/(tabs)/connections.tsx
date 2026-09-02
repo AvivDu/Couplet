@@ -1,21 +1,27 @@
 import { useState, useCallback } from 'react';
+import { useRefreshOnNotification } from '../../hooks/useRefreshOnNotification';
 import {
   View,
   FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  Modal,
   ActivityIndicator,
   Alert,
   RefreshControl,
+  StyleSheet,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Text, TextInput } from '../../components/rn';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, router } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { getGroups, createGroup } from '../../services/api';
 import type { GroupMeta } from '../../services/api';
 import GroupCard from '../../components/GroupCard';
+import AuroraBackground from '../../components/ui/AuroraBackground';
+import ScreenHeader from '../../components/ui/ScreenHeader';
+import IconButton from '../../components/ui/IconButton';
+import EmptyState from '../../components/ui/EmptyState';
+import Sheet from '../../components/ui/Sheet';
+import Input from '../../components/ui/Input';
+import Button from '../../components/ui/Button';
+import { colors, spacing } from '../../constants/theme';
 
 export default function ConnectionsScreen() {
   const { user } = useAuth();
@@ -29,21 +35,25 @@ export default function ConnectionsScreen() {
   const [creating, setCreating] = useState(false);
 
 
-  async function fetchGroups() {
+  const fetchGroups = useCallback(async () => {
     try {
       const { data } = await getGroups();
       setGroups(data);
     } catch {
       // silently fail on background refresh
     }
-  }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
       fetchGroups().finally(() => setLoading(false));
-    }, [])
+    }, [fetchGroups])
   );
+
+  // Live refresh: a group_invite/group_share/coupon_revoked notification can
+  // change what this list should show (new group, updated coupon count).
+  useRefreshOnNotification(fetchGroups);
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -72,24 +82,26 @@ export default function ConnectionsScreen() {
   if (!user) return null;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Groups</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setCreateVisible(true)}>
-          <Text style={styles.addBtnText}>＋</Text>
-        </TouchableOpacity>
-      </View>
+    <AuroraBackground>
+      <ScreenHeader
+        title="Groups"
+        actions={
+          <IconButton label="New group" variant="solid" onPress={() => setCreateVisible(true)}>
+            <Ionicons name="add" size={20} color="#fff" />
+          </IconButton>
+        }
+      />
 
       {loading ? (
-        <ActivityIndicator color="#E8604C" style={{ marginTop: 40 }} />
+        <ActivityIndicator color={colors.coral400} style={{ marginTop: 40 }} />
       ) : (
         <FlatList
           data={groups}
           keyExtractor={g => g.group_id}
           contentContainerStyle={styles.list}
+          ItemSeparatorComponent={() => <View style={{ height: spacing.stackCard }} />}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#E8604C" />
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.coral400} />
           }
           renderItem={({ item }) => (
             <GroupCard
@@ -100,128 +112,29 @@ export default function ConnectionsScreen() {
             />
           )}
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyIcon}>👥</Text>
-              <Text style={styles.emptyTitle}>No groups yet</Text>
-              <Text style={styles.emptySub}>Tap ＋ to create your first group</Text>
-            </View>
+            <EmptyState icon="people-outline" title="No groups yet" hint="Tap + to create your first group" />
           }
         />
       )}
 
-      {/* Create group modal */}
-      <Modal
-        visible={createVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setCreateVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.overlay}
-          activeOpacity={1}
-          onPress={() => setCreateVisible(false)}
-        >
-          <View style={styles.sheet}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>New Group</Text>
-            <View style={styles.inputWrap}>
-              <TextInput
-                style={styles.input}
-                placeholder="Group name (e.g. Family)"
-                placeholderTextColor="#A8997A"
-                value={groupName}
-                onChangeText={setGroupName}
-                autoFocus
-              />
-            </View>
-            <TouchableOpacity
-              style={styles.createBtn}
-              onPress={handleCreate}
-              disabled={creating}
-            >
-              {creating ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.createBtnText}>Create</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-    </SafeAreaView>
+      {/* Create group sheet */}
+      <Sheet title="New Group" open={createVisible} onClose={() => setCreateVisible(false)}>
+        <Input
+          label="Group name"
+          placeholder="e.g. Family"
+          value={groupName}
+          onChangeText={setGroupName}
+          autoFocus
+          wrapperStyle={{ marginBottom: spacing.s8 }}
+        />
+        <Button variant="primary" block onPress={handleCreate} disabled={creating}>
+          {creating ? <ActivityIndicator color="#fff" /> : 'Create'}
+        </Button>
+      </Sheet>
+    </AuroraBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F5F0E6' },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 16,
-  },
-  title: { fontSize: 28, fontWeight: '800', color: '#1A2332' },
-  addBtn: {
-    backgroundColor: '#E8604C',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addBtnText: { color: '#fff', fontSize: 22, lineHeight: 26 },
-  list: { paddingHorizontal: 20, paddingBottom: 32 },
-
-  // Empty state
-  empty: { alignItems: 'center', marginTop: 80, gap: 10 },
-  emptyIcon: { fontSize: 48 },
-  emptyTitle: { fontSize: 18, fontWeight: '700', color: '#1A2332' },
-  emptySub: { fontSize: 14, color: '#A8997A' },
-
-  // Create dialog
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(26,35,50,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  sheet: {
-    backgroundColor: '#F5F0E6',
-    borderRadius: 24,
-    padding: 24,
-    paddingBottom: 28,
-    width: '100%',
-  },
-  sheetHandle: {
-    display: 'none',
-    width: 0,
-    height: 0,
-  },
-  sheetTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#1A2332',
-    marginBottom: 20,
-  },
-  inputWrap: {
-    borderBottomWidth: 1.5,
-    borderBottomColor: '#C4B8A0',
-    marginBottom: 28,
-  },
-  input: {
-    paddingVertical: 10,
-    fontSize: 16,
-    color: '#1A2332',
-  },
-  createBtn: {
-    backgroundColor: '#E8604C',
-    borderRadius: 30,
-    paddingVertical: 15,
-    alignItems: 'center',
-  },
-  createBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  list: { paddingHorizontal: spacing.gutterScreen, paddingBottom: 130 },
 });

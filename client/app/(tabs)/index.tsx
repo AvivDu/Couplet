@@ -3,54 +3,40 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import {
   Animated,
   Dimensions,
-  Image,
   View,
   StyleSheet,
   FlatList,
-  ScrollView,
   Modal,
   RefreshControl,
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Text, TextInput } from '../../components/rn';
+import { Text } from '../../components/rn';
 import { Ionicons } from '@expo/vector-icons';
-import { CATEGORY_COLORS } from '../../constants/categories';
-import { getCoupons, updateCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, type CouponMeta } from '../../services/api';
+import { CATEGORY_DEFS, SORT_OPTIONS, sortCoupons, type SortOption } from '../../constants/categories';
+import { getCoupons, updateCoupon, redeemOwnCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, clearNotificationCode, type CouponMeta, type RedeemAction } from '../../services/api';
 import { getCouponCode, saveCouponCode, deleteCouponCode, deleteCouponImage } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationsContext';
+import { useRefreshOnNotification } from '../../hooks/useRefreshOnNotification';
 import CouponCard from '../../components/CouponCard';
 import CouponDetail from '../../components/CouponDetail';
 import NotificationPanel, { type NotificationItem } from '../../components/NotificationPanel';
-
-type CategoryDef = {
-  label: string;
-  filter: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-};
-
-const CATEGORY_DEFS: CategoryDef[] = [
-  { label: 'All Coupons',  filter: 'All',         icon: 'grid-outline',                color: CATEGORY_COLORS.All         },
-  { label: 'Food',         filter: 'Food',        icon: 'restaurant-outline',          color: CATEGORY_COLORS.Food        },
-  { label: 'Groceries',    filter: 'Groceries',   icon: 'cart-outline',                color: CATEGORY_COLORS.Groceries   },
-  { label: 'Fashion',      filter: 'Fashion',     icon: 'shirt-outline',               color: CATEGORY_COLORS.Fashion     },
-  { label: 'Electronics',  filter: 'Electronics', icon: 'hardware-chip-outline',       color: CATEGORY_COLORS.Electronics },
-  { label: 'Beauty',       filter: 'Beauty',      icon: 'flower-outline',              color: CATEGORY_COLORS.Beauty      },
-  { label: 'Travel',       filter: 'Travel',      icon: 'airplane-outline',            color: CATEGORY_COLORS.Travel      },
-  { label: 'Sport',        filter: 'Sport',       icon: 'trophy-outline',              color: CATEGORY_COLORS.Sport       },
-  { label: 'Other',        filter: 'Other',       icon: 'ellipsis-horizontal-outline', color: CATEGORY_COLORS.Other       },
-];
-
-type SortOption = 'balance-desc' | 'balance-asc' | 'expiry-asc';
-
-const SORT_OPTIONS: { value: SortOption; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { value: 'balance-desc', label: 'Balance: High to Low',      icon: 'arrow-down-outline'  },
-  { value: 'balance-asc',  label: 'Balance: Low to High',      icon: 'arrow-up-outline'    },
-  { value: 'expiry-asc',   label: 'Expiry Date',                icon: 'calendar-outline'   },
-];
+import AuroraBackground from '../../components/ui/AuroraBackground';
+import ScreenHeader from '../../components/ui/ScreenHeader';
+import IconButton from '../../components/ui/IconButton';
+import SearchField from '../../components/ui/SearchField';
+import CategoryTile from '../../components/ui/CategoryTile';
+import Chip from '../../components/ui/Chip';
+import Sheet from '../../components/ui/Sheet';
+import OptionRow from '../../components/ui/OptionRow';
+import SectionLabel from '../../components/ui/SectionLabel';
+import EmptyState from '../../components/ui/EmptyState';
+import Avatar from '../../components/ui/Avatar';
+import GlassPanel from '../../components/ui/GlassPanel';
+import Button from '../../components/ui/Button';
+import { BlurView } from 'expo-blur';
+import { colors, glass, blur, radius, fontFamily, fontSize, spacing } from '../../constants/theme';
 
 type CouponWithCode = CouponMeta & { code: string | null };
 
@@ -58,7 +44,7 @@ const DRAWER_WIDTH = Dimensions.get('window').width * 0.48;
 
 export default function HomeScreen() {
   const { user, signOut } = useAuth();
-  const { revision } = useNotifications();
+  const { bump } = useNotifications();
   const router = useRouter();
   const [coupons, setCoupons] = useState<CouponMeta[]>([]);
   const [couponCodes, setCouponCodes] = useState<Record<string, string | null>>({});
@@ -132,17 +118,53 @@ export default function HomeScreen() {
       const invitations = invitationsResult.status === 'fulfilled' ? invitationsResult.value.data : [];
       const serverNotifData = serverNotifsResult.status === 'fulfilled' ? serverNotifsResult.value.data : [];
 
-      // Save coupon codes delivered through group_share notifications
-      const groupShareNotifs = serverNotifData.filter(n => n.type === 'group_share');
-      console.log('[DEBUG notif] group_share count:', groupShareNotifs.length,
-        '| with code:', groupShareNotifs.filter(n => n.coupon_code).length,
-        '| sample:', JSON.stringify(groupShareNotifs[0] ?? null));
-      const codeDeliveries = groupShareNotifs.filter(n => n.coupon_id && n.coupon_code);
+      // Save coupon codes delivered as a fallback - either a first share
+      // (group_share) or a silent redelivery after the owner edited the code
+      // (coupon_code_sync, see services/couponSharing.ts) - both carry
+      // coupon_code the same way and are consumed identically.
+      const codeCarryingNotifs = serverNotifData.filter(
+        n => n.type === 'group_share' || n.type === 'coupon_code_sync'
+      );
+      // Counts only - never log the notification object itself: the server
+      // returns coupon_code decrypted, so dumping it would put plaintext
+      // coupon codes in the device log.
+      console.log('[notif] code-carrying:', codeCarryingNotifs.length,
+        '| carrying a fallback code:', codeCarryingNotifs.filter(n => n.coupon_code).length);
+      const codeDeliveries = codeCarryingNotifs.filter(n => n.coupon_id && n.coupon_code);
       if (codeDeliveries.length > 0) {
+        // Editing a code repeatedly while a recipient is offline leaves several
+        // rows for the same coupon, so writing them concurrently would race on
+        // one storage key and could let an older code win. The server returns
+        // newest-first, so the first row per coupon is the current code; save
+        // only that, then clear every row since they're all superseded.
+        const newestPerCoupon = new Map<string, typeof codeDeliveries[number]>();
+        for (const n of codeDeliveries) {
+          if (!newestPerCoupon.has(n.coupon_id!)) newestPerCoupon.set(n.coupon_id!, n);
+        }
         await Promise.all(
-          codeDeliveries.map(n => saveCouponCode(n.coupon_id!, n.coupon_code!))
+          [...newestPerCoupon.values()].map(n => saveCouponCode(n.coupon_id!, n.coupon_code!))
         );
-        console.log('[DEBUG notif] saved codes for coupon_ids:', codeDeliveries.map(n => n.coupon_id));
+        // Retire the rows server-side now they've been consumed locally -
+        // faster and more precise than waiting on the TTL.
+        //
+        // group_share rows are kept (code stripped): they're real history, the
+        // user saw "X shared a coupon with you". coupon_code_sync rows are
+        // invisible carriers with nothing left to say once consumed, and every
+        // code edit makes another - left behind they'd eat slots in the newest-50
+        // fetch and push genuine notifications out of the panel.
+        await Promise.all(
+          codeDeliveries.map(n =>
+            (n.type === 'coupon_code_sync'
+              ? deleteNotification(n.notification_id)
+              : clearNotificationCode(n.notification_id)
+            ).catch(err =>
+              // Best-effort tidy-up: the code is already saved locally, so a
+              // failure here must not reject and fail the whole load().
+              console.warn('[notif] could not retire delivered code row', n.notification_id, err?.message ?? err)
+            )
+          )
+        );
+        console.log('[notif] saved fallback codes for coupon_ids:', [...newestPerCoupon.keys()]);
       }
 
       // Delete local coupon codes for any revoked coupons
@@ -153,8 +175,13 @@ export default function HomeScreen() {
         await Promise.all(revokedCouponIds.map(id => deleteCouponCode(id)));
       }
 
-      // Map server notifications; group_invite type gets Accept/Decline action buttons
-      const serverNotifs: NotificationItem[] = serverNotifData.map(n => ({
+      // Map server notifications; group_invite type gets Accept/Decline action
+      // buttons. coupon_code_sync is an internal carrier row only (a silent
+      // code redelivery, consumed above) - it's never meant to be seen, so it
+      // never becomes a panel row.
+      const serverNotifs: NotificationItem[] = serverNotifData
+        .filter(n => n.type !== 'coupon_code_sync')
+        .map(n => ({
         id: `server-${n.notification_id}`,
         serverId: n.notification_id,
         type: 'social' as const,
@@ -204,11 +231,9 @@ export default function HomeScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  // Live refresh: the WebSocket provider bumps `revision` on every incoming
-  // event so the list updates instantly without a manual screen refresh.
-  useEffect(() => {
-    if (revision > 0) load();
-  }, [revision, load]);
+  // Live refresh: re-runs load() on every incoming notification/WebRTC event
+  // so the list updates instantly without a manual screen refresh.
+  useRefreshOnNotification(load);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -220,15 +245,7 @@ export default function HomeScreen() {
     .filter(c => filter === 'All' || c.category === filter)
     .filter(c => !search.trim() || c.store_name.toLowerCase().includes(search.trim().toLowerCase()));
 
-  const displayed = sort === null ? filtered : [...filtered].sort((a, b) => {
-    if (sort === 'balance-desc') return (b.balance ?? 0) - (a.balance ?? 0);
-    if (sort === 'balance-asc')  return (a.balance ?? 0) - (b.balance ?? 0);
-    // expiry-asc: coupons without a date go to the bottom
-    if (!a.expiration_date && !b.expiration_date) return 0;
-    if (!a.expiration_date) return 1;
-    if (!b.expiration_date) return -1;
-    return new Date(a.expiration_date).getTime() - new Date(b.expiration_date).getTime();
-  });
+  const displayed = sortCoupons(filtered, sort);
 
   const activeSortLabel = SORT_OPTIONS.find(o => o.value === sort)?.label ?? null;
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -280,13 +297,15 @@ export default function HomeScreen() {
     markNotificationsRead().catch(() => {});
   }
 
-  async function handleMarkUsed(id: string) {
-    try {
-      const { data } = await updateCoupon(id, { status: 'used' });
-      setCoupons(prev => prev.map(c => c.coupon_id === id ? data : c));
-    } catch {
-      Alert.alert('Error', 'Could not update coupon.');
-    }
+  async function handleRedeem(id: string, action: RedeemAction) {
+    const { data } = await redeemOwnCoupon(id, action);
+    setCoupons(prev => prev.map(c => c.coupon_id === id ? data : c));
+    // Local mutation, not a live notification - bump so any other mounted
+    // screen (e.g. a group screen showing this shared coupon) picks it up.
+    // Keyed off the server's resulting status, so a partial redeem that
+    // happens to drain the balance also refreshes.
+    if (data.status === 'used') bump();
+    return data;
   }
 
   async function handleDelete(id: string) {
@@ -317,6 +336,12 @@ export default function HomeScreen() {
     setCoupons(prev => prev.map(c => c.coupon_id === updated.coupon_id ? updated : c));
     setCouponCodes(prev => ({ ...prev, [updated.coupon_id]: newCode }));
     setSelected({ ...updated, code: newCode });
+    // Covers edit-save (redeem already bumps itself via handleRedeem).
+    // pushCouponUpdated deliberately excludes the actor - the editing device
+    // doesn't need a round-trip to know about its own edit - which means
+    // nothing else refreshes this device's OTHER open screens (e.g. the
+    // Groups tab) unless something local does it.
+    bump();
   }
 
   function openDrawer() {
@@ -331,135 +356,119 @@ export default function HomeScreen() {
     });
   }
 
+  function openSortMenu() {
+    setSortMenuOpen(true);
+  }
+
+  function closeSortMenu() {
+    setSortMenuOpen(false);
+  }
+
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
+    <AuroraBackground>
       <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.headerTitle}>My Coupons</Text>
-            <Text style={styles.headerSub}>Hi, {user?.username} 👋</Text>
-          </View>
-          <View style={styles.headerRight}>
-            <TouchableOpacity onPress={handleBellPress} style={styles.bellBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Ionicons name="notifications-outline" size={24} color="#1A2332" />
-              {unreadCount > 0 && <View style={styles.badge} />}
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={openDrawer}
-              style={styles.settingsBtn}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons name="settings-outline" size={24} color="#1A2332" />
-            </TouchableOpacity>
-          </View>
-        </View>
+        <ScreenHeader
+          title="My Coupons"
+          subtitle={`Hi, ${user?.username ?? ''} 👋`}
+          actions={
+            <>
+              <IconButton label="Notifications" badge={unreadCount > 0} onPress={handleBellPress}>
+                <Ionicons name="notifications-outline" size={20} color={colors.coral500} />
+              </IconButton>
+              <IconButton label="Settings" variant="bare" onPress={openDrawer}>
+                <Ionicons name="settings-outline" size={20} color={colors.textStrong} />
+              </IconButton>
+            </>
+          }
+        />
 
         {/* Search bar */}
         <View style={styles.searchWrap}>
-          <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search coupons..."
-            placeholderTextColor="#A8997A"
+          <SearchField
             value={search}
             onChangeText={setSearch}
+            onClear={() => setSearch('')}
             autoCapitalize="none"
             returnKeyType="search"
           />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={styles.searchClear}>✕</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
-        {/* Category cards — horizontal scroll */}
-        <ScrollView
+        {/* Category tiles - horizontal scroll */}
+        <FlatList
           horizontal
           showsHorizontalScrollIndicator={false}
+          data={CATEGORY_DEFS}
+          keyExtractor={cat => cat.filter}
           style={styles.categoryScrollView}
           contentContainerStyle={styles.categoryScroll}
-        >
-          {CATEGORY_DEFS.map(cat => {
-            const active = filter === cat.filter;
-            return (
-              <TouchableOpacity
-                key={cat.filter}
-                style={[styles.categoryCard, active && { backgroundColor: cat.color, borderColor: cat.color }]}
-                onPress={() => setFilter(cat.filter)}
-                activeOpacity={0.75}
-              >
-                <Ionicons name={cat.icon} size={26} color={active ? '#444444' : '#1A2332'} />
-                <Text style={[styles.categoryCardLabel, active && styles.categoryCardLabelActive]} numberOfLines={1}>
-                  {cat.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+          renderItem={({ item: cat }) => (
+            <CategoryTile
+              label={cat.label}
+              category={cat.filter}
+              icon={cat.icon}
+              active={filter === cat.filter}
+              onPress={() => setFilter(cat.filter)}
+              style={styles.categoryTile}
+            />
+          )}
+        />
 
-        {/* Sort row */}
+        {/* Sort chip */}
         <View style={styles.sortRow}>
-          <TouchableOpacity style={styles.sortBtn} onPress={() => setSortMenuOpen(true)} activeOpacity={0.75}>
-            <Ionicons name="funnel-outline" size={15} color={sort ? '#E8604C' : '#1A2332'} />
-            <Text style={[styles.sortBtnText, sort && styles.sortBtnTextActive]} numberOfLines={1}>
-              {activeSortLabel ?? 'Sort'}
-            </Text>
-            {sort && (
-              <TouchableOpacity
-                onPress={() => setSort(null)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="close-circle" size={15} color="#E8604C" />
-              </TouchableOpacity>
-            )}
-          </TouchableOpacity>
+          <Chip
+            icon={<Ionicons name="funnel-outline" size={15} color={sort ? colors.coral400 : colors.textStrong} />}
+            active={!!sort}
+            onDismiss={() => setSort(null)}
+            onPress={openSortMenu}
+          >
+            {activeSortLabel ?? 'Sort'}
+          </Chip>
         </View>
+
+        <SectionLabel count={displayed.length}>Wallet</SectionLabel>
 
         {/* Coupon list */}
         <FlatList
           data={displayed}
           keyExtractor={c => c.coupon_id}
-          renderItem={({ item }) => <CouponCard coupon={item} onPress={() => openDetail(item)} />}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#E8604C" />}
+          renderItem={({ item }) => (
+            <CouponCard
+              store={item.store_name}
+              category={item.category}
+              balance={item.balance}
+              expires={item.expiration_date ? new Date(item.expiration_date).toLocaleDateString() : undefined}
+              status={item.status as 'active' | 'used' | 'expired'}
+              onPress={() => openDetail(item)}
+            />
+          )}
+          ItemSeparatorComponent={() => <View style={{ height: spacing.stackCard }} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.coral400} />}
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyIcon}>🏷️</Text>
-              <Text style={styles.emptyText}>No coupons yet</Text>
-              <Text style={styles.emptyHint}>Tap the tab below to add your first coupon</Text>
-            </View>
+            <EmptyState
+              icon="pricetags-outline"
+              title="No coupons here"
+              hint={search ? `Nothing matches "${search}"` : 'Add your first coupon to get started'}
+            />
           }
-          contentContainerStyle={displayed.length === 0 ? styles.emptyContainer : { paddingBottom: 100 }}
+          contentContainerStyle={displayed.length === 0 ? styles.emptyContainer : styles.listContainer}
         />
 
         {/* Sort menu */}
-        <Modal visible={sortMenuOpen} transparent animationType="slide" onRequestClose={() => setSortMenuOpen(false)}>
-          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setSortMenuOpen(false)}>
-            <View style={styles.sortSheet}>
-              <View style={styles.sheetHandle} />
-              <Text style={styles.sortSheetTitle}>Sort By</Text>
-              {SORT_OPTIONS.map(opt => {
-                const active = sort === opt.value;
-                return (
-                  <TouchableOpacity
-                    key={opt.value}
-                    style={[styles.sortOption, active && styles.sortOptionActive]}
-                    onPress={() => { setSort(active ? null : opt.value); setSortMenuOpen(false); }}
-                  >
-                    <View style={styles.sortOptionLeft}>
-                      <Ionicons name={opt.icon} size={20} color={active ? '#E8604C' : '#1A2332'} />
-                      <Text style={[styles.sortOptionText, active && styles.sortOptionTextActive]}>
-                        {opt.label}
-                      </Text>
-                    </View>
-                    {active && <Ionicons name="checkmark" size={18} color="#E8604C" />}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </TouchableOpacity>
-        </Modal>
+        <Sheet title="Sort by" open={sortMenuOpen} onClose={closeSortMenu}>
+          {SORT_OPTIONS.map((opt, i) => {
+            const active = sort === opt.value;
+            return (
+              <OptionRow
+                key={opt.value}
+                icon={<Ionicons name={opt.icon} size={20} color={active ? colors.coral400 : colors.textStrong} />}
+                label={opt.label}
+                selected={active}
+                divider={i < SORT_OPTIONS.length - 1}
+                onPress={() => { setSort(active ? null : opt.value); closeSortMenu(); }}
+              />
+            );
+          })}
+        </Sheet>
 
         {/* Notification panel */}
         <NotificationPanel
@@ -476,7 +485,7 @@ export default function HomeScreen() {
         {joinedGroupName !== null && (
           <Modal transparent animationType="fade" visible onRequestClose={() => setJoinedGroupName(null)}>
             <View style={styles.joinOverlay}>
-              {/* Backdrop — rendered first so the box sits on top and receives touches first */}
+              {/* Backdrop - rendered first so the box sits on top and receives touches first */}
               <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setJoinedGroupName(null)} />
               <View style={styles.joinBox}>
                 <TouchableOpacity style={styles.joinCloseBtn} onPress={() => setJoinedGroupName(null)}>
@@ -495,7 +504,7 @@ export default function HomeScreen() {
           visible={!!selected}
           onClose={() => setSelected(null)}
           onDelete={handleDelete}
-          onMarkUsed={handleMarkUsed}
+          onRedeem={handleRedeem}
           onUpdate={handleUpdate}
         />
 
@@ -519,12 +528,14 @@ export default function HomeScreen() {
                 },
               ]}
             >
+              <BlurView intensity={blur.l} tint="light" style={StyleSheet.absoluteFill} />
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick }]} />
               <View style={styles.drawerHeader}>
-                <View style={styles.avatarCircle}>
-                  {user?.profile_image
-                    ? <Image source={{ uri: user.profile_image }} style={styles.avatarImage} />
-                    : <Ionicons name="person-outline" size={32} color="#A8997A" />}
-                </View>
+                <Avatar
+                  initials={(user?.username ?? '').slice(0, 2).toUpperCase()}
+                  src={user?.profile_image}
+                  size="xxl"
+                />
                 <Text style={styles.drawerUsername}>{user?.username}</Text>
                 <TouchableOpacity
                   style={styles.drawerProfileBtn}
@@ -535,6 +546,13 @@ export default function HomeScreen() {
               </View>
 
               <View style={styles.drawerBody}>
+                <TouchableOpacity
+                  style={styles.drawerItem}
+                  onPress={() => closeDrawer(() => router.push('/gmail-scan'))}
+                >
+                  <Ionicons name="mail-outline" size={20} color="#1A2332" />
+                  <Text style={styles.drawerItemText}>Scan Gmail for Coupons</Text>
+                </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.drawerItem}
                   onPress={() => { closeDrawer(); setTimeout(() => setAboutVisible(true), 250); }}
@@ -557,84 +575,35 @@ export default function HomeScreen() {
         {/* About modal */}
         <Modal visible={aboutVisible} animationType="fade" transparent onRequestClose={() => setAboutVisible(false)}>
           <View style={styles.aboutOverlay}>
-            <View style={styles.aboutCard}>
+            <GlassPanel tint="thick" radius={radius['2xl']} padding={spacing.s14} style={{ width: '100%' }}>
               <Text style={styles.aboutTitle}>Couplet</Text>
               <Text style={styles.aboutVersion}>Version 1.0.0</Text>
-              <Text style={styles.aboutDesc}>Your personal coupon wallet — store, manage, and share coupons securely. Coupon codes never leave your device.</Text>
+              <Text style={styles.aboutDesc}>Your personal coupon wallet - store, manage, and share coupons securely. Coupon codes never leave your device.</Text>
               <View style={styles.aboutDivider} />
               <Text style={styles.aboutTeamLabel}>BUILT BY</Text>
               <Text style={styles.aboutTeam}>Aviv Duzy</Text>
               <Text style={styles.aboutTeam}>Roni Kenigsberg</Text>
               <Text style={styles.aboutTeam}>Doron Shen-Tzur</Text>
-              <TouchableOpacity style={styles.aboutCloseBtn} onPress={() => setAboutVisible(false)}>
-                <Text style={styles.aboutCloseBtnText}>Close</Text>
-              </TouchableOpacity>
-            </View>
+              <Button variant="primary" block onPress={() => setAboutVisible(false)} style={{ marginTop: 24 }}>
+                Close
+              </Button>
+            </GlassPanel>
           </View>
         </Modal>
       </View>
-    </SafeAreaView>
+    </AuroraBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F5F0E6' },
-  container: { flex: 1, backgroundColor: '#F5F0E6' },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 16,
-  },
-  headerTitle: { fontSize: 28, fontWeight: '800', color: '#1A2332' },
-  headerSub: { fontSize: 14, color: '#1A2332', opacity: 0.5, marginTop: 2 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  settingsBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  bellBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  badge: {
-    position: 'absolute', top: 4, right: 4,
-    width: 12, height: 12, borderRadius: 6,
-    backgroundColor: '#E8604C',
-    borderWidth: 2, borderColor: '#F5F0E6',
-  },
+  container: { flex: 1 },
   searchWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 20,
+    paddingHorizontal: 20,
     marginBottom: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: '#EDE8DC',
-    gap: 8,
   },
-  searchIcon: { fontSize: 14 },
-  searchInput: { flex: 1, fontSize: 15, color: '#1A2332' },
-  searchClear: { fontSize: 13, color: '#A8997A', fontWeight: '600' },
   categoryScrollView: { flexGrow: 0, flexShrink: 0 },
   categoryScroll: { paddingHorizontal: 20, paddingBottom: 4, gap: 10 },
-  categoryCard: {
-    width: 80,
-    height: 80,
-    borderRadius: 16,
-    backgroundColor: '#EDE8DC',
-    borderWidth: 1.5,
-    borderColor: '#E0D8CA',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-  },
-  categoryCardLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#1A2332',
-    textAlign: 'center',
-    opacity: 0.7,
-    paddingHorizontal: 4,
-  },
-  categoryCardLabelActive: { color: '#444444', opacity: 1 },
+  categoryTile: {},
   sortRow: {
     flexDirection: 'row',
     justifyContent: 'flex-start',
@@ -642,67 +611,8 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 4,
   },
-  sortBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: '#C4B8A0',
-    backgroundColor: 'transparent',
-    maxWidth: 220,
-  },
-  sortBtnText: { fontSize: 13, fontWeight: '600', color: '#1A2332', opacity: 0.6, flexShrink: 1 },
-  sortBtnTextActive: { color: '#E8604C', opacity: 1 },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(26,35,50,0.4)',
-    justifyContent: 'flex-end',
-  },
-  sortSheet: {
-    backgroundColor: '#F5F0E6',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingBottom: 36,
-    paddingTop: 16,
-  },
-  sheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#C4B8A0',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  sortSheetTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#1A2332',
-    opacity: 0.4,
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  sortOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 16,
-    paddingHorizontal: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0D8CA',
-  },
-  sortOptionActive: { backgroundColor: 'rgba(232,96,76,0.06)', borderRadius: 12 },
-  sortOptionLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  sortOptionText: { fontSize: 15, fontWeight: '500', color: '#1A2332' },
-  sortOptionTextActive: { color: '#E8604C', fontWeight: '700' },
-  empty: { alignItems: 'center', gap: 10 },
+  listContainer: { paddingHorizontal: 20, paddingBottom: 130 },
   emptyContainer: { flex: 1, justifyContent: 'center' },
-  emptyIcon: { fontSize: 52 },
-  emptyText: { fontSize: 18, fontWeight: '700', color: '#1A2332' },
-  emptyHint: { fontSize: 14, color: '#1A2332', opacity: 0.45 },
   joinOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -747,7 +657,7 @@ const styles = StyleSheet.create({
     top: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#F5F0E6',
+    overflow: 'hidden',
     paddingTop: 56,
     paddingBottom: 32,
     shadowColor: '#000',
@@ -761,33 +671,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 24,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0D8CA',
+    borderBottomColor: colors.lineSoft,
+    gap: spacing.s5,
   },
-  avatarCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: '#E0D8CA',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  avatarImage: { width: 72, height: 72 },
-  drawerUsername: { fontSize: 16, fontWeight: '700', color: '#1A2332', marginBottom: 10 },
+  drawerUsername: { fontFamily: fontFamily.uiBold, fontSize: 16, color: colors.textStrong },
   drawerProfileBtn: {
-    borderRadius: 20,
+    borderRadius: radius.pill,
     borderWidth: 1.5,
-    borderColor: '#E8604C',
+    borderColor: colors.coral400,
     paddingVertical: 7,
     paddingHorizontal: 16,
   },
-  drawerProfileBtnText: { fontSize: 13, fontWeight: '600', color: '#E8604C' },
+  drawerProfileBtnText: { fontFamily: fontFamily.uiSemibold, fontSize: 13, color: colors.coral400 },
   drawerBody: { flex: 1, paddingTop: 16, paddingHorizontal: 8 },
   drawerFooter: {
     paddingHorizontal: 8,
     borderTopWidth: 1,
-    borderTopColor: '#E0D8CA',
+    borderTopColor: colors.lineSoft,
     paddingTop: 12,
   },
   drawerItem: {
@@ -796,9 +696,9 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 14,
     paddingHorizontal: 12,
-    borderRadius: 10,
+    borderRadius: radius.s,
   },
-  drawerItemText: { fontSize: 15, fontWeight: '500', color: '#1A2332' },
+  drawerItemText: { fontFamily: fontFamily.ui, fontSize: fontSize.body, color: colors.textStrong },
   // About modal
   aboutOverlay: {
     flex: 1,
@@ -807,25 +707,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 32,
   },
-  aboutCard: {
-    backgroundColor: '#F5F0E6',
-    borderRadius: 24,
-    padding: 28,
-    width: '100%',
-    alignItems: 'center',
-  },
-  aboutTitle: { fontSize: 28, fontWeight: '800', color: '#E8604C', marginBottom: 4 },
-  aboutVersion: { fontSize: 13, color: '#1A2332', opacity: 0.4, marginBottom: 16 },
-  aboutDesc: { fontSize: 14, color: '#1A2332', opacity: 0.6, textAlign: 'center', lineHeight: 20 },
-  aboutDivider: { height: 1, backgroundColor: '#C4B8A0', width: '100%', marginVertical: 20 },
-  aboutTeamLabel: { fontSize: 11, fontWeight: '700', color: '#1A2332', opacity: 0.4, letterSpacing: 1, marginBottom: 10 },
-  aboutTeam: { fontSize: 15, color: '#1A2332', fontWeight: '500', marginBottom: 4 },
-  aboutCloseBtn: {
-    marginTop: 24,
-    backgroundColor: '#E8604C',
-    borderRadius: 24,
-    paddingVertical: 12,
-    paddingHorizontal: 40,
-  },
-  aboutCloseBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  aboutTitle: { fontFamily: fontFamily.display, fontSize: 28, color: colors.coral400, marginBottom: 4, textAlign: 'center' },
+  aboutVersion: { fontFamily: fontFamily.ui, fontSize: 13, color: colors.textStrong, opacity: 0.4, marginBottom: 16, textAlign: 'center' },
+  aboutDesc: { fontFamily: fontFamily.ui, fontSize: 14, color: colors.textStrong, opacity: 0.6, textAlign: 'center', lineHeight: 20 },
+  aboutDivider: { height: 1, backgroundColor: colors.lineStrong, width: '100%', marginVertical: 20 },
+  aboutTeamLabel: { fontFamily: fontFamily.uiBold, fontSize: 11, color: colors.textStrong, opacity: 0.4, letterSpacing: 1, marginBottom: 10, textAlign: 'center' },
+  aboutTeam: { fontFamily: fontFamily.ui, fontSize: 15, color: colors.textStrong, marginBottom: 4, textAlign: 'center' },
 });

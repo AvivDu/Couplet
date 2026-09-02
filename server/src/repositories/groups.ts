@@ -1,6 +1,8 @@
 import { GetCommand, PutCommand, UpdateCommand, ScanCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb, GROUPS_TABLE } from '../lib/dynamo';
 import { getCouponById } from './coupons';
+import { notifyUser } from './notifications';
+import { pushToUser } from '../lib/websocket';
 
 export interface Group {
   group_id: string;
@@ -113,6 +115,78 @@ export async function removeCouponFromAllGroups(couponId: string): Promise<void>
   }));
   const groups = (result.Items as Group[]) ?? [];
   await Promise.all(groups.map(g => removeCouponFromGroup(g.group_id, couponId)));
+}
+
+export async function getGroupsContainingCoupon(couponId: string): Promise<Group[]> {
+  const result = await ddb.send(new ScanCommand({
+    TableName: GROUPS_TABLE,
+    FilterExpression: 'contains(coupon_id_list, :cid)',
+    ExpressionAttributeValues: { ':cid': couponId },
+  }));
+  return (result.Items as Group[]) ?? [];
+}
+
+// Fans a coupon-level event out to everyone who can see that coupon through
+// any group - a global fact about the coupon, not scoped to whichever group
+// the action happened in.
+//
+// Deliberately keyed by user, not by group: the same coupon can be shared to
+// several groups with overlapping membership, and someone in two of them is
+// still one person who should be told once. The first group that reaches them
+// supplies the deep-link target.
+//
+// Copy lives in the caller (services/redemption.ts) - this only does fan-out.
+export async function notifyCouponRecipients(
+  couponId: string,
+  actorUserId: string,
+  message: { type: string; title: string; body: string }
+): Promise<void> {
+  const recipients = await getCouponAudience(couponId, actorUserId);
+
+  await Promise.all(
+    [...recipients].map(([uid, via]) =>
+      notifyUser({
+        user_id: uid,
+        type: message.type,
+        title: message.title,
+        body: message.body,
+        read: false,
+        group_id: via.group_id,
+        group_name: via.group_name,
+        coupon_id: couponId,
+      })
+    )
+  );
+}
+
+// Everyone who can see this coupon through any group, minus the actor, mapped
+// to the group that supplies their deep-link. Shared by the notify and
+// live-refresh paths so both dedupe identically.
+async function getCouponAudience(
+  couponId: string,
+  actorUserId: string
+): Promise<Map<string, { group_id: string; group_name: string }>> {
+  const groups = await getGroupsContainingCoupon(couponId);
+  const recipients = new Map<string, { group_id: string; group_name: string }>();
+  for (const group of groups) {
+    for (const uid of group.user_id_list) {
+      if (uid === actorUserId || recipients.has(uid)) continue;
+      recipients.set(uid, { group_id: group.group_id, group_name: group.name });
+    }
+  }
+  return recipients;
+}
+
+// Live-only nudge: refreshes whatever screens the recipients have open, with
+// no notification row, banner, or OS notification. Edits are corrections
+// rather than events - the need is fresh data, not an alert - and anyone with
+// the app closed simply fetches current data next time they open it, so there
+// is nothing to persist or catch up on.
+export async function pushCouponUpdated(couponId: string, actorUserId: string): Promise<void> {
+  const recipients = await getCouponAudience(couponId, actorUserId);
+  await Promise.all(
+    [...recipients].map(([uid]) => pushToUser(uid, { event: 'coupon_updated', coupon_id: couponId }))
+  );
 }
 
 export async function addPendingMemberToGroup(groupId: string, userId: string): Promise<Group | null> {

@@ -3,16 +3,16 @@ import { v4 as uuidv4 } from 'uuid';
 import { createGroup, getGroupsByUser, getGroupById, removeMemberFromGroup, leaveGroup, addCouponToGroup, removeCouponFromGroup, removeCouponsByOwnerFromGroup, addPendingMemberToGroup, removePendingMemberFromGroup, acceptGroupInvitation, renameGroup, setGroupImage, deleteGroup } from '../repositories/groups';
 import { findUserByEmail, findUserByPhone, findUserById, findUsersByQuery } from '../repositories/users';
 import { getCouponById } from '../repositories/coupons';
-import { notifyUser } from '../repositories/notifications';
+import { applyRedemption, parseRedeemAction } from '../services/redemption';
+import { notifyUser, rescueCode } from '../repositories/notifications';
 import { getConnectionsForUser } from '../repositories/connections';
-import { pushToUser } from '../lib/websocket';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
 router.use(authMiddleware);
 
-// POST /groups — create a group
+// POST /groups - create a group
 router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
   const { name } = req.body;
   if (!name || !name.trim()) {
@@ -34,13 +34,13 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
   res.status(201).json(group);
 });
 
-// GET /groups — list groups for current user
+// GET /groups - list groups for current user
 router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
   const groups = await getGroupsByUser(req.userId!);
   res.json(groups);
 });
 
-// GET /groups/:id — group detail with enriched member + coupon info
+// GET /groups/:id - group detail with enriched member + coupon info
 router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   const group = await getGroupById(req.params.id);
   if (!group) {
@@ -76,12 +76,16 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
       expiration_date: c!.expiration_date,
       balance: c!.balance,
       status: c!.status,
+      // Metadata, not a coupon code - a gift-card link IS the coupon, so
+      // members can't use a shared one without it. (Codes/QR/barcodes stay
+      // client-only; see the security invariant in CLAUDE.md.)
+      giftcard_url: c!.giftcard_url ?? null,
     }));
 
   res.json({ ...group, members, pending_members, coupons });
 });
 
-// POST /groups/:id/members — add a member (admin only)
+// POST /groups/:id/members - add a member (admin only)
 router.post('/:id/members', async (req: AuthRequest, res: Response): Promise<void> => {
   const { identifier } = req.body;
   if (!identifier) {
@@ -102,7 +106,7 @@ router.post('/:id/members', async (req: AuthRequest, res: Response): Promise<voi
   // Find user by email, username, or phone number
   let target = await findUserByEmail(identifier);
   if (!target && /\d/.test(identifier)) {
-    // identifier contains digits — try resolving it as a phone number
+    // identifier contains digits - try resolving it as a phone number
     target = await findUserByPhone(identifier);
   }
   if (!target) {
@@ -145,7 +149,7 @@ router.post('/:id/members', async (req: AuthRequest, res: Response): Promise<voi
   res.json(updated);
 });
 
-// DELETE /groups/:id/members/me — leave a group (non-admin only)
+// DELETE /groups/:id/members/me - leave a group (non-admin only)
 router.delete('/:id/members/me', async (req: AuthRequest, res: Response): Promise<void> => {
   const group = await getGroupById(req.params.id);
   if (!group) {
@@ -157,7 +161,7 @@ router.delete('/:id/members/me', async (req: AuthRequest, res: Response): Promis
     return;
   }
   if (group.admin_user_id === req.userId!) {
-    res.status(400).json({ error: 'Admin cannot leave — transfer admin first or delete the group' });
+    res.status(400).json({ error: 'Admin cannot leave - transfer admin first or delete the group' });
     return;
   }
 
@@ -166,7 +170,7 @@ router.delete('/:id/members/me', async (req: AuthRequest, res: Response): Promis
   res.status(204).send();
 });
 
-// DELETE /groups/:id/members/:userId — remove a member (admin only)
+// DELETE /groups/:id/members/:userId - remove a member (admin only)
 router.delete('/:id/members/:userId', async (req: AuthRequest, res: Response): Promise<void> => {
   const group = await getGroupById(req.params.id);
   if (!group) {
@@ -188,7 +192,7 @@ router.delete('/:id/members/:userId', async (req: AuthRequest, res: Response): P
   res.status(204).send();
 });
 
-// POST /groups/:id/members/accept — invitee accepts invitation
+// POST /groups/:id/members/accept - invitee accepts invitation
 router.post('/:id/members/accept', async (req: AuthRequest, res: Response): Promise<void> => {
   const group = await getGroupById(req.params.id);
   if (!group) {
@@ -208,7 +212,7 @@ router.post('/:id/members/accept', async (req: AuthRequest, res: Response): Prom
   res.json(updated);
 });
 
-// DELETE /groups/:id/invitations/me — invitee declines invitation
+// DELETE /groups/:id/invitations/me - invitee declines invitation
 router.delete('/:id/invitations/me', async (req: AuthRequest, res: Response): Promise<void> => {
   const group = await getGroupById(req.params.id);
   if (!group) {
@@ -219,7 +223,7 @@ router.delete('/:id/invitations/me', async (req: AuthRequest, res: Response): Pr
   res.status(204).send();
 });
 
-// DELETE /groups/:id/pending/:userId — admin cancels a pending invitation
+// DELETE /groups/:id/pending/:userId - admin cancels a pending invitation
 router.delete('/:id/pending/:userId', async (req: AuthRequest, res: Response): Promise<void> => {
   const group = await getGroupById(req.params.id);
   if (!group) {
@@ -234,9 +238,16 @@ router.delete('/:id/pending/:userId', async (req: AuthRequest, res: Response): P
   res.status(204).send();
 });
 
-// POST /groups/:id/coupons/:couponId — share a coupon to a group
+// POST /groups/:id/coupons/:couponId - share a coupon to a group. Also reused
+// (via code_updated) to redeliver a coupon's code to everyone it's already
+// shared with, when the owner edits it - see the branch below for why that
+// path is deliberately silent.
 router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): Promise<void> => {
-  const { coupon_code } = req.body;
+  const { coupon_code, code_updated } = req.body;
+  if (code_updated && !coupon_code) {
+    res.status(400).json({ error: 'coupon_code is required when code_updated is true' });
+    return;
+  }
   const group = await getGroupById(req.params.id);
   if (!group) {
     res.status(404).json({ error: 'Group not found' });
@@ -256,44 +267,162 @@ router.post('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): P
     res.status(403).json({ error: 'You do not own this coupon' });
     return;
   }
+  if (code_updated && !group.coupon_id_list.includes(coupon.coupon_id)) {
+    res.status(400).json({ error: 'Coupon is not shared to this group - share it first' });
+    return;
+  }
 
   const updated = await addCouponToGroup(group.group_id, coupon.coupon_id);
 
-  // Notify all other group members
   const sharer = await findUserById(req.userId!);
   const sharerName = sharer?.username ?? 'A member';
   const otherMembers = group.user_id_list.filter(uid => uid !== req.userId!);
-  await Promise.all(
-    otherMembers.map(async uid => {
-      // Per-recipient decision: online members get the code pushed live (never
-      // stored); offline members get it stored as a fallback for next app open.
-      const online = (await getConnectionsForUser(uid)).length > 0;
-      if (online && coupon_code) {
-        await pushToUser(uid, { event: 'coupon_transfer', coupon_id: coupon.coupon_id, code: coupon_code });
-      }
-      await notifyUser({
-        user_id: uid,
-        type: 'group_share',
-        title: `New coupon in "${group.name}"`,
-        body: `${sharerName} shared a ${coupon.store_name} coupon`,
-        read: false,
-        group_id: group.group_id,
-        group_name: group.name,
-        coupon_id: coupon.coupon_id,
-        // TODO(P2P): remove once WebRTC data-channel transfer (Stage 2) lands.
-        // The code is delivered live via the WebSocket coupon_transfer relay; we
-        // persist it ONLY for recipients who were offline at share time, as a
-        // fallback they pick up on next fetch. Online recipients store nothing.
-        // Never included in the live WS notification payload (notifyUser strips it).
-        coupon_code: online ? undefined : (coupon_code ?? undefined),
-      });
-    })
-  );
+  const online_recipient_ids: string[] = [];
+  try {
+    await Promise.all(
+      otherMembers.map(async uid => {
+        // Per-recipient decision: online members get the code via a WebRTC data
+        // channel, negotiated client-side after this response (see
+        // online_recipient_ids below) - the code never touches this request.
+        // Offline members get it stored as a fallback for next app open.
+        // A force-quit leaves its connection row behind until a push to it
+        // 410s and prunes it, so "online" can be optimistic. That is safe:
+        // the P2P attempt fails and the sharer's rescue write covers it.
+        const online = (await getConnectionsForUser(uid)).length > 0;
+        if (online) online_recipient_ids.push(uid);
+        console.log('[share] recipient=%s online=%s persisting_code=%s', uid, online, !online && !!coupon_code);
 
-  res.json(updated);
+        if (code_updated) {
+          // An edit is a correction, not an event - same principle as the
+          // silent metadata refresh. Online recipients get the new code purely
+          // via P2P below, no row at all. Offline recipients still need
+          // something to survive until they reconnect, so this writes one -
+          // but marked invisible (read: true, a type the client never
+          // surfaces as a banner/OS-notification/panel row) so it never reads
+          // as "a coupon was (re-)shared" when nothing new was shared.
+          if (!online) {
+            await notifyUser({
+              user_id: uid,
+              type: 'coupon_code_sync',
+              title: 'Coupon code updated',
+              body: `${sharerName} updated the code for a ${coupon.store_name} coupon`,
+              read: true,
+              group_id: group.group_id,
+              group_name: group.name,
+              coupon_id: coupon.coupon_id,
+              coupon_code,
+            });
+          }
+          return;
+        }
+
+        await notifyUser({
+          user_id: uid,
+          type: 'group_share',
+          title: `New coupon in "${group.name}"`,
+          body: `${sharerName} shared a ${coupon.store_name} coupon`,
+          read: false,
+          group_id: group.group_id,
+          group_name: group.name,
+          coupon_id: coupon.coupon_id,
+          // Persisted (encrypted, TTL'd) only for recipients who were offline
+          // at share time. Online recipients get it via RTCDataChannel - never
+          // included here, and never sent over the live WebSocket.
+          coupon_code: online ? undefined : (coupon_code ?? undefined),
+        });
+      })
+    );
+  } catch (err: any) {
+    // Without this the rejection escapes an async handler, and Express 4
+    // leaves the request hanging with no response and nothing logged.
+    // Most likely cause: NOTIFICATION_CODE_KEY missing/invalid.
+    console.error('[share] notifying recipients failed:', err?.stack ?? err);
+    res.status(500).json({ error: `Coupon shared, but notifying members failed: ${err?.message ?? err}` });
+    return;
+  }
+
+  console.log('[share] coupon=%s group=%s online_recipients=%j', coupon.coupon_id, group.group_id, online_recipient_ids);
+  res.json({ ...updated, online_recipient_ids });
 });
 
-// DELETE /groups/:id/coupons/:couponId — revoke a coupon from a group
+// POST /groups/:id/coupons/:couponId/redeem - any group member (not just the
+// owner) redeems a coupon shared to this group. Separate from the owner-gated
+// coupon routes: authorization is group membership, and it can only redeem,
+// never touch the coupon's other editable fields.
+// Body: { redeem_all: true } or { amount: <number > 0> }.
+router.post('/:id/coupons/:couponId/redeem', async (req: AuthRequest, res: Response): Promise<void> => {
+  const parsed = parseRedeemAction(req.body);
+  if ('error' in parsed) {
+    res.status(400).json({ error: parsed.error });
+    return;
+  }
+
+  const group = await getGroupById(req.params.id);
+  if (!group) {
+    res.status(404).json({ error: 'Group not found' });
+    return;
+  }
+  if (!group.user_id_list.includes(req.userId!)) {
+    res.status(403).json({ error: 'You are not a member of this group' });
+    return;
+  }
+  if (!group.coupon_id_list.includes(req.params.couponId)) {
+    res.status(404).json({ error: 'Coupon is not shared to this group' });
+    return;
+  }
+
+  const outcome = await applyRedemption(req.params.couponId, req.userId!, parsed);
+  if (outcome.status !== 200) {
+    res.status(outcome.status).json({ error: outcome.error });
+    return;
+  }
+  res.json(outcome.coupon);
+});
+
+// POST /groups/:id/coupons/:couponId/rescue-code - sharer-triggered fallback
+// when a WebRTC P2P negotiation to an online recipient failed. Persists the
+// code (encrypted, TTL'd) onto that recipient's existing group_share
+// notification, same mechanism as the offline-fallback path.
+router.post('/:id/coupons/:couponId/rescue-code', async (req: AuthRequest, res: Response): Promise<void> => {
+  const { recipient_user_id, coupon_code } = req.body;
+  if (!recipient_user_id || !coupon_code) {
+    res.status(400).json({ error: 'recipient_user_id and coupon_code are required' });
+    return;
+  }
+
+  const group = await getGroupById(req.params.id);
+  if (!group) {
+    res.status(404).json({ error: 'Group not found' });
+    return;
+  }
+  if (!group.user_id_list.includes(req.userId!)) {
+    res.status(403).json({ error: 'You are not a member of this group' });
+    return;
+  }
+  if (!group.user_id_list.includes(recipient_user_id)) {
+    res.status(400).json({ error: 'recipient is not a member of this group' });
+    return;
+  }
+
+  const coupon = await getCouponById(req.params.couponId);
+  if (!coupon) {
+    res.status(404).json({ error: 'Coupon not found' });
+    return;
+  }
+  if (coupon.owner_id !== req.userId!) {
+    res.status(403).json({ error: 'You do not own this coupon' });
+    return;
+  }
+
+  const rescued = await rescueCode(recipient_user_id, group.group_id, coupon.coupon_id, coupon_code, group.name);
+  if (!rescued) {
+    res.status(404).json({ error: 'No matching group_share notification to rescue' });
+    return;
+  }
+  res.status(204).send();
+});
+
+// DELETE /groups/:id/coupons/:couponId - revoke a coupon from a group
 router.delete('/:id/coupons/:couponId', async (req: AuthRequest, res: Response): Promise<void> => {
   const group = await getGroupById(req.params.id);
   if (!group) {
@@ -336,7 +465,7 @@ router.delete('/:id/coupons/:couponId', async (req: AuthRequest, res: Response):
   res.status(204).send();
 });
 
-// PUT /groups/:id/name — admin renames the group
+// PUT /groups/:id/name - admin renames the group
 router.put('/:id/name', async (req: AuthRequest, res: Response): Promise<void> => {
   const { name } = req.body;
   if (!name?.trim()) {
@@ -356,7 +485,7 @@ router.put('/:id/name', async (req: AuthRequest, res: Response): Promise<void> =
   res.json(updated);
 });
 
-// PUT /groups/:id/photo — admin sets the shared group photo (small base64 data-URL)
+// PUT /groups/:id/photo - admin sets the shared group photo (small base64 data-URL)
 router.put('/:id/photo', async (req: AuthRequest, res: Response): Promise<void> => {
   const { image } = req.body;
   if (typeof image !== 'string' || !image.startsWith('data:image/')) {
@@ -365,7 +494,7 @@ router.put('/:id/photo', async (req: AuthRequest, res: Response): Promise<void> 
   }
   // Keep well under DynamoDB's 400KB item limit; the client resizes to ~256px.
   if (image.length > 400_000) {
-    res.status(413).json({ error: 'Image too large — please choose a smaller photo' });
+    res.status(413).json({ error: 'Image too large - please choose a smaller photo' });
     return;
   }
   const group = await getGroupById(req.params.id);
@@ -381,7 +510,7 @@ router.put('/:id/photo', async (req: AuthRequest, res: Response): Promise<void> 
   res.json(updated);
 });
 
-// DELETE /groups/:id — admin deletes the group
+// DELETE /groups/:id - admin deletes the group
 router.delete('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
   const group = await getGroupById(req.params.id);
   if (!group) {
