@@ -51,6 +51,7 @@ export default function GmailScanScreen() {
   const [scanning, setScanning] = useState(false);
   const [previewCandidate, setPreviewCandidate] = useState<{ candidate: GmailCandidate; draft: GmailDraftFields } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [retrying, setRetrying] = useState<Set<string>>(new Set());
 
   // Fills in `drafts` for a candidate list: fresh extractions from a scan response
   // take priority, then the local on-device cache, then a background backfill call
@@ -188,6 +189,23 @@ export default function GmailScanScreen() {
     setDismissed(prev => new Set(prev).add(messageId));
   }
 
+  // Once a candidate is cached, hydrateDrafts never re-hits the server for it -
+  // that's normally right (avoid re-extracting on every load), but it also means a
+  // "no code found" result is stuck forever even after a server-side extraction fix
+  // ships, unless the user gets a way to explicitly ask for another look.
+  async function handleRetryExtraction(messageId: string) {
+    setRetrying(prev => new Set(prev).add(messageId));
+    try {
+      const { data } = await extractGmailCandidate(messageId);
+      await saveDraftFields(messageId, data);
+      setDrafts(prev => ({ ...prev, [messageId]: data }));
+    } catch {
+      Alert.alert('Could not re-check this email', 'Please try again in a moment.');
+    } finally {
+      setRetrying(prev => { const next = new Set(prev); next.delete(messageId); return next; });
+    }
+  }
+
   function openAddCoupon(candidate: GmailCandidate, draft: GmailDraftFields) {
     const category = guessCategory(`${candidate.subject} ${draft.store ?? ''}`);
     router.push({
@@ -200,6 +218,7 @@ export default function GmailScanScreen() {
         ...(category ? { category } : {}),
         ...(draft.expiration ? { expiration: draft.expiration } : {}),
         ...(draft.amount != null ? { amount: String(draft.amount) } : {}),
+        ...(draft.giftUrl ? { giftUrl: draft.giftUrl } : {}),
       },
     });
   }
@@ -286,6 +305,9 @@ export default function GmailScanScreen() {
           renderItem={({ item }) => {
             const draft = drafts[item.message_id]!;
             const hasCode = !!draft.code;
+            const hasGiftUrl = !hasCode && !!draft.giftUrl;
+            const isGuess = hasCode && draft.codeConfidence === 'guess';
+            const isRetrying = retrying.has(item.message_id);
             const category = guessCategory(`${item.subject} ${draft.store ?? ''}`);
             const icon = (category ? CATEGORY_ICONS[category] : null) ?? 'pricetag-outline';
             const color = category ? CATEGORY_COLORS[category] : '#EDE8DC';
@@ -300,17 +322,32 @@ export default function GmailScanScreen() {
                       <Text style={styles.rowStore} numberOfLines={1}>{draft.store || item.from}</Text>
                       <Text style={styles.rowSubject} numberOfLines={1}>{item.subject || '(no subject)'}</Text>
                     </View>
-                    <Badge tone={hasCode ? 'brand' : 'glass'} uppercase>
-                      {hasCode ? 'New' : 'No code found'}
+                    <Badge tone={hasCode ? (isGuess ? 'glass' : 'brand') : hasGiftUrl ? 'brand' : 'glass'} uppercase>
+                      {hasCode ? (isGuess ? 'Check code' : 'New') : hasGiftUrl ? 'Gift link' : 'No code found'}
                     </Badge>
+                    {!hasCode && !hasGiftUrl && (
+                      <TouchableOpacity
+                        onPress={() => handleRetryExtraction(item.message_id)}
+                        disabled={isRetrying}
+                        hitSlop={8}
+                      >
+                        {isRetrying
+                          ? <ActivityIndicator size="small" color={colors.textMuted} />
+                          : <Ionicons name="refresh-outline" size={20} color={colors.textMuted} />}
+                      </TouchableOpacity>
+                    )}
                     <TouchableOpacity onPress={() => handleDeleteCandidate(item)} hitSlop={8}>
                       <Ionicons name="close-circle" size={20} color={colors.textMuted} />
                     </TouchableOpacity>
                   </View>
                   <Text style={styles.rowHint}>
                     {hasCode
-                      ? `Received ${formatDate(item.date)} - tap to create a coupon from this email.`
-                      : "We found an email that looks like a coupon but couldn't detect the code - tap to fill it in manually."}
+                      ? isGuess
+                        ? `Received ${formatDate(item.date)} - we're not fully sure about this code, tap to check it against the email.`
+                        : `Received ${formatDate(item.date)} - tap to create a coupon from this email.`
+                      : hasGiftUrl
+                        ? `Received ${formatDate(item.date)} - this looks like a digital gift card link, tap to create a coupon from it.`
+                        : "We found an email that looks like a coupon but couldn't detect the code - tap to fill it in manually."}
                   </Text>
                 </GlassPanel>
               </TouchableOpacity>

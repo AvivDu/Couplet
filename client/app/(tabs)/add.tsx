@@ -70,7 +70,7 @@ export default function AddCouponScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{
     fromGmail?: string; messageId?: string; code?: string; store?: string;
-    category?: string; expiration?: string; amount?: string;
+    category?: string; expiration?: string; amount?: string; giftUrl?: string;
   }>();
 
   useFocusEffect(
@@ -93,7 +93,7 @@ export default function AddCouponScreen() {
         setExpiryDate(params.expiration ? new Date(params.expiration) : null);
         setBalance(params.amount ?? '');
         setImageUri(null);
-        setGiftUrl('');
+        setGiftUrl(params.giftUrl ?? '');
         categoryTouchedRef.current = false;
         // Fires on blur (leaving this screen) - handleAdd already blanks the fields
         // on a successful save, so this is a no-op then. If the draft was instead
@@ -171,6 +171,7 @@ export default function AddCouponScreen() {
       fields.store !== null ||
       fields.amount !== null ||
       fields.expiration !== null ||
+      fields.giftUrl !== null ||
       match !== null;
 
     // Extraction is best-effort regex over arbitrary text (or an empty
@@ -191,6 +192,7 @@ export default function AddCouponScreen() {
     if (fields.store !== null) setCouponName(fields.store);
     if (fields.amount !== null) setBalance(String(fields.amount));
     if (fields.expiration !== null) setExpiryDate(new Date(fields.expiration));
+    if (fields.giftUrl !== null) setGiftUrl(fields.giftUrl);
     if (match) {
       setMatchedGeneralCard(match);
       // Same rule as typing a store name by hand (handleCouponNameChange): an

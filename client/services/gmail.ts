@@ -66,9 +66,17 @@ export async function connectGmail(): Promise<{ gmail_email: string }> {
 // nothing confident was found for that field.
 export interface GmailDraftFields {
   code: string | null;
+  // 'label' = matched an explicit "coupon code:" style label, trustworthy as-is.
+  // 'guess' = matched only a bare "code"/"קוד" with no qualifying word, worth a
+  // second look before saving. null when no code was found at all.
+  codeConfidence: 'label' | 'guess' | null;
   store: string | null;
   amount: number | null;
   expiration: string | null;
+  // A personalized redemption link for a known general-gift-card brand (BuyMe,
+  // XTRA, etc.) found in the body - these coupons are often link-based rather
+  // than a plain-text code, so this can be present even when code is null.
+  giftUrl: string | null;
 }
 
 // `draft` is present only for candidates actually extracted during this scan (new
