@@ -2,6 +2,7 @@ import React from 'react';
 import { View } from 'react-native';
 import { Text } from './rn';
 import CSymbol from './CSymbol';
+import { colors, fontFamily } from '../constants/theme';
 
 type LogoSize = 'small' | 'medium' | 'large';
 
@@ -27,8 +28,8 @@ export default function CoupletLogo({ size = 'medium', showTagline = true }: Pro
         <Text
           style={{
             fontSize: font,
-            fontWeight: '900',
-            color: '#1A2332',
+            fontFamily: fontFamily.display,
+            color: colors.textStrong,
             letterSpacing: font * 0.07,
             includeFontPadding: false,
           }}
@@ -41,7 +42,8 @@ export default function CoupletLogo({ size = 'medium', showTagline = true }: Pro
         <Text
           style={{
             fontSize: tag,
-            color: '#1A2332',
+            fontFamily: fontFamily.uiBold,
+            color: colors.textStrong,
             opacity: 0.55,
             letterSpacing: 1.0,
             marginTop: sym * 0.06,

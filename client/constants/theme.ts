@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Easing, Platform } from 'react-native';
 import { CATEGORY_COLORS } from './categories';
 
 // Port of the Couplet "liquid glass" design tokens (tokens/*.css in the
@@ -188,13 +188,19 @@ function shadow(iosOpacity: number, iosRadius: number, iosOffsetY: number, andro
 }
 
 export const elevation = {
-  hair: shadow(0.04, 2, 1, 1, '#000000'),
-  card: shadow(0.05, 6, 2, 2),
-  raised: shadow(0.08, 8, 2, 3),
+  hair: shadow(0.04, 1, 1, 1),
+  card: shadow(0.05, 3, 2, 2),
+  raised: shadow(0.08, 4, 2, 3),
   panel: shadow(0.10, 16, 8, 6),
   float: shadow(0.16, 24, 18, 10, colors.ink900),
   brand: shadow(0.28, 10, 8, 6, '#E76F51'),
   brandHover: shadow(0.34, 14, 12, 8, '#E76F51'),
+};
+
+export const easing = {
+  out: Easing.bezier(0.22, 0.61, 0.36, 1),
+  inOut: Easing.bezier(0.4, 0, 0.2, 1),
+  settle: Easing.bezier(0.16, 0.84, 0.3, 1),
 };
 
 export const motion = {

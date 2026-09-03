@@ -67,8 +67,12 @@ export default function GlassPanel({
         style,
       ]}
     >
-      <BlurView intensity={blurIntensity} tint="light" style={StyleSheet.absoluteFill} />
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: TINT_BG[tint] }]} />
+      {/* pointerEvents="none" for the same reason as the sheen and top highlight
+          below: decorative fills must not intercept a scroll gesture. BlurView is
+          a native view that swallows touches on Android before the parent
+          ScrollView can claim them. */}
+      <BlurView pointerEvents="none" intensity={blurIntensity} tint="light" style={StyleSheet.absoluteFill} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: TINT_BG[tint] }]} />
       {sheen && (
         <LinearGradient
           pointerEvents="none"

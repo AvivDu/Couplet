@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import CSymbol from '../../components/CSymbol';
 import AuroraBackground from '../../components/ui/AuroraBackground';
 import Button from '../../components/ui/Button';
+import { colors, fontFamily } from '../../constants/theme';
 
 const C_SIZE = 78;
 const FONT_SIZE = 40;
@@ -152,8 +153,8 @@ const styles = StyleSheet.create({
   },
   oupletChar: {
     fontSize: FONT_SIZE,
-    fontWeight: '900',
-    color: '#1A2332',
+    fontFamily: fontFamily.display,
+    color: colors.textStrong,
     letterSpacing: FONT_SIZE * 0.07,
     includeFontPadding: false,
   },

@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import GlassEdge from './GlassEdge';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, glass, blur, radius, spacing, fontFamily, fontSize, elevation } from '../../constants/theme';
@@ -15,8 +16,9 @@ export default function EmptyState({ icon = 'pricetags-outline', title, hint, ac
   return (
     <View style={styles.root}>
       <View style={[styles.medallion, elevation.panel as object]}>
-        <BlurView intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: glass.regular }]} />
+        <BlurView pointerEvents="none" intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: glass.regular }]} />
+        <GlassEdge />
         <Ionicons name={icon} size={38} color={colors.coral300} />
       </View>
       <Text style={styles.title}>{title}</Text>

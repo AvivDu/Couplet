@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
+import GlassEdge from './GlassEdge';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,8 +22,9 @@ export default function CouponCodePanel({
 }: CouponCodePanelProps) {
   return (
     <View style={styles.root}>
-      <BlurView intensity={blur.l} tint="light" style={StyleSheet.absoluteFill} />
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick }]} />
+      <BlurView pointerEvents="none" intensity={blur.l} tint="light" style={StyleSheet.absoluteFill} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick }]} />
+      <GlassEdge />
       <LinearGradient
         pointerEvents="none"
         colors={glass.sheenColors as unknown as [string, string, string]}

@@ -18,7 +18,7 @@ import AuroraBackground from '../../components/ui/AuroraBackground';
 import GlassPanel from '../../components/ui/GlassPanel';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
-import { colors, radius, spacing } from '../../constants/theme';
+import { colors, radius, spacing, fontFamily, fontSize } from '../../constants/theme';
 
 export default function ForgotPasswordScreen() {
   const [step, setStep] = useState<'request' | 'confirm'>('request');
@@ -184,21 +184,22 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   inner: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 40 },
   title: {
-    fontSize: 32,
-    fontWeight: '800',
+    fontFamily: fontFamily.display,
+    fontSize: fontSize.displayM,
     color: colors.textStrong,
     marginBottom: 6,
   },
   subtitle: {
-    fontSize: 15,
+    fontFamily: fontFamily.ui,
+    fontSize: fontSize.body,
     color: colors.textBody,
     opacity: 0.7,
     marginBottom: 24,
   },
   field: { marginBottom: spacing.s7 },
   submitBtn: { marginTop: 12, marginBottom: 24 },
-  sentHint: { fontSize: 12, color: colors.stateSuccess, fontWeight: '600', marginBottom: 16 },
+  sentHint: { fontFamily: fontFamily.uiSemibold, fontSize: fontSize.micro, color: colors.stateSuccess, marginBottom: 16 },
   linkBtn: { alignItems: 'center', marginBottom: 12 },
-  linkText: { color: colors.textStrong, fontSize: 14, opacity: 0.6 },
-  linkBold: { color: colors.coral400, fontWeight: '700', opacity: 1 },
+  linkText: { fontFamily: fontFamily.ui, color: colors.textStrong, fontSize: fontSize.bodyS, opacity: 0.6 },
+  linkBold: { fontFamily: fontFamily.uiBold, color: colors.coral400, opacity: 1 },
 });

@@ -4,7 +4,8 @@ import { BlurView } from 'expo-blur';
 import { Text } from './rn';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, glass, blur, radius, fontFamily, fontSize, elevation } from '../constants/theme';
+import { colors, glass, blur, radius, fontFamily, fontSize, elevation, motion, easing } from '../constants/theme';
+import { useReducedMotion, duration } from '../hooks/useReducedMotion';
 
 export type BannerData = {
   id: string;
@@ -27,10 +28,11 @@ export default function NotificationBanner({
 }) {
   const slide = useRef(new Animated.Value(-120)).current;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reduced = useReducedMotion();
 
   useEffect(() => {
     if (!data) return;
-    Animated.spring(slide, { toValue: 0, useNativeDriver: true, bounciness: 6 }).start();
+    Animated.timing(slide, { toValue: 0, duration: duration(motion.durBase, reduced), easing: easing.out, useNativeDriver: true }).start();
     timer.current = setTimeout(hide, 4500);
     return () => {
       if (timer.current) clearTimeout(timer.current);
@@ -39,7 +41,7 @@ export default function NotificationBanner({
   }, [data?.id]);
 
   function hide() {
-    Animated.timing(slide, { toValue: -120, duration: 200, useNativeDriver: true }).start(
+    Animated.timing(slide, { toValue: -120, duration: duration(motion.durFast, reduced), easing: easing.out, useNativeDriver: true }).start(
       ({ finished }) => finished && onDismiss()
     );
   }
@@ -60,15 +62,15 @@ export default function NotificationBanner({
             onPress(data);
           }}
         >
-          <BlurView intensity={blur.l} tint="light" style={StyleSheet.absoluteFill} />
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick }]} />
+          <BlurView pointerEvents="none" intensity={blur.l} tint="dark" style={StyleSheet.absoluteFill} />
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: glass.ink }]} />
           <Ionicons name={data.icon ?? 'notifications'} size={22} color={colors.coral400} style={styles.icon} />
           <View style={styles.textBlock}>
             <Text style={styles.title} numberOfLines={1}>{data.title}</Text>
             <Text style={styles.body} numberOfLines={2}>{data.body}</Text>
           </View>
           <TouchableOpacity style={styles.closeBtn} onPress={hide} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons name="close" size={18} color={colors.tan600} />
+            <Ionicons name="close" size={18} color={colors.cream400} />
           </TouchableOpacity>
         </TouchableOpacity>
       </SafeAreaView>
@@ -84,16 +86,16 @@ const styles = StyleSheet.create({
     gap: 12,
     borderRadius: radius.card,
     borderWidth: 1.5,
-    borderColor: glass.edge,
+    borderColor: glass.edgeInk,
     overflow: 'hidden',
     paddingVertical: 14,
     paddingHorizontal: 16,
     marginTop: 6,
-    ...(elevation.panel as object),
+    ...(elevation.float as object),
   },
   icon: {},
   closeBtn: {},
   textBlock: { flex: 1 },
-  title: { fontFamily: fontFamily.uiBlack, fontSize: fontSize.bodyS, color: colors.textStrong, marginBottom: 2 },
-  body: { fontFamily: fontFamily.ui, fontSize: fontSize.caption, color: colors.textBody, lineHeight: 17 },
+  title: { fontFamily: fontFamily.uiBlack, fontSize: fontSize.bodyS, color: colors.cream050, marginBottom: 2 },
+  body: { fontFamily: fontFamily.ui, fontSize: fontSize.caption, color: colors.cream300, lineHeight: 17 },
 });

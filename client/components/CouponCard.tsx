@@ -40,12 +40,13 @@ export default function CouponCard({
 
   return (
     <Pressable onPress={onPress} style={[styles.root, { opacity: used ? 0.58 : 1 }, elevation.card as object]}>
-      <BlurView intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />
+      <BlurView pointerEvents="none" intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />
       <LinearGradient
+        pointerEvents="none"
         colors={['rgba(255,255,255,.86)', 'rgba(255,255,255,.66)']}
         style={StyleSheet.absoluteFill}
       />
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: tint, opacity: 0.55 }]} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: tint, opacity: 0.55 }]} />
       <LinearGradient
         pointerEvents="none"
         colors={glass.sheenColors as unknown as [string, string, string]}

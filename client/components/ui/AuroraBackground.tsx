@@ -1,7 +1,9 @@
 import React from 'react';
-import { StyleSheet, View, Dimensions } from 'react-native';
+import { useWindowDimensions } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
+import { colors } from '../../constants/theme';
 
 // Port of --mesh-aurora (tokens/glass.css): four soft radial blooms, built
 // from the app's own category pastels, over a cream base. RN has no native
@@ -18,10 +20,10 @@ interface Bloom {
 }
 
 const BLOOMS: Bloom[] = [
-  { key: 'coral', color: '#E8604C', peakOpacity: 0.38, fadeAt: 0.55, widthPct: 1.2, heightPct: 0.9, leftPct: 0.08, topPct: -0.1 },
-  { key: 'sky', color: '#CCEEFF', peakOpacity: 0.85, fadeAt: 0.58, widthPct: 0.9, heightPct: 0.7, leftPct: 0.96, topPct: 0.04 },
-  { key: 'lavender', color: '#E6E6FA', peakOpacity: 0.9, fadeAt: 0.6, widthPct: 0.8, heightPct: 0.7, leftPct: 0.88, topPct: 0.96 },
-  { key: 'peach', color: '#FFDAB9', peakOpacity: 0.9, fadeAt: 0.62, widthPct: 0.85, heightPct: 0.65, leftPct: 0.04, topPct: 0.92 },
+  { key: 'coral', color: colors.coral400, peakOpacity: 0.38, fadeAt: 0.55, widthPct: 1.2, heightPct: 0.9, leftPct: 0.08, topPct: -0.1 },
+  { key: 'sky', color: colors.category.Travel, peakOpacity: 0.85, fadeAt: 0.58, widthPct: 0.9, heightPct: 0.7, leftPct: 0.96, topPct: 0.04 },
+  { key: 'lavender', color: colors.category.Fashion, peakOpacity: 0.9, fadeAt: 0.6, widthPct: 0.8, heightPct: 0.7, leftPct: 0.88, topPct: 0.96 },
+  { key: 'peach', color: colors.category.Food, peakOpacity: 0.9, fadeAt: 0.62, widthPct: 0.85, heightPct: 0.65, leftPct: 0.04, topPct: 0.92 },
 ];
 
 interface Props {
@@ -30,12 +32,13 @@ interface Props {
 }
 
 export default function AuroraBackground({ children, style }: Props) {
-  const { width, height } = Dimensions.get('window');
+  const { width, height } = useWindowDimensions();
 
   return (
     <View style={[styles.root, style]}>
       <LinearGradient
-        colors={['#FBF8F1', '#F5F0E6']}
+        pointerEvents="none"
+        colors={[colors.cream050, colors.cream100]}
         style={StyleSheet.absoluteFill}
       />
       {BLOOMS.map(b => {
