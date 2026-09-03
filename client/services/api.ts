@@ -186,6 +186,19 @@ export interface CouponMeta {
 
 export const getCoupons = () => api.get<CouponMeta[]>('/coupons');
 
+/**
+ * A coupon someone else shared into one of your groups. Metadata only, like
+ * every other server-held coupon shape - never a code or image.
+ */
+export interface SharedCouponMeta extends CouponMeta {
+  /** The owner who shared it; null only if their account has since been removed. */
+  shared_by: { user_id: string; username: string; image?: string | null } | null;
+  /** Every group of yours this coupon reached - usually one. */
+  groups: { group_id: string; name: string }[];
+}
+
+export const getSharedCoupons = () => api.get<SharedCouponMeta[]>('/coupons/shared-with-me');
+
 export const createCoupon = (data: {
   category: string;
   store_name: string;

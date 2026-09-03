@@ -14,7 +14,7 @@ import {
 import { Text } from '../../components/rn';
 import { Ionicons } from '@expo/vector-icons';
 import { CATEGORY_DEFS, SORT_OPTIONS, sortCoupons, type SortOption } from '../../constants/categories';
-import { getCoupons, updateCoupon, redeemOwnCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, clearNotificationCode, type CouponMeta, type RedeemAction } from '../../services/api';
+import { getCoupons, getSharedCoupons, updateCoupon, redeemOwnCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, clearNotificationCode, type CouponMeta, type SharedCouponMeta, type RedeemAction } from '../../services/api';
 import { getCouponCode, saveCouponCode, deleteCouponCode, deleteCouponImage } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationsContext';
@@ -48,6 +48,9 @@ export default function HomeScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ openNotifications?: string }>();
   const [coupons, setCoupons] = useState<CouponMeta[]>([]);
+  // Coupons other members shared into the user's groups. Fetched alongside the
+  // owned list but surfaced only while searching - see `sharedMatches`.
+  const [sharedCoupons, setSharedCoupons] = useState<SharedCouponMeta[]>([]);
   const [couponCodes, setCouponCodes] = useState<Record<string, string | null>>({});
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
@@ -111,13 +114,23 @@ export default function HomeScreen() {
           }
           return [];
         });
-      const [invitationsResult, serverNotifsResult] = await Promise.allSettled([
+      const [invitationsResult, serverNotifsResult, sharedResult] = await Promise.allSettled([
         getInvitations(),
         getNotifications(),
+        getSharedCoupons(),
       ]);
 
       const invitations = invitationsResult.status === 'fulfilled' ? invitationsResult.value.data : [];
       const serverNotifData = serverNotifsResult.status === 'fulfilled' ? serverNotifsResult.value.data : [];
+      // Tolerated failure, like the two above: a server that predates
+      // /coupons/shared-with-me 404s here, and search simply falls back to
+      // owned coupons only rather than the whole screen erroring.
+      if (sharedResult.status === 'fulfilled') {
+        setSharedCoupons(sharedResult.value.data);
+      } else {
+        console.warn('[search] shared coupons unavailable - searching own coupons only');
+        setSharedCoupons([]);
+      }
 
       // Save coupon codes delivered as a fallback - either a first share
       // (group_share) or a silent redelivery after the owner edited the code
@@ -257,11 +270,29 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
+  const query = search.trim().toLowerCase();
+
   const filtered = coupons
     .filter(c => filter === 'All' || c.category === filter)
-    .filter(c => !search.trim() || c.store_name.toLowerCase().includes(search.trim().toLowerCase()));
+    .filter(c => !query || c.store_name.toLowerCase().includes(query));
 
   const displayed = sortCoupons(filtered, sort);
+
+  // Shared coupons surface only while searching. Folding them into the default
+  // list would turn Home from "my coupons" into "every coupon in every group I
+  // am in", which is what the Groups tab is for - the ask was a search that can
+  // reach them, not a merged inbox.
+  //
+  // Matches on the sharer's name as well as the store, since "what did Dana
+  // send me" is the other natural way to look for someone else's coupon.
+  const sharedMatches = query
+    ? sharedCoupons
+        .filter(c => filter === 'All' || c.category === filter)
+        .filter(c =>
+          c.store_name.toLowerCase().includes(query) ||
+          (c.shared_by?.username ?? '').toLowerCase().includes(query)
+        )
+    : [];
 
   const activeSortLabel = SORT_OPTIONS.find(o => o.value === sort)?.label ?? null;
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -346,6 +377,17 @@ export default function HomeScreen() {
 
   function openDetail(coupon: CouponMeta) {
     setSelected({ ...coupon, code: couponCodes[coupon.coupon_id] ?? null });
+  }
+
+  // A shared coupon opens its group, not the local detail sheet. Home's detail
+  // sheet redeems through redeemOwnCoupon (owner-only, 403 for a member), and
+  // the code for a shared coupon lives under the group screen's pickup logic -
+  // so the group screen is the one place that already handles all of it.
+  function openSharedCoupon(coupon: SharedCouponMeta) {
+    // groups is non-empty by construction: the coupon only appears here because
+    // it was found inside one of the caller's groups.
+    const group = coupon.groups[0];
+    if (group) router.push(`/group/${group.group_id}`);
   }
 
   function handleUpdate(updated: CouponMeta, newCode: string) {
@@ -460,13 +502,47 @@ export default function HomeScreen() {
           ItemSeparatorComponent={() => <View style={{ height: spacing.stackCard }} />}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.coral400} />}
           ListEmptyComponent={
-            <EmptyState
-              icon="pricetags-outline"
-              title="No coupons here"
-              hint={search ? `Nothing matches "${search}"` : 'Add your first coupon to get started'}
-            />
+            // Suppressed when the search found shared coupons - the footer below
+            // is showing results, so "No coupons here" would contradict them.
+            sharedMatches.length > 0 ? null : (
+              <EmptyState
+                icon="pricetags-outline"
+                title="No coupons here"
+                hint={search ? `Nothing matches "${search}"` : 'Add your first coupon to get started'}
+              />
+            )
           }
-          contentContainerStyle={displayed.length === 0 ? styles.emptyContainer : styles.listContainer}
+          ListFooterComponent={
+            sharedMatches.length === 0 ? null : (
+              <View style={styles.sharedSection}>
+                <SectionLabel count={sharedMatches.length}>Shared with you</SectionLabel>
+                {sharedMatches.map(c => (
+                  <View key={c.coupon_id} style={styles.sharedCard}>
+                    <CouponCard
+                      store={c.store_name}
+                      category={c.category}
+                      balance={c.balance}
+                      expires={c.expiration_date ? new Date(c.expiration_date).toLocaleDateString() : undefined}
+                      status={c.status as 'active' | 'used' | 'expired'}
+                      sender={c.shared_by?.username ?? 'A member'}
+                      senderImage={c.shared_by?.image ?? null}
+                      sharedAt={
+                        c.groups.length > 1
+                          ? `${c.groups[0].name} +${c.groups.length - 1}`
+                          : c.groups[0]?.name
+                      }
+                      onPress={() => openSharedCoupon(c)}
+                    />
+                  </View>
+                ))}
+              </View>
+            )
+          }
+          contentContainerStyle={
+            displayed.length === 0 && sharedMatches.length === 0
+              ? styles.emptyContainer
+              : styles.listContainer
+          }
         />
 
         {/* Sort menu */}
@@ -628,6 +704,10 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   listContainer: { paddingHorizontal: 20, paddingBottom: 130 },
+  // Sits inside the list's own horizontal padding, so no extra inset here -
+  // only the breathing room that separates it from the owned results above.
+  sharedSection: { marginTop: spacing.s10 },
+  sharedCard: { marginBottom: spacing.stackCard },
   emptyContainer: { flex: 1, justifyContent: 'center' },
   joinOverlay: {
     flex: 1,

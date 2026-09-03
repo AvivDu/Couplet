@@ -1,7 +1,8 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { getCouponsByOwner, getCouponById, insertCoupon, updateCoupon, deleteCoupon } from '../repositories/coupons';
-import { removeCouponFromAllGroups, pushCouponUpdated, getGroupsContainingCoupon } from '../repositories/groups';
+import { getCouponsByOwner, getCouponById, insertCoupon, updateCoupon, deleteCoupon, type Coupon } from '../repositories/coupons';
+import { removeCouponFromAllGroups, pushCouponUpdated, getGroupsContainingCoupon, getGroupsByUser } from '../repositories/groups';
+import { findUserById } from '../repositories/users';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { crawlRedeemableStores } from '../services/crawler';
 import { applyRedemption, parseRedeemAction, notifyCouponRedeemed } from '../services/redemption';
@@ -13,6 +14,66 @@ router.use(authMiddleware);
 router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
   const coupons = await getCouponsByOwner(req.userId!);
   res.json(coupons);
+});
+
+// GET /coupons/shared-with-me - every coupon other members have shared into a
+// group the caller belongs to, with the sharer and the groups it came through.
+//
+// Declared before any '/:id' route so the literal path can't be captured as an id.
+//
+// Metadata only, exactly like GET /groups/:id - no coupon_code, no image. The
+// security invariant is unchanged: this endpoint says a coupon EXISTS and who
+// shared it, never what it is worth redeeming. Codes still reach the device
+// only over P2P or the encrypted fallback.
+router.get('/shared-with-me', async (req: AuthRequest, res: Response): Promise<void> => {
+  const groups = await getGroupsByUser(req.userId!);
+
+  // One coupon can be shared into several of the caller's groups, so gather the
+  // groups per coupon and emit a single row per coupon rather than duplicating it.
+  const groupsByCoupon = new Map<string, { group_id: string; name: string }[]>();
+  for (const g of groups) {
+    for (const couponId of g.coupon_id_list ?? []) {
+      const list = groupsByCoupon.get(couponId) ?? [];
+      list.push({ group_id: g.group_id, name: g.name });
+      groupsByCoupon.set(couponId, list);
+    }
+  }
+
+  const couponDocs = await Promise.all(
+    [...groupsByCoupon.keys()].map(couponId => getCouponById(couponId))
+  );
+
+  // The caller's own coupons already come from GET /coupons. Including them
+  // here would double every row once the client merges the two lists.
+  const shared = couponDocs.filter(
+    (c): c is Coupon => !!c && c.owner_id !== req.userId!
+  );
+
+  // Resolve each distinct owner once - one member typically shares several coupons.
+  const ownerIds = [...new Set(shared.map(c => c.owner_id))];
+  const ownerDocs = await Promise.all(ownerIds.map(uid => findUserById(uid)));
+  const owners = new Map(ownerDocs.filter(Boolean).map(u => [u!.user_id, u!]));
+
+  res.json(
+    shared.map(c => {
+      const owner = owners.get(c.owner_id);
+      return {
+        coupon_id: c.coupon_id,
+        owner_id: c.owner_id,
+        category: c.category,
+        store_name: c.store_name,
+        expiration_date: c.expiration_date,
+        balance: c.balance,
+        status: c.status,
+        created_at: c.created_at,
+        giftcard_url: c.giftcard_url ?? null,
+        shared_by: owner
+          ? { user_id: owner.user_id, username: owner.username, image: owner.profile_image ?? null }
+          : null,
+        groups: groupsByCoupon.get(c.coupon_id) ?? [],
+      };
+    })
+  );
 });
 
 router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
