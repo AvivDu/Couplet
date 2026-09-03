@@ -209,6 +209,29 @@ router.post('/:id/members/accept', async (req: AuthRequest, res: Response): Prom
     return;
   }
   const updated = await acceptGroupInvitation(group.group_id, req.userId!);
+
+  // Tell everyone already in the group - without this, an existing member
+  // sitting on the group screen never learns someone joined until they
+  // background/refocus or pull-to-refresh (the client's live-refresh path is
+  // driven entirely by this notification bumping its WS revision counter).
+  // group.user_id_list is the pre-accept membership, so the joiner themselves
+  // is correctly excluded.
+  const joiner = await findUserById(req.userId!);
+  const joinerName = joiner?.username ?? 'Someone';
+  await Promise.all(
+    group.user_id_list.map(uid =>
+      notifyUser({
+        user_id: uid,
+        type: 'group_member_joined',
+        title: 'New group member',
+        body: `${joinerName} joined "${group.name}"`,
+        read: false,
+        group_id: group.group_id,
+        group_name: group.name,
+      })
+    )
+  );
+
   res.json(updated);
 });
 

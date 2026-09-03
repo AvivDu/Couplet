@@ -34,6 +34,11 @@ import Input from '../ui/Input';
 import CouponCodePanel from '../ui/CouponCodePanel';
 import { colors, glass, radius, spacing, fontFamily, fontSize } from '../../constants/theme';
 
+// Shared between the "Reveal code" icon's own size and its balancing spacer
+// (see revealBtnRow/revealBtnSpacer) - keep in sync if the icon size changes.
+const REVEAL_BTN_ICON_SIZE = 18;
+const REVEAL_BTN_ICON_GAP = 8;
+
 interface CouponDisplayProps {
   coupon: CouponWithCode;
   // Non-owners open this from the group screen to redeem a shared coupon;
@@ -353,8 +358,21 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
         <GlassPanel tint="regular" radius={radius['2xl']} padding={spacing.s14} style={styles.hiddenPanel}>
           <Text style={styles.hiddenTitle}>Code hidden</Text>
           <Text style={styles.hiddenHint}>This code lives on this device only — reveal it at the till.</Text>
-          <Button variant="primary" block onPress={() => setRevealed(true)} icon={<Ionicons name="eye-outline" size={18} color="#fff" />}>
-            Reveal code
+          <Button
+            variant="primary"
+            block
+            style={styles.revealBtn}
+            onPress={() => setRevealed(true)}
+          >
+            {/* Custom content (not the icon/children slots) so the icon sits right
+                next to the label, while the label still ends up optically
+                centered on the button's full width - a trailing spacer matching
+                the icon+gap width balances the icon's weight on the left. */}
+            <View style={styles.revealBtnRow}>
+              <Ionicons name="eye-outline" size={REVEAL_BTN_ICON_SIZE} color="#fff" style={styles.revealBtnIcon} />
+              <Text style={styles.revealBtnLabel}>Reveal code</Text>
+              <View style={styles.revealBtnSpacer} />
+            </View>
           </Button>
         </GlassPanel>
       )}
@@ -585,9 +603,25 @@ const styles = StyleSheet.create({
   heroValue: { fontFamily: fontFamily.uiBold, fontSize: fontSize.body, color: colors.textStrong, marginTop: 2 },
 
   // Code reveal
-  hiddenPanel: { alignItems: 'center' },
-  hiddenTitle: { fontFamily: fontFamily.displaySemibold, fontSize: fontSize.subheading, color: colors.textStrong, marginBottom: 6 },
+  // No alignItems:'center' here — that would let each child (title, hint,
+  // button) shrink-wrap and center independently, so the button's edges
+  // wouldn't line up with the text's or the panel's padding. Left as the
+  // default stretch, with title/hint centered via their own textAlign, so
+  // the "Reveal code" button (block) spans the full padded width instead.
+  hiddenPanel: {},
+  hiddenTitle: { fontFamily: fontFamily.displaySemibold, fontSize: fontSize.subheading, color: colors.textStrong, marginBottom: 6, textAlign: 'center' },
   hiddenHint: { fontFamily: fontFamily.ui, fontSize: fontSize.caption, color: colors.textMuted, textAlign: 'center', marginBottom: 16 },
+  revealBtn: { alignSelf: 'stretch' },
+  // flex:1 + justifyContent:'center' makes this row take the button's full
+  // inner width and center its content block as a whole (Button's own row
+  // would otherwise just shrink-wrap it). The trailing spacer's width
+  // mirrors the icon + its margin, so removing that matched pair from each
+  // side leaves the label sitting dead center - while the icon itself stays
+  // immediately to the label's left, not off at a fixed offset.
+  revealBtnRow: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  revealBtnIcon: { marginRight: REVEAL_BTN_ICON_GAP },
+  revealBtnLabel: { fontFamily: fontFamily.uiBold, fontSize: 15, color: '#fff', letterSpacing: 0.2 },
+  revealBtnSpacer: { width: REVEAL_BTN_ICON_SIZE + REVEAL_BTN_ICON_GAP },
   codeBlock: { gap: spacing.s6 },
   imageBox: {
     backgroundColor: '#fff',

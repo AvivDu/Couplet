@@ -39,7 +39,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   const attemptsRef = useRef(0);
   const intentionalCloseRef = useRef(false);
   // Where to navigate when a given in-app banner is tapped + the server id to delete.
-  const bannerNavRef = useRef<Record<string, { groupId?: string; serverId?: string }>>({});
+  const bannerNavRef = useRef<Record<string, { groupId?: string; serverId?: string; type?: string }>>({});
   // De-dup across the live socket and the catch-up poll; baseline avoids OS-spam on cold start.
   const seenIdsRef = useRef<Set<string>>(new Set());
   const baselineSetRef = useRef(false);
@@ -57,7 +57,16 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, []);
 
   // Shared "dismiss + navigate" used by both the in-app banner tap and the OS notification tap.
-  const dismissAndNavigate = useCallback((serverId?: string, groupId?: string) => {
+  // A group_invite is not yet something the user has joined - jumping straight into
+  // group/[id] would open a group they haven't accepted membership of, and deleting
+  // the notification here would remove the invite before they got a chance to act on
+  // it. Route those to the Notifications panel instead, where Accept/Decline live,
+  // and leave the notification alone (accepting/declining is what clears it).
+  const dismissAndNavigate = useCallback((serverId?: string, groupId?: string, type?: string) => {
+    if (type === 'group_invite') {
+      router.push({ pathname: '/(tabs)', params: { openNotifications: '1' } });
+      return;
+    }
     if (serverId) { deleteNotification(serverId).catch(() => {}); }
     if (groupId) router.push(`/group/${groupId}`);
     if (serverId) bump(); // refresh lists so the dismissed notification disappears
@@ -82,11 +91,11 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       presentLocalNotification({
         title: n.title,
         body: n.body,
-        data: { serverId: n.notification_id, groupId: n.group_id },
+        data: { serverId: n.notification_id, groupId: n.group_id, type: n.type },
       });
     } else {
       const bannerId = `notif-${n.notification_id}`;
-      bannerNavRef.current[bannerId] = { groupId: n.group_id, serverId: n.notification_id };
+      bannerNavRef.current[bannerId] = { groupId: n.group_id, serverId: n.notification_id, type: n.type };
       setBanner({ id: bannerId, title: n.title, body: n.body, icon: 'notifications' });
     }
     bump();
@@ -238,8 +247,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   // Tapping an OS notification: dismiss it + deep-link to its group.
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener(response => {
-      const data = response.notification.request.content.data as { serverId?: string; groupId?: string };
-      dismissAndNavigate(data?.serverId, data?.groupId);
+      const data = response.notification.request.content.data as { serverId?: string; groupId?: string; type?: string };
+      dismissAndNavigate(data?.serverId, data?.groupId, data?.type);
     });
     return () => sub.remove();
   }, [dismissAndNavigate]);
@@ -248,7 +257,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     const nav = bannerNavRef.current[data.id];
     setBanner(null);
     if (!nav) return;
-    dismissAndNavigate(nav.serverId, nav.groupId);
+    dismissAndNavigate(nav.serverId, nav.groupId, nav.type);
   }, [dismissAndNavigate]);
 
   return (
