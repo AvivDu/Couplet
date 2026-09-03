@@ -232,14 +232,20 @@ export default function HomeScreen() {
 
   useFocusEffect(useCallback(() => {
     load();
-    // A tapped group-invite banner/OS notification lands here (see
-    // NotificationsContext's dismissAndNavigate) instead of jumping straight
-    // into the group, so the invite can only be accepted/declined explicitly.
-    if (params.openNotifications === '1') {
-      setNotifPanelOpen(true);
-      router.setParams({ openNotifications: undefined });
-    }
-  }, [load, params.openNotifications]));
+  }, [load]));
+
+  // A tapped group-invite banner/OS notification lands here (see
+  // NotificationsContext's dismissAndNavigate) instead of jumping straight
+  // into the group, so the invite can only be accepted/declined explicitly.
+  //
+  // Kept out of the focus effect above on purpose: clearing the param is itself
+  // a param change, so having both in one effect made it re-run and fire a
+  // second load() on every invite tap. This only depends on the param.
+  useEffect(() => {
+    if (params.openNotifications !== '1') return;
+    setNotifPanelOpen(true);
+    router.setParams({ openNotifications: undefined });
+  }, [params.openNotifications]);
 
   // Live refresh: re-runs load() on every incoming notification/WebRTC event
   // so the list updates instantly without a manual screen refresh.
