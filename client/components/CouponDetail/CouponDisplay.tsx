@@ -18,17 +18,19 @@ import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import { getCouponImage } from '../../storage/couponStorage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getGroups, getCouponLocations } from '../../services/api';
+import { getGroups, createGroup, getCouponLocations } from '../../services/api';
 import type { GroupMeta, StoreLocation, CouponMeta, RedeemAction } from '../../services/api';
 import { matchGeneralGiftCard } from '../../constants/generalGiftCards';
 import type { CouponWithCode } from './types';
 import { formatBalance, maskBalanceInput } from '../../utils/format';
-import { inspectShareable, unusableShareMessage, deliverCouponCode } from '../../services/couponSharing';
+import { inspectShareable, shareWarning, deliverCouponCode } from '../../services/couponSharing';
 import { useNotifications } from '../../context/NotificationsContext';
 import GlassPanel from '../ui/GlassPanel';
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import Sheet from '../ui/Sheet';
+import Avatar from '../ui/Avatar';
+import Input from '../ui/Input';
 import CouponCodePanel from '../ui/CouponCodePanel';
 import { colors, glass, radius, spacing, fontFamily, fontSize } from '../../constants/theme';
 
@@ -59,6 +61,12 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
   const [groupPickerVisible, setGroupPickerVisible] = React.useState(false);
   const [groups, setGroups] = React.useState<GroupMeta[]>([]);
   const [sharingGroupId, setSharingGroupId] = React.useState<string | null>(null);
+  // Inline "create a group" form inside the share sheet. Kept in the sheet
+  // rather than sending the user to the Groups tab: they are here because they
+  // want to share this coupon, and bouncing them out loses that intent.
+  const [creatingGroup, setCreatingGroup] = React.useState(false);
+  const [newGroupName, setNewGroupName] = React.useState('');
+  const [creatingBusy, setCreatingBusy] = React.useState(false);
   const [locationsVisible, setLocationsVisible] = React.useState(false);
   const [locations, setLocations] = React.useState<StoreLocation[]>([]);
   const [locationsLoading, setLocationsLoading] = React.useState(false);
@@ -89,10 +97,8 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
   async function handleShareToGroup() {
     try {
       const { data } = await getGroups();
-      if (data.length === 0) {
-        Alert.alert('No groups', 'You have no groups yet. Create one in the Groups tab.');
-        return;
-      }
+      // No early return on an empty list any more - the sheet itself can now
+      // create the first group, so opening it is always the useful move.
       setGroups(data);
       setGroupPickerVisible(true);
     } catch {
@@ -101,17 +107,47 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
   }
 
   async function handleShareToGroupConfirm(group: GroupMeta) {
-    // Nothing to send for this coupon? Say so before sharing, rather than
-    // letting the recipient open an empty coupon with no explanation.
+    // Nothing to send for this coupon, or only something that reaches part of
+    // the group? Say so before sharing, rather than letting the recipient open
+    // an empty coupon with no explanation.
     const info = await inspectShareable(coupon.coupon_id, coupon.giftcard_url);
-    if (!info.willBeUsable) {
-      Alert.alert('Share anyway?', unusableShareMessage(info), [
+    const warning = shareWarning(info);
+    if (warning) {
+      Alert.alert('Share anyway?', warning, [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Share anyway', onPress: () => shareToGroupNow(group) },
       ]);
       return;
     }
     await shareToGroupNow(group);
+  }
+
+  function closeGroupPicker() {
+    setGroupPickerVisible(false);
+    // Reset the inline form too, or reopening the sheet lands mid-create with
+    // a stale name still typed in.
+    setCreatingGroup(false);
+    setNewGroupName('');
+  }
+
+  async function handleCreateGroupAndShare() {
+    const name = newGroupName.trim();
+    if (!name || creatingBusy) return;
+    setCreatingBusy(true);
+    try {
+      const { data: group } = await createGroup(name);
+      setGroups(prev => [...prev, group]);
+      setCreatingGroup(false);
+      setNewGroupName('');
+      // Straight into the normal share path so the new group gets the same
+      // shareWarning checks as any existing one - creating is a step towards
+      // sharing here, not a separate errand.
+      await handleShareToGroupConfirm(group);
+    } catch (err: any) {
+      Alert.alert('Error', err?.response?.data?.error ?? 'Could not create group.');
+    } finally {
+      setCreatingBusy(false);
+    }
   }
 
   async function shareToGroupNow(group: GroupMeta) {
@@ -122,7 +158,7 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
         '[share] online recipients:', data.online_recipient_ids ?? [],
         '- offline members get the encrypted DB fallback instead'
       );
-      setGroupPickerVisible(false);
+      closeGroupPicker();
       Alert.alert('Shared!', `Coupon shared to "${group.name}".`);
     } catch (err: any) {
       Alert.alert('Error', err?.response?.data?.error ?? 'Could not share coupon.');
@@ -441,25 +477,73 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
     </Sheet>
 
     {/* Group picker sheet */}
-    <Sheet title="Share to Group" open={groupPickerVisible} onClose={() => setGroupPickerVisible(false)}>
-      <FlatList
-        data={groups}
-        keyExtractor={g => g.group_id}
-        style={styles.pickerList}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.pickerItem}
-            onPress={() => handleShareToGroupConfirm(item)}
-            disabled={sharingGroupId === item.group_id}
-          >
-            {sharingGroupId === item.group_id ? (
-              <ActivityIndicator color={colors.coral400} />
-            ) : (
-              <Text style={styles.pickerItemText}>👥  {item.name}</Text>
-            )}
-          </TouchableOpacity>
-        )}
-      />
+    <Sheet title="Share to Group" open={groupPickerVisible} onClose={closeGroupPicker}>
+      {creatingGroup ? (
+        <View style={styles.createWrap}>
+          <Input
+            autoFocus
+            value={newGroupName}
+            onChangeText={setNewGroupName}
+            placeholder="Group name"
+            returnKeyType="done"
+            maxLength={40}
+            onSubmitEditing={handleCreateGroupAndShare}
+            editable={!creatingBusy}
+          />
+          <View style={styles.createActions}>
+            {/* Each Button is wrapped: `block` sets width:100% on Button's outer
+                Pressable while `style` only reaches its inner view, so two of
+                them side by side overflow the row unless the flex lives out here. */}
+            <View style={styles.createAction}>
+              <Button
+                variant="ghost"
+                block
+                onPress={() => { setCreatingGroup(false); setNewGroupName(''); }}
+              >
+                Cancel
+              </Button>
+            </View>
+            <View style={styles.createAction}>
+              <Button
+                variant="primary"
+                block
+                disabled={!newGroupName.trim() || creatingBusy}
+                onPress={handleCreateGroupAndShare}
+              >
+                {creatingBusy ? 'Creating…' : 'Create & share'}
+              </Button>
+            </View>
+          </View>
+        </View>
+      ) : (
+        <FlatList
+          data={groups}
+          keyExtractor={g => g.group_id}
+          style={styles.pickerList}
+          ListEmptyComponent={
+            <Text style={styles.pickerEmpty}>You're not in any group yet.</Text>
+          }
+          ListFooterComponent={
+            <TouchableOpacity style={styles.pickerItem} onPress={() => setCreatingGroup(true)}>
+              <View style={styles.createIcon}>
+                <Ionicons name="add" size={18} color={colors.coral400} />
+              </View>
+              <Text style={[styles.pickerItemText, styles.createRowText]}>Create new group</Text>
+            </TouchableOpacity>
+          }
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.pickerItem}
+              onPress={() => handleShareToGroupConfirm(item)}
+              disabled={sharingGroupId === item.group_id}
+            >
+              <Avatar src={item.image} initials={item.name.slice(0, 2).toUpperCase()} size="s" />
+              <Text style={styles.pickerItemText} numberOfLines={1}>{item.name}</Text>
+              {sharingGroupId === item.group_id && <ActivityIndicator color={colors.coral400} />}
+            </TouchableOpacity>
+          )}
+        />
+      )}
     </Sheet>
 
     {/* Locations sheet */}
@@ -593,8 +677,40 @@ const styles = StyleSheet.create({
   // Group picker / locations sheets
   pickerList: { flexGrow: 0, maxHeight: 320 },
   locationsList: { maxHeight: 420 },
-  pickerItem: { paddingVertical: 14, paddingHorizontal: 16, borderRadius: radius.m },
-  pickerItemText: { fontFamily: fontFamily.ui, fontSize: 16, color: colors.textStrong, textAlign: 'center' },
+  // Row rather than centred text now that each group carries its avatar - the
+  // name has to start at a fixed x or the list reads as ragged.
+  pickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.s12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: radius.m,
+  },
+  pickerItemText: { flex: 1, fontFamily: fontFamily.ui, fontSize: 16, color: colors.textStrong },
+  pickerEmpty: {
+    fontFamily: fontFamily.ui,
+    fontSize: fontSize.caption,
+    color: colors.textMuted,
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
+  // Sized to match Avatar's "s" (32px) so the add row's icon lines up with the
+  // group avatars above it instead of sitting proud of the column.
+  createIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.coral400,
+  },
+  createRowText: { color: colors.coral400, fontFamily: fontFamily.uiBold },
+  createWrap: { gap: spacing.s12, paddingTop: spacing.s4 },
+  createActions: { flexDirection: 'row', gap: spacing.s12 },
+  createAction: { flex: 1 },
   locationsEmpty: { fontFamily: fontFamily.ui, fontSize: 15, color: colors.textMuted, textAlign: 'center', marginVertical: 24 },
   locationItem: {
     flexDirection: 'row',
