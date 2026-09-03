@@ -38,7 +38,7 @@ import type { GroupDetail as GroupDetailType, GroupMember, CouponMeta, ContactMa
 
 type ContactMatchWithName = ContactMatch & { contactName: string };
 import { getCouponCode, saveCouponCode } from '../../storage/couponStorage';
-import { inspectShareable, unusableShareMessage, deliverCouponCode } from '../../services/couponSharing';
+import { inspectShareable, shareWarning, deliverCouponCode } from '../../services/couponSharing';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationsContext';
 import { useRefreshOnNotification } from '../../hooks/useRefreshOnNotification';
@@ -381,14 +381,16 @@ export default function GroupScreen() {
 
   async function handleShareCoupon(couponId: string) {
     if (!groupId) return;
-    // Nothing to send for this coupon? Say so before sharing, rather than
-    // letting the recipient open an empty coupon with no explanation.
+    // Nothing to send for this coupon, or only something that reaches part of
+    // the group? Say so before sharing, rather than letting the recipient open
+    // an empty coupon with no explanation.
     const info = await inspectShareable(
       couponId,
       myCoupons.find(c => c.coupon_id === couponId)?.giftcard_url
     );
-    if (!info.willBeUsable) {
-      Alert.alert('Share anyway?', unusableShareMessage(info), [
+    const warning = shareWarning(info);
+    if (warning) {
+      Alert.alert('Share anyway?', warning, [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Share anyway', onPress: () => shareCouponNow(couponId, info.code) },
       ]);

@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Text, TextInput } from '../../components/rn';
 import * as ImagePicker from 'expo-image-picker';
+import * as Clipboard from 'expo-clipboard';
 import ImageCropModal from '../../components/ImageCropModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,8 +23,9 @@ import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { createCoupon } from '../../services/api';
 import { saveCouponCode, saveCouponImage } from '../../storage/couponStorage';
 import { dismissDraft } from '../../storage/gmailDraftStorage';
-import { matchGeneralGiftCard, type GeneralGiftCard } from '../../constants/generalGiftCards';
+import { matchGeneralGiftCard, findGiftCardInText, type GeneralGiftCard } from '../../constants/generalGiftCards';
 import { maskBalanceInput } from '../../utils/format';
+import { extractCouponFieldsFromText } from '../../utils/couponTextExtraction';
 import AuroraBackground from '../../components/ui/AuroraBackground';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import Input from '../../components/ui/Input';
@@ -59,6 +61,7 @@ export default function AddCouponScreen() {
   const [imageNatSize, setImageNatSize] = useState<{ w: number; h: number } | null>(null);
   const [giftUrl, setGiftUrl] = useState('');
   const [matchedGeneralCard, setMatchedGeneralCard] = useState<GeneralGiftCard | null>(null);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
   const categoryTouchedRef = useRef(false);
   // Route params on a tab screen persist across focuses (there's no unmount to reset
   // them) - without this, the fromGmail branch below would re-populate the same draft
@@ -92,7 +95,22 @@ export default function AddCouponScreen() {
         setImageUri(null);
         setGiftUrl('');
         categoryTouchedRef.current = false;
-        return;
+        // Fires on blur (leaving this screen) - handleAdd already blanks the fields
+        // on a successful save, so this is a no-op then. If the draft was instead
+        // abandoned (navigated away without saving), this is what actually clears
+        // it - otherwise the stale fields would sit there until a later Gmail
+        // import overwrites them, visible on any unrelated fresh visit meanwhile.
+        return () => {
+          setCode('');
+          setCouponName('');
+          setCategory('');
+          setExpiryDate(null);
+          setBalance('');
+          setImageUri(null);
+          setGiftUrl('');
+          setMatchedGeneralCard(null);
+          categoryTouchedRef.current = false;
+        };
       }
       if (params.fromGmail !== '1') {
         setCode('');
@@ -120,6 +138,65 @@ export default function AddCouponScreen() {
   function handleCategoryPress(label: string) {
     categoryTouchedRef.current = true;
     setCategory(label);
+  }
+
+  function openQuickAdd() {
+    setQuickAddOpen(true);
+  }
+
+  function handleQuickAddGmail() {
+    setQuickAddOpen(false);
+    router.push('/gmail-scan');
+  }
+
+  // Reads the clipboard and extracts straight into the form - no intermediate
+  // "review the raw text" screen. That screen only ever let the user fix typos
+  // before Analyze; the actual coupon form does that same job (every extracted
+  // field lands there editable, same as a Gmail draft), so it was a second
+  // review step for something the first one already covers.
+  //
+  // Runs entirely on-device - the clipboard text (which may contain a coupon
+  // code) never goes to the server, same invariant as the Gmail draft flow.
+  // Unlike that flow, store detection can fall back to the message's first
+  // line (guessStoreFromFirstLine) when no known general-gift-card brand is
+  // found - there's no email "From" header here, but there's often a name in
+  // plain sight.
+  async function handlePasteAndAnalyze() {
+    setQuickAddOpen(false);
+    const text = await Clipboard.getStringAsync();
+    const fields = extractCouponFieldsFromText(text);
+    const match = findGiftCardInText(text);
+    const foundSomething =
+      fields.code !== null ||
+      fields.store !== null ||
+      fields.amount !== null ||
+      fields.expiration !== null ||
+      match !== null;
+
+    // Extraction is best-effort regex over arbitrary text (or an empty
+    // clipboard), so finding nothing is a normal outcome, not an error - say
+    // so and leave the form as it was rather than pretending something happened.
+    if (!foundSomething) {
+      Alert.alert(
+        'Nothing found',
+        "Couldn't find a coupon code, amount or expiry date on the clipboard. Copy the coupon text first, or fill the fields in yourself."
+      );
+      return;
+    }
+
+    // Assign only what was actually extracted. Writing every field
+    // unconditionally meant a partial match (a code and nothing else) blanked
+    // the store, expiry and balance the user may have already typed.
+    if (fields.code !== null) setCode(fields.code);
+    if (fields.store !== null) setCouponName(fields.store);
+    if (fields.amount !== null) setBalance(String(fields.amount));
+    if (fields.expiration !== null) setExpiryDate(new Date(fields.expiration));
+    if (match) {
+      setMatchedGeneralCard(match);
+      // Same rule as typing a store name by hand (handleCouponNameChange): an
+      // explicit category choice by the user outranks the detected brand.
+      if (!categoryTouchedRef.current) setCategory('General');
+    }
   }
 
   const expiryString = expiryDate
@@ -220,7 +297,20 @@ export default function AddCouponScreen() {
       />
     )}
     <AuroraBackground>
-      <ScreenHeader title="Add Coupon" subtitle="Stays on this device" />
+      <ScreenHeader
+        title="Add Coupon"
+        subtitle="Stays on this device"
+        actions={
+          <Button
+            variant="glass"
+            size="s"
+            icon={<Ionicons name="flash-outline" size={16} color={colors.coral400} />}
+            onPress={openQuickAdd}
+          >
+            Quick Add
+          </Button>
+        }
+      />
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <KeyboardAvoidingView
           style={styles.container}
@@ -387,6 +477,29 @@ export default function AddCouponScreen() {
             </Button>
           </Sheet>
         )}
+
+        <Sheet title="Quick Add" open={quickAddOpen} onClose={() => setQuickAddOpen(false)}>
+          <View style={{ gap: spacing.s6 }}>
+            <Button
+              variant="glass"
+              size="l"
+              block
+              icon={<Ionicons name="mail-outline" size={18} color={colors.coral400} />}
+              onPress={handleQuickAddGmail}
+            >
+              Scan Gmail for Coupons
+            </Button>
+            <Button
+              variant="glass"
+              size="l"
+              block
+              icon={<Ionicons name="clipboard-outline" size={18} color={colors.coral400} />}
+              onPress={handlePasteAndAnalyze}
+            >
+              Paste Text
+            </Button>
+          </View>
+        </Sheet>
 
         </KeyboardAvoidingView>
       </TouchableWithoutFeedback>
