@@ -1,4 +1,4 @@
-import { saveCouponCode } from '../storage/couponStorage';
+import { saveCouponCode, saveCouponImage } from '../storage/couponStorage';
 
 // Stage 2 P2P coupon-code delivery, driven through a hidden WebView.
 //
@@ -39,6 +39,12 @@ interface SessionCallbacks {
 // Without it a stalled session would never fail, so the rescue fallback would
 // never run and the recipient would silently never receive the code.
 const WATCHDOG_MS = 25000;
+
+// A chunked image transfer legitimately outlives a bare handshake, so its
+// sessions get a longer leash. Both values stay above the page's own timeout
+// for that phase (15s negotiation / 30s transfer) so in normal operation the
+// page still reports first and this stays a backstop.
+const IMAGE_WATCHDOG_MS = 45000;
 
 const sessions = new Map<string, SessionCallbacks>();
 
@@ -133,16 +139,43 @@ export async function handleBridgeMessage(raw: string): Promise<void> {
     }
 
     case 'received': {
-      if (!msg.couponId || !msg.code) return;
+      // An image-only coupon arrives with no code, so neither field alone is
+      // required — only that at least one of them is present.
+      if (!msg.couponId || (!msg.code && !msg.image)) return;
       // Persist BEFORE acking. If this throws, no ack goes out, the sharer's
       // negotiation times out, and the code is stored via the rescue path —
       // which is what we want. Acking first would settle the sharer against a
       // write that never landed.
-      await saveCouponCode(msg.couponId, msg.code);
-      console.log('[p2p] code saved locally for coupon', msg.couponId, '(never touched the server)');
+      if (msg.code) await saveCouponCode(msg.couponId, msg.code);
+      if (msg.image) {
+        // Stored as a data URL rather than a file: AsyncStorage is the only
+        // store this app has (no expo-file-system), and <Image source={{uri}}>
+        // renders a data URL identically to the file:// URI a locally-added
+        // coupon holds — so every read path works unchanged.
+        await saveCouponImage(msg.couponId, `data:image/jpeg;base64,${msg.image}`);
+      }
+      console.log(
+        '[p2p] saved locally for coupon', msg.couponId,
+        `(code: ${!!msg.code}, image: ${!!msg.image}) — never touched the server`
+      );
       send({ type: 'ack', sessionId: msg.sessionId });
       const cb = clearSession(msg.sessionId);
       cb?.onReceived?.();
+      return;
+    }
+
+    case 'transferring': {
+      // Recipient side: the page has read a header announcing an inbound
+      // image. This watchdog was sized for a handshake, so extend it to the
+      // transfer budget - otherwise it reclaims the session before the image
+      // lands, and the 'received' that follows has no onReceived left to
+      // refresh the screen with. Reclaiming (not failing) is still the right
+      // expiry here: only the sharer holds the code, so only the sharer can
+      // trigger the rescue write.
+      const cb = sessions.get(msg.sessionId);
+      if (!cb) return;
+      if (cb.watchdog) clearTimeout(cb.watchdog);
+      cb.watchdog = setTimeout(() => clearSession(msg.sessionId), IMAGE_WATCHDOG_MS);
       return;
     }
 
@@ -168,18 +201,26 @@ export async function startShareSession(
   sendSignal: SendSignal,
   toUserId: string,
   couponId: string,
-  code: string,
-  onFailure: () => void
+  code: string | null,
+  onFailure: () => void,
+  // Base64 JPEG (no data: prefix) of the coupon's barcode/QR, when this device
+  // has one. Travels the same data channel as the code and for the same
+  // reason: an image of a barcode IS the coupon code, so it must never be
+  // relayed through the server.
+  image?: string | null
 ): Promise<void> {
   const sessionId = `${couponId}:${toUserId}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
-  console.log('[p2p] opening P2P session to', toUserId, 'for coupon', couponId);
+  console.log('[p2p] opening P2P session to', toUserId, 'for coupon', couponId, image ? '(with image)' : '');
   sessions.set(sessionId, {
     sendSignal,
     peerId: toUserId,
     onFailure,
-    watchdog: setTimeout(() => failSession(sessionId, 'bridge never reported back'), WATCHDOG_MS),
+    watchdog: setTimeout(
+      () => failSession(sessionId, 'bridge never reported back'),
+      image ? IMAGE_WATCHDOG_MS : WATCHDOG_MS
+    ),
   });
-  send({ type: 'start', sessionId, toUserId, couponId, code });
+  send({ type: 'start', sessionId, toUserId, couponId, code, image: image ?? null });
 }
 
 export async function handleOffer(

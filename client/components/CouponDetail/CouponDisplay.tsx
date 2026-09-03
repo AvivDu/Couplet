@@ -23,7 +23,7 @@ import type { GroupMeta, StoreLocation, CouponMeta, RedeemAction } from '../../s
 import { matchGeneralGiftCard } from '../../constants/generalGiftCards';
 import type { CouponWithCode } from './types';
 import { formatBalance, maskBalanceInput } from '../../utils/format';
-import { inspectShareable, unusableShareMessage, deliverCouponCode } from '../../services/couponSharing';
+import { inspectShareable, shareWarning, deliverCouponCode } from '../../services/couponSharing';
 import { useNotifications } from '../../context/NotificationsContext';
 import GlassPanel from '../ui/GlassPanel';
 import Badge from '../ui/Badge';
@@ -96,11 +96,13 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
   }
 
   async function handleShareToGroupConfirm(group: GroupMeta) {
-    // Nothing to send for this coupon? Say so before sharing, rather than
-    // letting the recipient open an empty coupon with no explanation.
+    // Nothing to send for this coupon, or only something that reaches part of
+    // the group? Say so before sharing, rather than letting the recipient open
+    // an empty coupon with no explanation.
     const info = await inspectShareable(coupon.coupon_id, coupon.giftcard_url);
-    if (!info.willBeUsable) {
-      Alert.alert('Share anyway?', unusableShareMessage(info), [
+    const warning = shareWarning(info);
+    if (warning) {
+      Alert.alert('Share anyway?', warning, [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Share anyway', onPress: () => shareToGroupNow(group) },
       ]);
