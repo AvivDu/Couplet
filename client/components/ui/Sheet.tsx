@@ -55,7 +55,13 @@ export default function Sheet({ title, open, onClose, onDismiss, footer, childre
           style={[
             styles.sheet,
             {
-              opacity: anim.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }),
+              // Three stops, not two: the sheet must reach 0 so the close animation
+              // actually fades it out. A flat [0.4, 1] range bottomed out at 40%
+              // and then setVisible(false) unmounted it, so closing read as a pop
+              // while the backdrop behind it dissolved smoothly. The middle stop
+              // keeps the original intent - already 40% visible early in the open,
+              // so opening still feels immediate rather than a slow fade-in.
+              opacity: anim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0.4, 1] }),
               transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }],
             },
           ]}
