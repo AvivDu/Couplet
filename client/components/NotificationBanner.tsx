@@ -62,8 +62,8 @@ export default function NotificationBanner({
             onPress(data);
           }}
         >
-          <BlurView intensity={blur.l} tint="dark" style={StyleSheet.absoluteFill} />
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: glass.ink }]} />
+          <BlurView pointerEvents="none" intensity={blur.l} tint="dark" style={StyleSheet.absoluteFill} />
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: glass.ink }]} />
           <Ionicons name={data.icon ?? 'notifications'} size={22} color={colors.coral400} style={styles.icon} />
           <View style={styles.textBlock}>
             <Text style={styles.title} numberOfLines={1}>{data.title}</Text>

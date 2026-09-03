@@ -26,8 +26,8 @@ export default function GroupCard({ group, currentUserId, imageUri, onPress }: P
 
   return (
     <Pressable onPress={onPress} style={[styles.root, elevation.raised as object]}>
-      <BlurView intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick }]} />
+      <BlurView pointerEvents="none" intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick }]} />
       <GlassEdge />
       <LinearGradient
         pointerEvents="none"
