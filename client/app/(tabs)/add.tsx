@@ -97,7 +97,22 @@ export default function AddCouponScreen() {
         setImageUri(null);
         setGiftUrl('');
         categoryTouchedRef.current = false;
-        return;
+        // Fires on blur (leaving this screen) - handleAdd already blanks the fields
+        // on a successful save, so this is a no-op then. If the draft was instead
+        // abandoned (navigated away without saving), this is what actually clears
+        // it - otherwise the stale fields would sit there until a later Gmail
+        // import overwrites them, visible on any unrelated fresh visit meanwhile.
+        return () => {
+          setCode('');
+          setCouponName('');
+          setCategory('');
+          setExpiryDate(null);
+          setBalance('');
+          setImageUri(null);
+          setGiftUrl('');
+          setMatchedGeneralCard(null);
+          categoryTouchedRef.current = false;
+        };
       }
       if (params.fromGmail !== '1') {
         setCode('');
