@@ -1,4 +1,4 @@
-import { matchGeneralGiftCard } from '../constants/generalGiftCards';
+import { findGiftCardInText } from '../constants/generalGiftCards';
 
 // Client-side port of the Gmail-API-independent extraction logic in
 // server/src/lib/gmail.ts (CODE_LABEL_PATTERNS / AMOUNT_PATTERNS /
@@ -10,7 +10,8 @@ import { matchGeneralGiftCard } from '../constants/generalGiftCards';
 // copy, not a literal shared module - keep the two in sync by hand if the regexes
 // change. `extractStore` does not port over: it parses an email `From` header,
 // which pasted text doesn't have - store detection here reuses the existing
-// matchGeneralGiftCard brand lookup instead (see extractCouponFieldsFromText).
+// findGiftCardInText brand lookup instead (see extractCouponFieldsFromText) -
+// the free-text variant, not the loose store-name one.
 
 const CONNECTOR = String.raw`(?:[:\s]+|\s+(?:is|הוא)\s*:?\s*)`;
 const QUOTE = `["'"”‘’׳]?`;
@@ -102,7 +103,7 @@ export interface ExtractedCouponFields {
 export function extractCouponFieldsFromText(text: string): ExtractedCouponFields {
   return {
     code: extractCode(text),
-    store: matchGeneralGiftCard(text)?.canonicalName ?? null,
+    store: findGiftCardInText(text)?.canonicalName ?? null,
     amount: extractAmount(text),
     expiration: extractExpiration(text),
   };

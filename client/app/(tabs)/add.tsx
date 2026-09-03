@@ -23,7 +23,7 @@ import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { createCoupon } from '../../services/api';
 import { saveCouponCode, saveCouponImage } from '../../storage/couponStorage';
 import { dismissDraft } from '../../storage/gmailDraftStorage';
-import { matchGeneralGiftCard, type GeneralGiftCard } from '../../constants/generalGiftCards';
+import { matchGeneralGiftCard, findGiftCardInText, type GeneralGiftCard } from '../../constants/generalGiftCards';
 import { maskBalanceInput } from '../../utils/format';
 import { extractCouponFieldsFromText } from '../../utils/couponTextExtraction';
 import AuroraBackground from '../../components/ui/AuroraBackground';
@@ -160,18 +160,44 @@ export default function AddCouponScreen() {
 
   // Runs entirely on-device - the pasted text (which may contain a coupon code)
   // never goes to the server, same invariant as the Gmail draft flow. Unlike that
-  // flow, store detection here can only recognize a known brand (matchGeneralGiftCard) -
+  // flow, store detection here can only recognize a known brand (findGiftCardInText) -
   // there's no email "From" header to fall back to for an arbitrary store name.
   function handleAnalyzePastedText() {
     const fields = extractCouponFieldsFromText(pastedText);
-    const match = matchGeneralGiftCard(pastedText);
-    setCode(fields.code ?? '');
-    setCouponName(fields.store ?? '');
-    setMatchedGeneralCard(match);
-    setCategory(match ? 'General' : '');
-    setExpiryDate(fields.expiration ? new Date(fields.expiration) : null);
-    setBalance(fields.amount != null ? String(fields.amount) : '');
-    categoryTouchedRef.current = false;
+    const match = findGiftCardInText(pastedText);
+    const foundSomething =
+      fields.code !== null ||
+      fields.store !== null ||
+      fields.amount !== null ||
+      fields.expiration !== null ||
+      match !== null;
+
+    // Extraction is best-effort regex over arbitrary text, so finding nothing is
+    // a normal outcome. Closing the sheet on it looked identical to a successful
+    // analyse that happened to fill nothing in - leave it open and say so, so the
+    // user can fix the text and retry instead of wondering what happened.
+    if (!foundSomething) {
+      Alert.alert(
+        'Nothing found',
+        "Couldn't find a coupon code, amount or expiry date in that text. Check it was copied in full, or fill the fields in yourself."
+      );
+      return;
+    }
+
+    // Assign only what was actually extracted. Writing every field
+    // unconditionally meant a partial match (a code and nothing else) blanked
+    // the store, expiry and balance the user may have already typed - the
+    // analyse silently destroyed their work to fill in one field.
+    if (fields.code !== null) setCode(fields.code);
+    if (fields.store !== null) setCouponName(fields.store);
+    if (fields.amount !== null) setBalance(String(fields.amount));
+    if (fields.expiration !== null) setExpiryDate(new Date(fields.expiration));
+    if (match) {
+      setMatchedGeneralCard(match);
+      // Same rule as typing a store name by hand (handleCouponNameChange): an
+      // explicit category choice by the user outranks the detected brand.
+      if (!categoryTouchedRef.current) setCategory('General');
+    }
     setQuickAddOpen(false);
   }
 
