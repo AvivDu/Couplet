@@ -153,15 +153,21 @@ export default function AddCouponScreen() {
     router.push('/gmail-scan');
   }
 
-  async function handlePasteFromClipboard() {
+  // Reads the clipboard the moment the user asks for the paste flow, rather
+  // than making them tap once to open an editable box and again to actually
+  // paste into it - the box exists to let them review/fix the text before
+  // Analyze, not to hide a second manual paste step behind it.
+  async function handleOpenPasteMode() {
     const text = await Clipboard.getStringAsync();
-    if (text) setPastedText(text);
+    setPastedText(text ?? '');
+    setQuickAddMode('paste');
   }
 
   // Runs entirely on-device - the pasted text (which may contain a coupon code)
   // never goes to the server, same invariant as the Gmail draft flow. Unlike that
-  // flow, store detection here can only recognize a known brand (findGiftCardInText) -
-  // there's no email "From" header to fall back to for an arbitrary store name.
+  // flow, store detection can fall back to the message's first line
+  // (guessStoreFromFirstLine) when no known general-gift-card brand is found -
+  // there's no email "From" header here, but there's often a name in plain sight.
   function handleAnalyzePastedText() {
     const fields = extractCouponFieldsFromText(pastedText);
     const match = findGiftCardInText(pastedText);
@@ -501,7 +507,7 @@ export default function AddCouponScreen() {
                 size="l"
                 block
                 icon={<Ionicons name="clipboard-outline" size={18} color={colors.coral400} />}
-                onPress={() => setQuickAddMode('paste')}
+                onPress={handleOpenPasteMode}
               >
                 Paste Text
               </Button>
@@ -516,9 +522,6 @@ export default function AddCouponScreen() {
                 numberOfLines={5}
                 style={{ minHeight: 110, textAlignVertical: 'top' }}
               />
-              <Button variant="outline" block onPress={handlePasteFromClipboard}>
-                Paste from Clipboard
-              </Button>
               <Button variant="primary" block disabled={!pastedText.trim()} onPress={handleAnalyzePastedText}>
                 Analyze
               </Button>

@@ -91,6 +91,35 @@ function extractExpiration(text: string): string | null {
   return null;
 }
 
+const STORE_LINE_MAX_LENGTH = 30;
+
+// True for a line that is unlikely to be a store name on its own: a labeled
+// field (the code/amount/expiry patterns above), a promo banner ("50% OFF"),
+// or a line with no letters in it at all (a bare code or date).
+function looksLikeNonStoreLine(line: string): boolean {
+  return (
+    CODE_LABEL_PATTERNS.some(p => p.test(line)) ||
+    AMOUNT_PATTERNS.some(p => p.test(line)) ||
+    EXPIRATION_LABEL_PATTERNS.some(p => p.test(line)) ||
+    line.includes('%') ||
+    !/\p{L}/u.test(line)
+  );
+}
+
+// Fallback for a store that isn't one of the general gift-card brands (e.g. a
+// single-retailer coupon for "Fox" or "Nike") - findGiftCardInText only knows
+// the fixed whitelist, so a specific retailer's name is otherwise dropped
+// entirely even when it's sitting in plain sight as the message's first line.
+// Deliberately just the first line, not a real classifier - like every other
+// field here, this is best-effort and the user reviews it before saving, so a
+// wrong guess (e.g. a marketing line that slips past looksLikeNonStoreLine) is
+// an edit, not a broken save.
+function guessStoreFromFirstLine(text: string): string | null {
+  const line = text.split(/\r?\n/).map(l => l.trim()).find(l => l.length > 0);
+  if (!line || line.length > STORE_LINE_MAX_LENGTH) return null;
+  return looksLikeNonStoreLine(line) ? null : line;
+}
+
 export interface ExtractedCouponFields {
   code: string | null;
   store: string | null;
@@ -103,7 +132,11 @@ export interface ExtractedCouponFields {
 export function extractCouponFieldsFromText(text: string): ExtractedCouponFields {
   return {
     code: extractCode(text),
-    store: findGiftCardInText(text)?.canonicalName ?? null,
+    // The whitelist match comes first: it returns a canonical brand name
+    // (and drives the "General" category / where-to-use link in add.tsx), so
+    // it is strictly higher-confidence than a guessed line and should win
+    // whenever both would apply.
+    store: findGiftCardInText(text)?.canonicalName ?? guessStoreFromFirstLine(text),
     amount: extractAmount(text),
     expiration: extractExpiration(text),
   };
