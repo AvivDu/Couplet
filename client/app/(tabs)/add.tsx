@@ -62,8 +62,6 @@ export default function AddCouponScreen() {
   const [giftUrl, setGiftUrl] = useState('');
   const [matchedGeneralCard, setMatchedGeneralCard] = useState<GeneralGiftCard | null>(null);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
-  const [quickAddMode, setQuickAddMode] = useState<'choose' | 'paste'>('choose');
-  const [pastedText, setPastedText] = useState('');
   const categoryTouchedRef = useRef(false);
   // Route params on a tab screen persist across focuses (there's no unmount to reset
   // them) - without this, the fromGmail branch below would re-populate the same draft
@@ -143,8 +141,6 @@ export default function AddCouponScreen() {
   }
 
   function openQuickAdd() {
-    setQuickAddMode('choose');
-    setPastedText('');
     setQuickAddOpen(true);
   }
 
@@ -153,18 +149,23 @@ export default function AddCouponScreen() {
     router.push('/gmail-scan');
   }
 
-  async function handlePasteFromClipboard() {
+  // Reads the clipboard and extracts straight into the form - no intermediate
+  // "review the raw text" screen. That screen only ever let the user fix typos
+  // before Analyze; the actual coupon form does that same job (every extracted
+  // field lands there editable, same as a Gmail draft), so it was a second
+  // review step for something the first one already covers.
+  //
+  // Runs entirely on-device - the clipboard text (which may contain a coupon
+  // code) never goes to the server, same invariant as the Gmail draft flow.
+  // Unlike that flow, store detection can fall back to the message's first
+  // line (guessStoreFromFirstLine) when no known general-gift-card brand is
+  // found - there's no email "From" header here, but there's often a name in
+  // plain sight.
+  async function handlePasteAndAnalyze() {
+    setQuickAddOpen(false);
     const text = await Clipboard.getStringAsync();
-    if (text) setPastedText(text);
-  }
-
-  // Runs entirely on-device - the pasted text (which may contain a coupon code)
-  // never goes to the server, same invariant as the Gmail draft flow. Unlike that
-  // flow, store detection here can only recognize a known brand (findGiftCardInText) -
-  // there's no email "From" header to fall back to for an arbitrary store name.
-  function handleAnalyzePastedText() {
-    const fields = extractCouponFieldsFromText(pastedText);
-    const match = findGiftCardInText(pastedText);
+    const fields = extractCouponFieldsFromText(text);
+    const match = findGiftCardInText(text);
     const foundSomething =
       fields.code !== null ||
       fields.store !== null ||
@@ -172,22 +173,20 @@ export default function AddCouponScreen() {
       fields.expiration !== null ||
       match !== null;
 
-    // Extraction is best-effort regex over arbitrary text, so finding nothing is
-    // a normal outcome. Closing the sheet on it looked identical to a successful
-    // analyse that happened to fill nothing in - leave it open and say so, so the
-    // user can fix the text and retry instead of wondering what happened.
+    // Extraction is best-effort regex over arbitrary text (or an empty
+    // clipboard), so finding nothing is a normal outcome, not an error - say
+    // so and leave the form as it was rather than pretending something happened.
     if (!foundSomething) {
       Alert.alert(
         'Nothing found',
-        "Couldn't find a coupon code, amount or expiry date in that text. Check it was copied in full, or fill the fields in yourself."
+        "Couldn't find a coupon code, amount or expiry date on the clipboard. Copy the coupon text first, or fill the fields in yourself."
       );
       return;
     }
 
     // Assign only what was actually extracted. Writing every field
     // unconditionally meant a partial match (a code and nothing else) blanked
-    // the store, expiry and balance the user may have already typed - the
-    // analyse silently destroyed their work to fill in one field.
+    // the store, expiry and balance the user may have already typed.
     if (fields.code !== null) setCode(fields.code);
     if (fields.store !== null) setCouponName(fields.store);
     if (fields.amount !== null) setBalance(String(fields.amount));
@@ -198,7 +197,6 @@ export default function AddCouponScreen() {
       // explicit category choice by the user outranks the detected brand.
       if (!categoryTouchedRef.current) setCategory('General');
     }
-    setQuickAddOpen(false);
   }
 
   const expiryString = expiryDate
@@ -480,50 +478,27 @@ export default function AddCouponScreen() {
           </Sheet>
         )}
 
-        <Sheet
-          title={quickAddMode === 'paste' ? 'Paste Coupon Text' : 'Quick Add'}
-          open={quickAddOpen}
-          onClose={() => setQuickAddOpen(false)}
-        >
-          {quickAddMode === 'choose' ? (
-            <View style={{ gap: spacing.s6 }}>
-              <Button
-                variant="glass"
-                size="l"
-                block
-                icon={<Ionicons name="mail-outline" size={18} color={colors.coral400} />}
-                onPress={handleQuickAddGmail}
-              >
-                Scan Gmail for Coupons
-              </Button>
-              <Button
-                variant="glass"
-                size="l"
-                block
-                icon={<Ionicons name="clipboard-outline" size={18} color={colors.coral400} />}
-                onPress={() => setQuickAddMode('paste')}
-              >
-                Paste Text
-              </Button>
-            </View>
-          ) : (
-            <View style={{ gap: spacing.s10 }}>
-              <Input
-                placeholder="Paste a coupon email, SMS, or message here..."
-                value={pastedText}
-                onChangeText={setPastedText}
-                multiline
-                numberOfLines={5}
-                style={{ minHeight: 110, textAlignVertical: 'top' }}
-              />
-              <Button variant="outline" block onPress={handlePasteFromClipboard}>
-                Paste from Clipboard
-              </Button>
-              <Button variant="primary" block disabled={!pastedText.trim()} onPress={handleAnalyzePastedText}>
-                Analyze
-              </Button>
-            </View>
-          )}
+        <Sheet title="Quick Add" open={quickAddOpen} onClose={() => setQuickAddOpen(false)}>
+          <View style={{ gap: spacing.s6 }}>
+            <Button
+              variant="glass"
+              size="l"
+              block
+              icon={<Ionicons name="mail-outline" size={18} color={colors.coral400} />}
+              onPress={handleQuickAddGmail}
+            >
+              Scan Gmail for Coupons
+            </Button>
+            <Button
+              variant="glass"
+              size="l"
+              block
+              icon={<Ionicons name="clipboard-outline" size={18} color={colors.coral400} />}
+              onPress={handlePasteAndAnalyze}
+            >
+              Paste Text
+            </Button>
+          </View>
         </Sheet>
 
         </KeyboardAvoidingView>
