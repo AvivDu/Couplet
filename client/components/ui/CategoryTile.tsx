@@ -28,8 +28,14 @@ export default function CategoryTile({ label, category, icon, active = false, on
         style,
       ]}
     >
-      {!active && <BlurView intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />}
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: active ? tint : glass.regular }]} />
+      {/* pointerEvents="none": decorative fills stacked over the whole tile.
+          BlurView is a real native view, so on Android it swallows the touch
+          before RN's responder system can hand the gesture up to the parent
+          ScrollView - which made a drag starting on a category tile do nothing
+          instead of scrolling the page. The sheen LinearGradient below already
+          opted out this way; these two were simply missed. */}
+      {!active && <BlurView pointerEvents="none" intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />}
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: active ? tint : glass.regular }]} />
       <LinearGradient
         pointerEvents="none"
         colors={glass.sheenColors as unknown as [string, string, string]}
