@@ -35,9 +35,9 @@ export default function IconButton({
         style,
       ]}
     >
-      {variant === 'glass' && !active && <BlurView intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />}
+      {variant === 'glass' && !active && <BlurView pointerEvents="none" intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />}
       {variant === 'solid' && (
-        <LinearGradient colors={['#EE6E58', colors.coral500]} style={StyleSheet.absoluteFill} />
+        <LinearGradient pointerEvents="none" colors={['#EE6E58', colors.coral500]} style={StyleSheet.absoluteFill} />
       )}
       {children}
       {badge && <View style={styles.badgeDot} />}

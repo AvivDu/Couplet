@@ -46,8 +46,8 @@ export default function Sheet({ title, open, onClose, onDismiss, footer, childre
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <Animated.View style={[StyleSheet.absoluteFill, { opacity: anim }]}>
-          <BlurView intensity={blur.s} tint="dark" style={StyleSheet.absoluteFill} />
-          <View style={[StyleSheet.absoluteFill, styles.scrimTint]} />
+          <BlurView pointerEvents="none" intensity={blur.s} tint="dark" style={StyleSheet.absoluteFill} />
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.scrimTint]} />
         </Animated.View>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <Animated.View
@@ -59,8 +59,8 @@ export default function Sheet({ title, open, onClose, onDismiss, footer, childre
             },
           ]}
         >
-          <BlurView intensity={blur.l} tint="light" style={StyleSheet.absoluteFill} />
-          <View style={[StyleSheet.absoluteFill, styles.sheetTint]} />
+          <BlurView pointerEvents="none" intensity={blur.l} tint="light" style={StyleSheet.absoluteFill} />
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.sheetTint]} />
           <LinearGradient
             pointerEvents="none"
             colors={glass.sheenColors as unknown as [string, string, string]}
