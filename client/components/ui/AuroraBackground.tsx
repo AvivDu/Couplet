@@ -37,6 +37,7 @@ export default function AuroraBackground({ children, style }: Props) {
   return (
     <View style={[styles.root, style]}>
       <LinearGradient
+        pointerEvents="none"
         colors={[colors.cream050, colors.cream100]}
         style={StyleSheet.absoluteFill}
       />
