@@ -59,13 +59,14 @@ export default function Button({
     >
       {variant === 'primary' && (
         <LinearGradient
+          pointerEvents="none"
           colors={['#EE6E58', colors.coral400, colors.coral500]}
           locations={[0, 0.52, 1]}
           style={StyleSheet.absoluteFill}
         />
       )}
       {variant === 'glass' && (
-        <BlurView intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />
+        <BlurView pointerEvents="none" intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />
       )}
       {variant === 'glass' && <GlassEdge />}
       {icon}

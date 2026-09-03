@@ -23,7 +23,7 @@ export default function Chip({ children, icon, active = false, onDismiss, onPres
         style,
       ]}
     >
-      <BlurView intensity={blur.s} tint="light" style={StyleSheet.absoluteFill} />
+      <BlurView pointerEvents="none" intensity={blur.s} tint="light" style={StyleSheet.absoluteFill} />
       {icon}
       <Text style={[styles.label, { color: active ? colors.coral400 : colors.textStrong, opacity: active ? 1 : 0.7 }]}>
         {children}

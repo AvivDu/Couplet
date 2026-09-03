@@ -22,8 +22,8 @@ export default function CouponCodePanel({
 }: CouponCodePanelProps) {
   return (
     <View style={styles.root}>
-      <BlurView intensity={blur.l} tint="light" style={StyleSheet.absoluteFill} />
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick }]} />
+      <BlurView pointerEvents="none" intensity={blur.l} tint="light" style={StyleSheet.absoluteFill} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick }]} />
       <GlassEdge />
       <LinearGradient
         pointerEvents="none"

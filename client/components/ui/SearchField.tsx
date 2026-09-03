@@ -12,8 +12,8 @@ interface SearchFieldProps extends TextInputProps {
 export default function SearchField({ value = '', onClear, placeholder = 'Search coupons...', style, ...rest }: SearchFieldProps) {
   return (
     <View style={styles.root}>
-      <BlurView intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />
-      <View style={[StyleSheet.absoluteFill, styles.tint]} />
+      <BlurView pointerEvents="none" intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.tint]} />
       <Ionicons name="search-outline" size={16} color={colors.textMuted} />
       <TextInput
         style={[styles.input, style]}

@@ -46,8 +46,13 @@ export default function Input({
             : { paddingVertical: 10, borderBottomWidth: 1.5, borderBottomColor: borderColor },
         ]}
       >
-        {isGlass && <BlurView intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />}
-        {isGlass && <View style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick }]} />}
+        {/* pointerEvents="none": decorative fills covering the whole field. BlurView
+            is a native view and on Android swallowed touches in the padding around
+            the TextInput, so a drag starting just inside a field's edge scrolled
+            nothing. Taps in that padding never focused the input either way, so
+            nothing is lost by letting the gesture through. GlassEdge sets its own. */}
+        {isGlass && <BlurView pointerEvents="none" intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />}
+        {isGlass && <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: glass.thick }]} />}
         {isGlass && <GlassEdge />}
         {icon && <View style={styles.icon}>{icon}</View>}
         <TextInput

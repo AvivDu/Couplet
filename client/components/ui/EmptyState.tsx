@@ -16,8 +16,8 @@ export default function EmptyState({ icon = 'pricetags-outline', title, hint, ac
   return (
     <View style={styles.root}>
       <View style={[styles.medallion, elevation.panel as object]}>
-        <BlurView intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: glass.regular }]} />
+        <BlurView pointerEvents="none" intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: glass.regular }]} />
         <GlassEdge />
         <Ionicons name={icon} size={38} color={colors.coral300} />
       </View>

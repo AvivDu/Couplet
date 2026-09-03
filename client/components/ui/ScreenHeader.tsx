@@ -19,8 +19,8 @@ export default function ScreenHeader({ title, subtitle, back = false, onBack, le
 
   return (
     <View style={[styles.root, { paddingTop: spacing.s8 + insets.top }]}>
-      <BlurView intensity={blur.l} tint="light" style={StyleSheet.absoluteFill} />
-      <View style={styles.tint} />
+      <BlurView pointerEvents="none" intensity={blur.l} tint="light" style={StyleSheet.absoluteFill} />
+      <View pointerEvents="none" style={styles.tint} />
       {back && (
         <Pressable onPress={onBack} accessibilityLabel="Back" style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={colors.textStrong} />

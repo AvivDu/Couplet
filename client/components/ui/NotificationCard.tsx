@@ -28,8 +28,8 @@ export default function NotificationCard({
 
   return (
     <View style={[styles.root, read ? styles.readBorder : (elevation.panel as object)]}>
-      {!read && <BlurView intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />}
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: read ? 'rgba(247,242,234,.72)' : glass.thick }]} />
+      {!read && <BlurView pointerEvents="none" intensity={blur.m} tint="light" style={StyleSheet.absoluteFill} />}
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: read ? 'rgba(247,242,234,.72)' : glass.thick }]} />
       <View style={[styles.stripe, { backgroundColor: stripe }]} />
       <View style={styles.body}>
         <Ionicons name={icon} size={22} color={colors.coral400} />
