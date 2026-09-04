@@ -602,7 +602,7 @@ export default function HomeScreen() {
 
         {/* Settings Drawer */}
         {drawerOpen && (
-          <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+          <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
             <TouchableOpacity
               style={styles.drawerOverlay}
               activeOpacity={1}
@@ -747,7 +747,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   // Settings Drawer
-  drawerOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(26,35,50,0.45)' },
+  drawerOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(26,35,50,0.45)' },
   drawer: {
     position: 'absolute',
     top: 0,

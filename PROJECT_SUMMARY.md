@@ -138,7 +138,7 @@ npm start
 ```
 Scan the QR code with Expo Go. The app talks to the Lambda backend (via API Gateway) using `EXPO_PUBLIC_API_URL` in `client/.env` (gitignored).
 
-P2P coupon transfer deliberately uses browser WebRTC inside a hidden WebView rather than `react-native-webrtc`, specifically so the project keeps running in Expo Go - the native module would force a custom dev client, which on iOS needs a Mac or a paid Apple Developer account. Verified on-device: `react-native-webview` is in Expo SDK 54's `bundledNativeModules.json` (13.15.0), and WebRTC works inside it (secure context via `baseUrl: 'https://localhost'`, SDP + ICE gathering confirmed). Install WebView with `npx expo install react-native-webview`, never plain `npm install`, so the SDK-pinned version is kept.
+P2P coupon transfer deliberately uses browser WebRTC inside a hidden WebView rather than `react-native-webrtc`, specifically so the project keeps running in Expo Go - the native module would force a custom dev client, which on iOS needs a Mac or a paid Apple Developer account. Verified on-device: `react-native-webview` is in Expo SDK 57's `bundledNativeModules.json` (13.16.1), and WebRTC works inside it (secure context via `baseUrl: 'https://localhost'`, SDP + ICE gathering confirmed). Install WebView with `npx expo install react-native-webview`, never plain `npm install`, so the SDK-pinned version is kept.
 
 ### Server env var for the coupon-code encryption key
 `NOTIFICATION_CODE_KEY` - 32-byte base64 key used by `server/src/lib/codeCrypto.ts` to encrypt coupon codes at rest (offline-fallback + P2P-rescue notification rows). Generate once with `openssl rand -base64 32` and set it manually in the Lambda's environment variables (no IaC in this repo).
