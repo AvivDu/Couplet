@@ -14,7 +14,14 @@ import { Text } from '../../components/rn';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
-import * as Contacts from 'expo-contacts';
+// expo-contacts/legacy, not 'expo-contacts': SDK 56 split this API. The
+// root-entry getContactsAsync is still declared in the .d.ts but THROWS at
+// runtime ("Use Contact.getAll() or import this method from
+// expo-contacts/legacy"), so tsc cannot catch the break — and the call below
+// sits in a try/catch, which would swallow it into a silent "no matches found".
+// The /legacy subpath still exports getContactsAsync, requestPermissionsAsync
+// and Fields unchanged.
+import * as Contacts from 'expo-contacts/legacy';
 import { Ionicons } from '@expo/vector-icons';
 import {
   getGroup,

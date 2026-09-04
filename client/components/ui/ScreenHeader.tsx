@@ -47,7 +47,7 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.lineHair,
     overflow: 'hidden',
   },
-  tint: { ...StyleSheet.absoluteFillObject, backgroundColor: glass.thin },
+  tint: { ...StyleSheet.absoluteFill, backgroundColor: glass.thin },
   backBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   titleWrap: { flex: 1, minWidth: 0 },
   title: { fontFamily: fontFamily.display, fontSize: fontSize.displayS, lineHeight: Math.round(fontSize.displayS * 1.18), letterSpacing: letterSpacingRatio.display * fontSize.displayS, color: colors.textStrong },

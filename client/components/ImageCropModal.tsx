@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cropBorder: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderWidth: 1.5,
     borderColor: '#fff',
   },
@@ -296,7 +296,7 @@ const styles = StyleSheet.create({
   handleBL: { borderBottomLeftRadius: 4 },
   handleBR: { borderBottomRightRadius: 4 },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
   },
