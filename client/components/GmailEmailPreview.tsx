@@ -63,6 +63,12 @@ export default function GmailEmailPreview({ visible, candidate, draft, onClose, 
           <Text style={styles.meta} numberOfLines={1}>{candidate.from}</Text>
           <Text style={styles.meta}>{formatDate(candidate.date)}</Text>
 
+          {draft.code && draft.codeConfidence === 'guess' && (
+            <Text style={styles.lowConfidenceHint}>
+              We're not fully sure about this code - check it against the email below before saving.
+            </Text>
+          )}
+
           <View style={styles.fieldsRow}>
             <View style={styles.fieldChip}>
               <Text style={styles.fieldLabel}>CODE</Text>
@@ -80,6 +86,12 @@ export default function GmailEmailPreview({ visible, candidate, draft, onClose, 
               <Text style={styles.fieldLabel}>EXPIRES</Text>
               <Text style={styles.fieldValue} numberOfLines={1}>{draft.expiration ?? '—'}</Text>
             </View>
+            {draft.giftUrl && (
+              <View style={[styles.fieldChip, { minWidth: '100%' }]}>
+                <Text style={styles.fieldLabel}>GIFT CARD LINK</Text>
+                <Text style={styles.fieldValue} numberOfLines={1}>{draft.giftUrl}</Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.divider} />
@@ -127,6 +139,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingBottom: 24 },
   subject: { fontSize: 19, fontWeight: '800', color: '#1A2332', marginBottom: 6 },
   meta: { fontSize: 13, color: '#A8997A', fontWeight: '500' },
+  lowConfidenceHint: { fontSize: 12, color: '#E8604C', fontWeight: '600', marginTop: 10 },
   fieldsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
