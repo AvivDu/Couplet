@@ -149,6 +149,14 @@ export default function AddCouponScreen() {
     router.push('/gmail-scan');
   }
 
+  // An Alert raised while the Quick Add sheet is still animating closed stacks
+  // two Modals, and the second one can end up invisible on iOS (the same
+  // hazard the Home screen's invite popup works around). Both alerts below are
+  // fired through this so the sheet is fully gone first.
+  function alertAfterSheetClose(title: string, message: string) {
+    setTimeout(() => Alert.alert(title, message), 350);
+  }
+
   // Reads the clipboard and extracts straight into the form - no intermediate
   // "review the raw text" screen. That screen only ever let the user fix typos
   // before Analyze; the actual coupon form does that same job (every extracted
@@ -178,7 +186,7 @@ export default function AddCouponScreen() {
     // clipboard), so finding nothing is a normal outcome, not an error - say
     // so and leave the form as it was rather than pretending something happened.
     if (!foundSomething) {
-      Alert.alert(
+      alertAfterSheetClose(
         'Nothing found',
         "Couldn't find a coupon code, amount or expiry date on the clipboard. Copy the coupon text first, or fill the fields in yourself."
       );
@@ -198,6 +206,18 @@ export default function AddCouponScreen() {
       // Same rule as typing a store name by hand (handleCouponNameChange): an
       // explicit category choice by the user outranks the detected brand.
       if (!categoryTouchedRef.current) setCategory('General');
+    }
+
+    // The Gmail list flags a low-confidence code with a "Check code" badge and
+    // the preview repeats the warning; pasting had no equivalent, so a guess
+    // landed in the form looking exactly as certain as a labelled match. Say it
+    // once here instead - the code is already filled in, this only asks for a
+    // glance before saving.
+    if (fields.codeConfidence === 'guess') {
+      alertAfterSheetClose(
+        'Check the code',
+        "That text had no clear \"coupon code\" label, so this is a best guess - please check it against the original before saving."
+      );
     }
   }
 

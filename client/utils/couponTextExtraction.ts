@@ -52,10 +52,8 @@ const HEBREW_BARE_CODE_PATTERN = new RegExp(String.raw`קוד${CONNECTOR}${CODE}
 // letter (SAVE20, WELCOME15, OLD123).
 const ALL_LOWERCASE_LETTERS = /^[a-z]+$/;
 
-function isPlausibleCode(code: string, requireLetterAndDigit: boolean): boolean {
-  if (ALL_LOWERCASE_LETTERS.test(code)) return false;
-  if (requireLetterAndDigit && !/[a-zA-Z]/.test(code)) return false;
-  return true;
+function isPlausibleCode(code: string): boolean {
+  return !ALL_LOWERCASE_LETTERS.test(code);
 }
 
 // "קוד" also appears, glued with no space, as the tail of unrelated Hebrew words -
@@ -67,14 +65,41 @@ function isPlausibleCode(code: string, requireLetterAndDigit: boolean): boolean 
 // app at import time.
 const HEBREW_COMPOUND_FALSE_POSITIVE_PREFIXES = ['מי', 'תי'];
 
-function firstPlausibleMatch(text: string, pattern: RegExp, opts: { requireLetterAndDigit: boolean; guardHebrewPrefix?: boolean }): string | null {
+// A qualifying word sitting immediately before "code" that means this is not a
+// coupon at all: "zip code: 12345", "order code: 998877". Those plain-number
+// cases are exactly what the bare tier used to catch, and blocking them by
+// requiring a letter in the code blocked legitimate numeric coupon codes with
+// them ("code: 12345"). The digits were never the problem - the qualifier was,
+// so the qualifier is what gets checked. Same shape as the Hebrew guard above,
+// which solves the identical problem for prefixes glued onto "קוד".
+//
+// Note "barcode"/"zipcode" written as one word need no entry: a word boundary before "code" cannot
+// match mid-word, so they never reach here.
+const ENGLISH_NON_COUPON_QUALIFIERS = [
+  'zip', 'postal', 'post', 'area', 'country', 'dial', 'dialing',
+  'order', 'reference', 'ref', 'tracking', 'invoice', 'account', 'customer',
+  'error', 'status', 'qr', 'bar', 'pin', 'security', 'verification',
+  'confirmation', 'otp', 'auth', 'sort', 'swift', 'iban', 'branch',
+  'product', 'sku', 'model', 'serial', 'employee', 'store',
+];
+
+// The alphabetic word immediately before `index`, lowercased ('' if there is
+// none - a code label starting the line has nothing in front of it).
+function precedingWord(text: string, index: number): string {
+  const before = text.slice(0, index).replace(/[\s:>\-]+$/, '');
+  const match = before.match(/([A-Za-z]+)$/);
+  return match ? match[1].toLowerCase() : '';
+}
+
+function firstPlausibleMatch(text: string, pattern: RegExp, opts: { guardHebrewPrefix?: boolean; guardEnglishQualifier?: boolean } = {}): string | null {
   for (const match of text.matchAll(pattern)) {
     if (opts.guardHebrewPrefix) {
       const prefix = text.slice(Math.max(0, match.index! - 2), match.index!);
       if (HEBREW_COMPOUND_FALSE_POSITIVE_PREFIXES.includes(prefix)) continue;
     }
+    if (opts.guardEnglishQualifier && ENGLISH_NON_COUPON_QUALIFIERS.includes(precedingWord(text, match.index!))) continue;
     const code = match[1]?.trim();
-    if (!code || !isPlausibleCode(code, opts.requireLetterAndDigit)) continue;
+    if (!code || !isPlausibleCode(code)) continue;
     return code;
   }
   return null;
@@ -87,12 +112,12 @@ export interface CodeExtractionResult {
 
 function extractCode(text: string): CodeExtractionResult | null {
   for (const pattern of HIGH_CONFIDENCE_CODE_PATTERNS) {
-    const code = firstPlausibleMatch(text, new RegExp(pattern.source, pattern.flags + 'g'), { requireLetterAndDigit: false });
+    const code = firstPlausibleMatch(text, new RegExp(pattern.source, pattern.flags + 'g'));
     if (code) return { code, confidence: 'label' };
   }
-  const hebrewGuess = firstPlausibleMatch(text, HEBREW_BARE_CODE_PATTERN, { requireLetterAndDigit: true, guardHebrewPrefix: true });
+  const hebrewGuess = firstPlausibleMatch(text, HEBREW_BARE_CODE_PATTERN, { guardHebrewPrefix: true });
   if (hebrewGuess) return { code: hebrewGuess, confidence: 'guess' };
-  const englishGuess = firstPlausibleMatch(text, ENGLISH_BARE_CODE_PATTERN, { requireLetterAndDigit: true });
+  const englishGuess = firstPlausibleMatch(text, ENGLISH_BARE_CODE_PATTERN, { guardEnglishQualifier: true });
   if (englishGuess) return { code: englishGuess, confidence: 'guess' };
   return null;
 }
