@@ -30,7 +30,6 @@ import {
   removeMember,
   revokeFromGroup,
   leaveGroup,
-  searchUsers,
   cancelInvitation,
   redeemGroupCoupon,
   getCoupons,
@@ -49,6 +48,7 @@ import { inspectShareable, shareWarning, deliverCouponCode } from '../../service
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationsContext';
 import { useRefreshOnNotification } from '../../hooks/useRefreshOnNotification';
+import { useUserSearch } from '../../hooks/useUserSearch';
 import CouponDetail from '../../components/CouponDetail';
 import type { CouponWithCode } from '../../components/CouponDetail/types';
 import { CATEGORY_DEFS, SORT_OPTIONS, sortCoupons, type SortOption } from '../../constants/categories';
@@ -103,7 +103,7 @@ export default function GroupScreen() {
   const [membersSheetVisible, setMembersSheetVisible] = useState(false);
   const [inviteSheetVisible, setInviteSheetVisible] = useState(false);
   const [memberQuery, setMemberQuery] = useState('');
-  const [suggestions, setSuggestions] = useState<GroupMember[]>([]);
+  const { results: suggestions, clear: clearSuggestions } = useUserSearch(memberQuery);
   const [addingMember, setAddingMember] = useState(false);
   const [couponPickerVisible, setCouponPickerVisible] = useState(false);
   const [myCoupons, setMyCoupons] = useState<CouponMeta[]>([]);
@@ -185,22 +185,6 @@ export default function GroupScreen() {
   // change this group's member list or coupon list while the page is open.
   useRefreshOnNotification(refreshGroupSilently);
 
-  useEffect(() => {
-    if (!memberQuery.trim()) {
-      setSuggestions([]);
-      return;
-    }
-    const timer = setTimeout(async () => {
-      try {
-        const { data } = await searchUsers(memberQuery.trim());
-        setSuggestions(data);
-      } catch {
-        setSuggestions([]);
-      }
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [memberQuery]);
-
   async function handlePickImage() {
     if (!isAdmin || !groupId) return;
     try {
@@ -256,7 +240,7 @@ export default function GroupScreen() {
     try {
       await addMember(groupId, identifier);
       setMemberQuery('');
-      setSuggestions([]);
+      clearSuggestions();
       setInviteSheetVisible(false);
       await fetchGroup();
     } catch (err: any) {
@@ -570,7 +554,7 @@ export default function GroupScreen() {
   function closeInviteSheet() {
     setInviteSheetVisible(false);
     setMemberQuery('');
-    setSuggestions([]);
+    clearSuggestions();
   }
 
   // Derived: filtered + sorted coupon feed (category + member filter, then sort).
@@ -998,7 +982,7 @@ export default function GroupScreen() {
                     style={styles.suggestion}
                     onPress={() => {
                       setMemberQuery(s.phone_number ?? s.email);
-                      setSuggestions([]);
+                      clearSuggestions();
                     }}
                   >
                     <Text style={styles.suggestionName}>{s.username}</Text>

@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useRefreshOnNotification } from '../../hooks/useRefreshOnNotification';
+import { useUserSearch } from '../../hooks/useUserSearch';
 import {
   View,
   FlatList,
@@ -8,6 +9,7 @@ import {
   RefreshControl,
   StyleSheet,
 } from 'react-native';
+import { Text } from '../../components/rn';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, router } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
@@ -21,7 +23,11 @@ import EmptyState from '../../components/ui/EmptyState';
 import Sheet from '../../components/ui/Sheet';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
-import { colors, spacing } from '../../constants/theme';
+import SearchField from '../../components/ui/SearchField';
+import Avatar from '../../components/ui/Avatar';
+import Chip from '../../components/ui/Chip';
+import GlassPanel from '../../components/ui/GlassPanel';
+import { colors, radius, spacing, fontFamily, fontSize } from '../../constants/theme';
 
 export default function ConnectionsScreen() {
   const { user } = useAuth();
@@ -34,6 +40,13 @@ export default function ConnectionsScreen() {
   const [groupName, setGroupName] = useState('');
   const [creating, setCreating] = useState(false);
 
+  // Person search - finds a user (name/email/phone, same endpoint and hook
+  // the group invite flow uses) and shows which of the current user's
+  // already-fetched groups that person is also in. Purely a client-side
+  // cross-reference - no server endpoint computes "shared groups" between
+  // two users.
+  const [query, setQuery] = useState('');
+  const { results: userResults, searching } = useUserSearch(query);
 
   const fetchGroups = useCallback(async () => {
     try {
@@ -92,7 +105,56 @@ export default function ConnectionsScreen() {
         }
       />
 
-      {loading ? (
+      <View style={styles.searchWrap}>
+        <SearchField
+          value={query}
+          onChangeText={setQuery}
+          onClear={() => setQuery('')}
+          placeholder="Search people..."
+          autoCapitalize="none"
+        />
+      </View>
+
+      {query.trim().length > 0 ? (
+        searching ? (
+          <ActivityIndicator color={colors.coral400} style={{ marginTop: 40 }} />
+        ) : (
+          <FlatList
+            data={userResults}
+            keyExtractor={u => u.user_id}
+            contentContainerStyle={styles.list}
+            ItemSeparatorComponent={() => <View style={{ height: spacing.stackCard }} />}
+            renderItem={({ item }) => {
+              const sharedGroups = groups.filter(g => g.user_id_list.includes(item.user_id));
+              return (
+                <GlassPanel tint="regular" radius={radius.card} padding={spacing.s8} sheen={false}>
+                  <View style={styles.personRow}>
+                    <Avatar initials={item.username.slice(0, 2)} src={item.image} size="l" />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.personName} numberOfLines={1}>{item.username}</Text>
+                      <Text style={styles.personSub} numberOfLines={1}>{item.phone_number ?? item.email}</Text>
+                    </View>
+                  </View>
+                  {sharedGroups.length > 0 ? (
+                    <View style={styles.sharedGroupsRow}>
+                      {sharedGroups.map(g => (
+                        <Chip key={g.group_id} onPress={() => router.push(`/group/${g.group_id}`)}>
+                          {g.name}
+                        </Chip>
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={styles.noSharedGroups}>No groups in common yet</Text>
+                  )}
+                </GlassPanel>
+              );
+            }}
+            ListEmptyComponent={
+              <EmptyState icon="person-outline" title="No matching people" hint="Try a different name, email or phone number" />
+            }
+          />
+        )
+      ) : loading ? (
         <ActivityIndicator color={colors.coral400} style={{ marginTop: 40 }} />
       ) : (
         <FlatList
@@ -137,4 +199,10 @@ export default function ConnectionsScreen() {
 
 const styles = StyleSheet.create({
   list: { paddingHorizontal: spacing.gutterScreen, paddingBottom: 130 },
+  searchWrap: { paddingHorizontal: spacing.gutterScreen, marginTop: spacing.s6, marginBottom: spacing.s2 },
+  personRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.s7 },
+  personName: { fontFamily: fontFamily.uiBold, fontSize: fontSize.subheading, color: colors.textStrong },
+  personSub: { fontFamily: fontFamily.ui, fontSize: fontSize.caption, color: colors.textMuted, marginTop: 2 },
+  sharedGroupsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.s4, marginTop: spacing.s7 },
+  noSharedGroups: { fontFamily: fontFamily.ui, fontSize: fontSize.caption, color: colors.textMuted, marginTop: spacing.s7 },
 });
