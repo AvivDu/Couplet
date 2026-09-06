@@ -28,6 +28,7 @@ import { maskBalanceInput } from '../../utils/format';
 import { extractCouponFieldsFromText } from '../../utils/couponTextExtraction';
 import AuroraBackground from '../../components/ui/AuroraBackground';
 import ScreenHeader from '../../components/ui/ScreenHeader';
+import IconButton from '../../components/ui/IconButton';
 import Input from '../../components/ui/Input';
 import CategoryTile from '../../components/ui/CategoryTile';
 import GlassPanel from '../../components/ui/GlassPanel';
@@ -142,6 +143,44 @@ export default function AddCouponScreen() {
 
   function openQuickAdd() {
     setQuickAddOpen(true);
+  }
+
+  // Manual reset for the form itself - distinct from the automatic resets above
+  // (leaving the screen, or a successful save), which fire on their own. A no-op
+  // on an already-blank form skips a pointless confirm prompt. Doesn't touch
+  // dismissDraft: clearing the form isn't declining the Gmail draft it came
+  // from, same rule as abandoning the screen without saving.
+  function handleClearFields() {
+    const isBlank = !code && !couponName && !category && !expiryDate && !balance && !imageUri && !giftUrl;
+    if (isBlank) return;
+    Alert.alert('Clear all fields?', "This will remove everything you've entered on this screen.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear',
+        style: 'destructive',
+        onPress: () => {
+          setCode('');
+          setCouponName('');
+          setCategory('');
+          setExpiryDate(null);
+          setBalance('');
+          setImageUri(null);
+          setImageNatSize(null);
+          setGiftUrl('');
+          setMatchedGeneralCard(null);
+          categoryTouchedRef.current = false;
+          // Deliberately doesn't touch consumedGmailMessageIdRef - route params
+          // stick around on this tab (see the ref's own comment above), so
+          // un-consuming it here would repopulate these just-cleared fields the
+          // next time this tab merely regains focus, not only on an actual
+          // re-tap of the draft. Same tradeoff the automatic abandon-cleanup
+          // above already makes: a genuinely-different draft still repopulates
+          // fine (its messageId differs), only *this* messageId can't be
+          // manually replayed twice - matching how it already couldn't be
+          // before this button existed.
+        },
+      },
+    ]);
   }
 
   function handleQuickAddGmail() {
@@ -323,14 +362,19 @@ export default function AddCouponScreen() {
         title="Add Coupon"
         subtitle="Stays on this device"
         actions={
-          <Button
-            variant="glass"
-            size="s"
-            icon={<Ionicons name="flash-outline" size={16} color={colors.coral400} />}
-            onPress={openQuickAdd}
-          >
-            Quick Add
-          </Button>
+          <>
+            <IconButton label="Clear fields" size="s" onPress={handleClearFields}>
+              <Ionicons name="refresh-outline" size={16} color={colors.textStrong} />
+            </IconButton>
+            <Button
+              variant="glass"
+              size="s"
+              icon={<Ionicons name="flash-outline" size={16} color={colors.coral400} />}
+              onPress={openQuickAdd}
+            >
+              Quick Add
+            </Button>
+          </>
         }
       />
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
