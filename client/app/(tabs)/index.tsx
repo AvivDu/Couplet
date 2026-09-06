@@ -30,6 +30,7 @@ import CategoryTile from '../../components/ui/CategoryTile';
 import Chip from '../../components/ui/Chip';
 import Sheet from '../../components/ui/Sheet';
 import OptionRow from '../../components/ui/OptionRow';
+import ToggleRow from '../../components/ui/ToggleRow';
 import SectionLabel from '../../components/ui/SectionLabel';
 import EmptyState from '../../components/ui/EmptyState';
 import Avatar from '../../components/ui/Avatar';
@@ -56,6 +57,7 @@ export default function HomeScreen() {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortOption | null>(null);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const [hideExpired, setHideExpired] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<CouponWithCode | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -96,6 +98,7 @@ export default function HomeScreen() {
 
       // Generate one expiry notification per day (7 down to 1) for each active coupon
       const soonMs = 7 * 24 * 60 * 60 * 1000;
+      const DAY_MS = 24 * 60 * 60 * 1000;
       const generated: NotificationItem[] = coupons
         .filter(c => c.expiration_date)
         .flatMap(c => {
@@ -110,6 +113,8 @@ export default function HomeScreen() {
               body: daysLeft === 1 ? 'Expires tomorrow!' : `Expires in ${daysLeft} days`,
               category: c.category,
               read: false,
+              // Fewer days left = more urgent = sorts as more recent.
+              ts: now.getTime() - daysLeft * DAY_MS,
             }];
           }
           return [];
@@ -202,6 +207,7 @@ export default function HomeScreen() {
         title: n.title,
         body: n.body,
         read: n.read,
+        ts: new Date(n.created_at).getTime(),
         // Non-invite notifications with a group become tap-to-navigate.
         ...(n.type !== 'group_invite' && n.group_id ? { navigateGroupId: n.group_id } : {}),
         ...(n.type === 'group_invite' && n.group_id
@@ -221,6 +227,9 @@ export default function HomeScreen() {
           title: 'Group invitation',
           body: `You've been invited to join "${inv.name}"`,
           read: false,
+          // No timestamp exists on a legacy invitation payload - pin to "now"
+          // so it keeps floating to the top as a pending actionable item.
+          ts: now.getTime(),
           actionType: 'group_invite' as const,
           actionGroupId: inv.group_id,
           actionGroupName: inv.name,
@@ -228,7 +237,7 @@ export default function HomeScreen() {
 
       setNotifications(prev => {
         const readIds = new Set(prev.filter(n => n.read).map(n => n.id));
-        return [
+        const merged = [
           // Invitations are always unread while still pending
           ...inviteNotifs,
           ...serverNotifs.map(n => ({
@@ -237,6 +246,7 @@ export default function HomeScreen() {
           })),
           ...generated.map(n => ({ ...n, read: readIds.has(n.id) })),
         ];
+        return merged.sort((a, b) => b.ts - a.ts);
       });
     } catch {
       Alert.alert('Error', 'Could not load coupons. Is the server running?');
@@ -274,7 +284,8 @@ export default function HomeScreen() {
 
   const filtered = coupons
     .filter(c => filter === 'All' || c.category === filter)
-    .filter(c => !query || c.store_name.toLowerCase().includes(query));
+    .filter(c => !query || c.store_name.toLowerCase().includes(query))
+    .filter(c => !hideExpired || c.status !== 'expired');
 
   const displayed = sortCoupons(filtered, sort);
 
@@ -288,6 +299,7 @@ export default function HomeScreen() {
   const sharedMatches = query
     ? sharedCoupons
         .filter(c => filter === 'All' || c.category === filter)
+        .filter(c => !hideExpired || c.status !== 'expired')
         .filter(c =>
           c.store_name.toLowerCase().includes(query) ||
           (c.shared_by?.username ?? '').toLowerCase().includes(query)
@@ -295,6 +307,8 @@ export default function HomeScreen() {
     : [];
 
   const activeSortLabel = SORT_OPTIONS.find(o => o.value === sort)?.label ?? null;
+  const filterChipActive = !!sort || hideExpired;
+  const filterChipLabel = activeSortLabel ?? (hideExpired ? 'Hide expired' : 'Filter');
   const unreadCount = notifications.filter(n => !n.read).length;
 
   async function handleAcceptInvite(groupId: string) {
@@ -471,15 +485,15 @@ export default function HomeScreen() {
           )}
         />
 
-        {/* Sort chip */}
+        {/* Filter chip */}
         <View style={styles.sortRow}>
           <Chip
-            icon={<Ionicons name="funnel-outline" size={15} color={sort ? colors.coral400 : colors.textStrong} />}
-            active={!!sort}
-            onDismiss={() => setSort(null)}
+            icon={<Ionicons name="funnel-outline" size={15} color={filterChipActive ? colors.coral400 : colors.textStrong} />}
+            active={filterChipActive}
+            onDismiss={() => { setSort(null); setHideExpired(false); }}
             onPress={openSortMenu}
           >
-            {activeSortLabel ?? 'Sort'}
+            {filterChipLabel}
           </Chip>
         </View>
 
@@ -545,8 +559,17 @@ export default function HomeScreen() {
           }
         />
 
-        {/* Sort menu */}
-        <Sheet title="Sort by" open={sortMenuOpen} onClose={closeSortMenu}>
+        {/* Filter sheet */}
+        <Sheet title="Filter" open={sortMenuOpen} onClose={closeSortMenu}>
+          <SectionLabel>Status</SectionLabel>
+          <ToggleRow
+            icon={<Ionicons name="eye-off-outline" size={20} color={hideExpired ? colors.coral400 : colors.textStrong} />}
+            label="Hide expired coupons"
+            value={hideExpired}
+            onValueChange={setHideExpired}
+            divider={false}
+          />
+          <SectionLabel>Sort by</SectionLabel>
           {SORT_OPTIONS.map((opt, i) => {
             const active = sort === opt.value;
             return (

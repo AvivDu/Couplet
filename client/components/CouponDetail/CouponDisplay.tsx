@@ -267,6 +267,7 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
     ? new Date(coupon.expiration_date).toLocaleDateString()
     : 'No expiry';
   const balance = coupon.balance != null ? formatBalance(coupon.balance) : '—';
+  const isActive = coupon.status === 'active';
 
   return (
     <>
@@ -384,8 +385,11 @@ export default function CouponDisplay({ coupon, isOwner, onEdit, onDelete, onRed
         </Button>
       )}
 
-      {/* Secondary actions - Edit + Share (owner-only server-side) */}
-      {isOwner && (
+      {/* Secondary actions - Edit + Share. Owner-only and active-only: editing
+          or sharing a used/expired coupon has nothing useful for either the
+          owner or a recipient to act on, so both are hidden once the coupon
+          is no longer active - only Delete remains available past that point. */}
+      {isOwner && isActive && (
         <View style={styles.actionRow}>
           <View style={styles.actionCol}>
             <Button variant="glass" block onPress={onEdit} icon={<Ionicons name="pencil-outline" size={16} color={colors.coral500} />}>
