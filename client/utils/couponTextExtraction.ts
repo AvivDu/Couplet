@@ -18,12 +18,32 @@ import { findGiftCardInText, GENERAL_GIFT_CARDS } from '../constants/generalGift
 // with whatever else was in frame - which is why guessStoreFromText scans
 // several lines and rejects hard rather than taking line one on faith.
 
-// Known gap, not yet fixed: doesn't bridge a possessive word between the label and
-// "is"/"הוא" ("הקוד שלך הוא: X" - "your code is: X" - the common real phrasing).
-// Widening this to skip arbitrary words would meaningfully raise false-positive
-// risk without real failing samples to validate against - left for a follow-up
-// once there's actual data to tune it with, rather than guessed at now.
-const CONNECTOR = String.raw`(?:[:\s]+|\s+(?:is|הוא)\s*:?\s*)`;
+// Bridges whatever sits between a label and its value.
+//
+// Two things land in that gap. Glyphs OCR invents: a real "Promo code:" card
+// came back as "Promo code: r\nFALL15", where the 'r' is the copy-to-clipboard
+// icon, and the code was lost because nothing was allowed between the two.
+// And short words: "הקוד שלך הוא: X" ("your code is: X", the common real
+// phrasing) puts a possessive between the label and "הוא".
+//
+// An earlier note here left this alone until there were real failing samples
+// to tune against, on the grounds that skipping arbitrary words raises
+// false-positive risk. Those samples now exist (the card above), and the
+// bound below is what they justify - short runs only, not arbitrary words.
+//
+// Bounded three ways so it cannot wander off and grab an unrelated word:
+// each skipped run is either punctuation or at most three letters/digits; at
+// most five runs are skipped; and the trailing lookahead means a real code can
+// never be consumed as noise ("FAL" of FALL15 fails it, so the skipper stops
+// and lets CODE match). The existing isPlausibleCode guard - a code must carry
+// a digit or a capital - is the backstop against picking up prose, which is
+// what keeps "Promo code: see the email we sent" from matching "email".
+//
+// ASCII and Hebrew ranges are spelled out rather than using \p{L}, which would
+// force the 'u' flag onto every pattern built from this.
+const LABEL_LETTER = String.raw`A-Za-z0-9֐-׿`;
+const LABEL_NOISE = String.raw`(?:(?:[^${LABEL_LETTER}\s]+|[${LABEL_LETTER}]{1,3}(?![${LABEL_LETTER}]))\s*){0,5}`;
+const CONNECTOR = String.raw`(?:[:\s]+|\s+(?:is|הוא)\s*:?\s*)${LABEL_NOISE}`;
 const QUOTE = `["'"”‘’׳]?`;
 const CODE = `${QUOTE}([A-Za-z0-9-]{4,20})${QUOTE}`;
 
@@ -310,8 +330,20 @@ function parseDateToken(token: string): string | null {
   if (a.length === 4) {
     year = parseInt(a, 10); month = parseInt(b, 10); day = parseInt(c, 10);
   } else {
-    day = parseInt(a, 10); month = parseInt(b, 10); year = parseInt(c, 10);
+    const first = parseInt(a, 10);
+    const second = parseInt(b, 10);
+    year = parseInt(c, 10);
     if (year < 100) year += 2000;
+    // Day-first is the default (Israeli coupons), but a US card reading
+    // "Valid until: 12/31/2026" was rejected outright - month 31 does not
+    // exist - so the date was dropped rather than read the other way round.
+    // Only swap when the order is unambiguous: a second component above 12
+    // can only be a day, which makes the first one the month.
+    if (second > 12 && first <= 12) {
+      month = first; day = second;
+    } else {
+      day = first; month = second;
+    }
   }
   if (!year || !month || !day || month > 12 || day > 31) return null;
   const date = new Date(Date.UTC(year, month - 1, day));
