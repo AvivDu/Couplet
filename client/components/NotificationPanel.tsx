@@ -16,6 +16,7 @@ export type NotificationItem = {
   body: string;
   category?: string;
   read: boolean;
+  ts: number;
   actionType?: 'group_invite';
   actionGroupId?: string;
   actionGroupName?: string;

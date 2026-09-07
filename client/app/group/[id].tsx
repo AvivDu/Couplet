@@ -63,6 +63,7 @@ import Button from '../../components/ui/Button';
 import Sheet from '../../components/ui/Sheet';
 import CategoryTile from '../../components/ui/CategoryTile';
 import OptionRow from '../../components/ui/OptionRow';
+import ToggleRow from '../../components/ui/ToggleRow';
 import Chip from '../../components/ui/Chip';
 import GlassPanel from '../../components/ui/GlassPanel';
 import Input from '../../components/ui/Input';
@@ -125,6 +126,7 @@ export default function GroupScreen() {
   const [filterMember, setFilterMember] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>('All');
   const [filterSort, setFilterSort] = useState<SortOption | null>(null);
+  const [hideExpired, setHideExpired] = useState(false);
 
   const isAdmin = group?.admin_user_id === user?.userId;
 
@@ -557,23 +559,36 @@ export default function GroupScreen() {
     clearSuggestions();
   }
 
+  // Group coupons never get their expiry re-derived server- or client-side the
+  // way Home's owner-side load() does, so `status` can still read 'active'
+  // past `expiration_date` - fall back to a date check for the "hide expired"
+  // filter specifically, without touching the pre-existing status-label logic
+  // elsewhere on this screen.
+  function isCouponExpired(c: { status: string; expiration_date: string | null }): boolean {
+    if (c.status === 'expired') return true;
+    if (c.status === 'active' && c.expiration_date && new Date(c.expiration_date) < new Date()) return true;
+    return false;
+  }
+
   // Derived: filtered + sorted coupon feed (category + member filter, then sort).
   const filteredCoupons = useMemo(() => {
     if (!group) return [];
     const filtered = group.coupons.filter(c => {
       if (filterMember && c.owner_id !== filterMember) return false;
       if (filterCategory !== 'All' && c.category !== filterCategory) return false;
+      if (hideExpired && isCouponExpired(c)) return false;
       return true;
     });
     return sortCoupons(filtered, filterSort);
-  }, [group, filterMember, filterCategory, filterSort]);
+  }, [group, filterMember, filterCategory, filterSort, hideExpired]);
 
-  const hasFilter = filterMember !== null || filterCategory !== 'All' || filterSort !== null;
+  const hasFilter = filterMember !== null || filterCategory !== 'All' || filterSort !== null || hideExpired;
 
   function clearFilters() {
     setFilterMember(null);
     setFilterCategory('All');
     setFilterSort(null);
+    setHideExpired(false);
   }
 
   function openFilterSheet() {
@@ -767,6 +782,15 @@ export default function GroupScreen() {
               />
             ))}
           </ScrollView>
+
+          <SectionLabel>Status</SectionLabel>
+          <ToggleRow
+            icon={<Ionicons name="eye-off-outline" size={20} color={hideExpired ? COLORS.coral : COLORS.ink} />}
+            label="Hide expired coupons"
+            value={hideExpired}
+            onValueChange={setHideExpired}
+            divider={false}
+          />
 
           <SectionLabel>Sort by</SectionLabel>
           {SORT_OPTIONS.map((opt, i) => {

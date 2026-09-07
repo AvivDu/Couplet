@@ -31,6 +31,7 @@ export default function CouponDetail({
   // also opened by non-owners from the group screen (to redeem a shared
   // coupon), so those controls are hidden rather than left as dead ends.
   const isOwner = coupon.owner_id === user?.userId;
+  const isActive = coupon.status === 'active';
 
   async function handleSavePress() {
     if (!editFormRef.current) return;
@@ -45,7 +46,7 @@ export default function CouponDetail({
           onBack={onClose}
           title={coupon.store_name}
           subtitle={coupon.category}
-          actions={isOwner && (
+          actions={isOwner && isActive && (
             <IconButton label="Edit coupon" variant="bare" size="l" onPress={() => setIsEditing(true)}>
               <Ionicons name="create-outline" size={20} color={colors.textStrong} />
             </IconButton>
