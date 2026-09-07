@@ -440,64 +440,70 @@ export default function HomeScreen() {
           }
         />
 
-        {/* Search bar */}
-        <View style={styles.searchWrap}>
-          <SearchField
-            value={search}
-            onChangeText={setSearch}
-            onClear={() => setSearch('')}
-            autoCapitalize="none"
-            returnKeyType="search"
-          />
-        </View>
-
-        {/* Category tiles - horizontal scroll */}
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={CATEGORY_DEFS}
-          keyExtractor={cat => cat.filter}
-          style={styles.categoryScrollView}
-          contentContainerStyle={styles.categoryScroll}
-          renderItem={({ item: cat }) => (
-            <CategoryTile
-              label={cat.label}
-              category={cat.filter}
-              icon={cat.icon}
-              active={filter === cat.filter}
-              onPress={() => setFilter(cat.filter)}
-              style={styles.categoryTile}
-            />
-          )}
-        />
-
-        {/* Sort chip */}
-        <View style={styles.sortRow}>
-          <Chip
-            icon={<Ionicons name="funnel-outline" size={15} color={sort ? colors.coral400 : colors.textStrong} />}
-            active={!!sort}
-            onDismiss={() => setSort(null)}
-            onPress={openSortMenu}
-          >
-            {activeSortLabel ?? 'Sort'}
-          </Chip>
-        </View>
-
-        <SectionLabel count={displayed.length}>Wallet</SectionLabel>
-
-        {/* Coupon list */}
+        {/* Coupon list - search/categories/sort/label live in the list's own
+            header so scrolling the coupons moves them off-screen too, instead
+            of a fixed block permanently eating into the visible list area. */}
         <FlatList
           data={displayed}
           keyExtractor={c => c.coupon_id}
+          ListHeaderComponent={
+            <>
+              <View style={styles.searchWrap}>
+                <SearchField
+                  value={search}
+                  onChangeText={setSearch}
+                  onClear={() => setSearch('')}
+                  autoCapitalize="none"
+                  returnKeyType="search"
+                />
+              </View>
+
+              {/* Category tiles - horizontal scroll */}
+              <FlatList
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                data={CATEGORY_DEFS}
+                keyExtractor={cat => cat.filter}
+                style={styles.categoryScrollView}
+                contentContainerStyle={styles.categoryScroll}
+                renderItem={({ item: cat }) => (
+                  <CategoryTile
+                    label={cat.label}
+                    category={cat.filter}
+                    icon={cat.icon}
+                    active={filter === cat.filter}
+                    onPress={() => setFilter(cat.filter)}
+                    style={styles.categoryTile}
+                  />
+                )}
+              />
+
+              {/* Sort chip */}
+              <View style={styles.sortRow}>
+                <Chip
+                  icon={<Ionicons name="funnel-outline" size={15} color={sort ? colors.coral400 : colors.textStrong} />}
+                  active={!!sort}
+                  onDismiss={() => setSort(null)}
+                  onPress={openSortMenu}
+                >
+                  {activeSortLabel ?? 'Sort'}
+                </Chip>
+              </View>
+
+              <SectionLabel count={displayed.length}>Wallet</SectionLabel>
+            </>
+          }
           renderItem={({ item }) => (
-            <CouponCard
-              store={item.store_name}
-              category={item.category}
-              balance={item.balance}
-              expires={item.expiration_date ? new Date(item.expiration_date).toLocaleDateString() : undefined}
-              status={item.status as 'active' | 'used' | 'expired'}
-              onPress={() => openDetail(item)}
-            />
+            <View style={styles.cardGutter}>
+              <CouponCard
+                store={item.store_name}
+                category={item.category}
+                balance={item.balance}
+                expires={item.expiration_date ? new Date(item.expiration_date).toLocaleDateString() : undefined}
+                status={item.status as 'active' | 'used' | 'expired'}
+                onPress={() => openDetail(item)}
+              />
+            </View>
           )}
           ItemSeparatorComponent={() => <View style={{ height: spacing.stackCard }} />}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.coral400} />}
@@ -505,11 +511,13 @@ export default function HomeScreen() {
             // Suppressed when the search found shared coupons - the footer below
             // is showing results, so "No coupons here" would contradict them.
             sharedMatches.length > 0 ? null : (
-              <EmptyState
-                icon="pricetags-outline"
-                title="No coupons here"
-                hint={search ? `Nothing matches "${search}"` : 'Add your first coupon to get started'}
-              />
+              <View style={styles.emptyWrap}>
+                <EmptyState
+                  icon="pricetags-outline"
+                  title="No coupons here"
+                  hint={search ? `Nothing matches "${search}"` : 'Add your first coupon to get started'}
+                />
+              </View>
             )
           }
           ListFooterComponent={
@@ -538,11 +546,7 @@ export default function HomeScreen() {
               </View>
             )
           }
-          contentContainerStyle={
-            displayed.length === 0 && sharedMatches.length === 0
-              ? styles.emptyContainer
-              : styles.listContainer
-          }
+          contentContainerStyle={styles.listContainer}
         />
 
         {/* Sort menu */}
@@ -703,12 +707,14 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 4,
   },
-  listContainer: { paddingHorizontal: 20, paddingBottom: 130 },
-  // Sits inside the list's own horizontal padding, so no extra inset here -
-  // only the breathing room that separates it from the owned results above.
+  // No horizontal padding here - the header sections (search/categories/sort)
+  // carry their own, and cardGutter/sharedCard add it per-row below, so an
+  // item's inset doesn't double up with its section's.
+  listContainer: { paddingBottom: 130, flexGrow: 1 },
+  cardGutter: { paddingHorizontal: spacing.gutterScreen },
   sharedSection: { marginTop: spacing.s10 },
-  sharedCard: { marginBottom: spacing.stackCard },
-  emptyContainer: { flex: 1, justifyContent: 'center' },
+  sharedCard: { marginBottom: spacing.stackCard, paddingHorizontal: spacing.gutterScreen },
+  emptyWrap: { flex: 1, justifyContent: 'center' },
   joinOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',

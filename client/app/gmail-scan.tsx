@@ -306,11 +306,27 @@ export default function GmailScanScreen() {
             const draft = drafts[item.message_id]!;
             const hasCode = !!draft.code;
             const hasGiftUrl = !hasCode && !!draft.giftUrl;
-            const isGuess = hasCode && draft.codeConfidence === 'guess';
             const isRetrying = retrying.has(item.message_id);
             const category = guessCategory(`${item.subject} ${draft.store ?? ''}`);
             const icon = (category ? CATEGORY_ICONS[category] : null) ?? 'pricetag-outline';
             const color = category ? CATEGORY_COLORS[category] : '#EDE8DC';
+
+            // One status computed once, rather than the same 4-way branch
+            // repeated across badge tone, badge text, and hint text - each of
+            // those used to be its own parallel ternary chain, which made
+            // adding/changing a state easy to apply to only one of the three.
+            const status: 'label' | 'guess' | 'giftUrl' | 'none' = hasCode
+              ? (draft.codeConfidence === 'guess' ? 'guess' : 'label')
+              : hasGiftUrl ? 'giftUrl' : 'none';
+
+            const STATUS_DISPLAY: Record<typeof status, { tone: 'brand' | 'glass'; badge: string; hint: string }> = {
+              label: { tone: 'brand', badge: 'New', hint: `Received ${formatDate(item.date)} - tap to create a coupon from this email.` },
+              guess: { tone: 'glass', badge: 'Check code', hint: `Received ${formatDate(item.date)} - we're not fully sure about this code, tap to check it against the email.` },
+              giftUrl: { tone: 'brand', badge: 'Gift link', hint: `Received ${formatDate(item.date)} - this looks like a digital gift card link, tap to create a coupon from it.` },
+              none: { tone: 'glass', badge: 'No code found', hint: "We found an email that looks like a coupon but couldn't detect the code - tap to fill it in manually." },
+            };
+            const display = STATUS_DISPLAY[status];
+
             return (
               <TouchableOpacity activeOpacity={0.85} onPress={() => handleDraftPress(item, draft)}>
                 <GlassPanel tint="regular" radius={radius.l} padding={spacing.s7} sheen={false}>
@@ -322,9 +338,7 @@ export default function GmailScanScreen() {
                       <Text style={styles.rowStore} numberOfLines={1}>{draft.store || item.from}</Text>
                       <Text style={styles.rowSubject} numberOfLines={1}>{item.subject || '(no subject)'}</Text>
                     </View>
-                    <Badge tone={hasCode ? (isGuess ? 'glass' : 'brand') : hasGiftUrl ? 'brand' : 'glass'} uppercase>
-                      {hasCode ? (isGuess ? 'Check code' : 'New') : hasGiftUrl ? 'Gift link' : 'No code found'}
-                    </Badge>
+                    <Badge tone={display.tone} uppercase>{display.badge}</Badge>
                     {!hasCode && !hasGiftUrl && (
                       <TouchableOpacity
                         onPress={() => handleRetryExtraction(item.message_id)}
@@ -340,15 +354,7 @@ export default function GmailScanScreen() {
                       <Ionicons name="close-circle" size={20} color={colors.textMuted} />
                     </TouchableOpacity>
                   </View>
-                  <Text style={styles.rowHint}>
-                    {hasCode
-                      ? isGuess
-                        ? `Received ${formatDate(item.date)} - we're not fully sure about this code, tap to check it against the email.`
-                        : `Received ${formatDate(item.date)} - tap to create a coupon from this email.`
-                      : hasGiftUrl
-                        ? `Received ${formatDate(item.date)} - this looks like a digital gift card link, tap to create a coupon from it.`
-                        : "We found an email that looks like a coupon but couldn't detect the code - tap to fill it in manually."}
-                  </Text>
+                  <Text style={styles.rowHint}>{display.hint}</Text>
                 </GlassPanel>
               </TouchableOpacity>
             );
