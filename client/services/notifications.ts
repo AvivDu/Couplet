@@ -1,5 +1,28 @@
-import * as Notifications from 'expo-notifications';
+// Deep imports on purpose. The `expo-notifications` package index re-exports
+// DevicePushTokenAutoRegistration.fx, which registers a push-token listener at
+// module scope; on Android in Expo Go that throws (Android push was removed
+// from Expo Go in SDK 53), taking down this module -> NotificationsContext ->
+// app/_layout.tsx, so the app never mounts. None of the submodules below reach
+// that code path. These are private build/ paths - re-check them on any
+// expo-notifications version bump.
+import { setNotificationHandler } from 'expo-notifications/build/NotificationsHandler';
+import { scheduleNotificationAsync } from 'expo-notifications/build/scheduleNotificationAsync';
+import { getPermissionsAsync, requestPermissionsAsync } from 'expo-notifications/build/NotificationPermissions';
+import { setNotificationChannelAsync } from 'expo-notifications/build/setNotificationChannelAsync';
+import { addNotificationResponseReceivedListener } from 'expo-notifications/build/NotificationsEmitter';
+import { AndroidImportance } from 'expo-notifications/build/NotificationChannelManager.types';
 import { Platform } from 'react-native';
+
+// Same surface the rest of the app consumed from `import * as Notifications`.
+const Notifications = {
+  setNotificationHandler,
+  scheduleNotificationAsync,
+  getPermissionsAsync,
+  requestPermissionsAsync,
+  setNotificationChannelAsync,
+  addNotificationResponseReceivedListener,
+  AndroidImportance,
+};
 
 // Local (on-device) OS notifications — Tier 2. These work in Expo Go; only
 // REMOTE push (app fully closed) needs a dev build (Tier 3). We never call the
