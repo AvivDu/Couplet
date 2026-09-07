@@ -22,3 +22,6 @@ Gemini_Generated_Image_*.png
 
 #SSH keys
 *.pem
+
+# Defense prep guides (local only, not project docs)
+Couplet_Defense_Prep_Guide*.md

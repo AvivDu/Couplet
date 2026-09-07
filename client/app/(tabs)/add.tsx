@@ -12,11 +12,15 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  type AlertButton,
 } from 'react-native';
 import { Text, TextInput } from '../../components/rn';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import ImageCropModal from '../../components/ImageCropModal';
+import OcrBridge from '../../components/OcrBridge';
+import { recognizeText } from '../../services/ocr';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -28,6 +32,7 @@ import { maskBalanceInput } from '../../utils/format';
 import { extractCouponFieldsFromText } from '../../utils/couponTextExtraction';
 import AuroraBackground from '../../components/ui/AuroraBackground';
 import ScreenHeader from '../../components/ui/ScreenHeader';
+import IconButton from '../../components/ui/IconButton';
 import Input from '../../components/ui/Input';
 import CategoryTile from '../../components/ui/CategoryTile';
 import GlassPanel from '../../components/ui/GlassPanel';
@@ -35,6 +40,14 @@ import Button from '../../components/ui/Button';
 import Sheet from '../../components/ui/Sheet';
 import SectionLabel from '../../components/ui/SectionLabel';
 import { colors, glass, radius, spacing, fontFamily, fontSize } from '../../constants/theme';
+
+// Downscaling for OCR only - the barcode/QR field keeps whatever resolution
+// the user picked, since that image may later need to be scanned by a
+// cashier at checkout and this app never re-encodes it again until a P2P
+// share (encodeCouponImageForTransfer in couponSharing.ts, at share time).
+// Higher than that path's 1000px: barcodes need horizontal resolution,
+// small print needs all of it.
+const OCR_MAX_WIDTH = 1600;
 
 const ADD_CATEGORIES: { label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { label: 'General',     icon: 'gift-outline'                },
@@ -62,7 +75,17 @@ export default function AddCouponScreen() {
   const [giftUrl, setGiftUrl] = useState('');
   const [matchedGeneralCard, setMatchedGeneralCard] = useState<GeneralGiftCard | null>(null);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  // Separate from `cropUri`, which crops for the barcode/QR field - this one
+  // crops what gets sent to OCR, and its onCrop does something different.
+  const [scanCropUri, setScanCropUri] = useState<string | null>(null);
   const categoryTouchedRef = useRef(false);
+  // Bumped whenever the user deliberately empties the form. A scan started
+  // before that point captures the previous value and checks it before
+  // writing its results in, so "Clear fields" during a scan stays cleared
+  // instead of being silently repopulated seconds later by work the user
+  // already abandoned. Same invalidation idea as useUserSearch's request id.
+  const formGenerationRef = useRef(0);
   // Route params on a tab screen persist across focuses (there's no unmount to reset
   // them) - without this, the fromGmail branch below would re-populate the same draft
   // every time this tab regains focus, even long after it was saved.
@@ -144,6 +167,46 @@ export default function AddCouponScreen() {
     setQuickAddOpen(true);
   }
 
+  // Manual reset for the form itself - distinct from the automatic resets above
+  // (leaving the screen, or a successful save), which fire on their own. A no-op
+  // on an already-blank form skips a pointless confirm prompt. Doesn't touch
+  // dismissDraft: clearing the form isn't declining the Gmail draft it came
+  // from, same rule as abandoning the screen without saving.
+  function handleClearFields() {
+    const isBlank = !code && !couponName && !category && !expiryDate && !balance && !imageUri && !giftUrl;
+    if (isBlank) return;
+    Alert.alert('Clear all fields?', "This will remove everything you've entered on this screen.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear',
+        style: 'destructive',
+        onPress: () => {
+          // Invalidates any scan still in flight - see formGenerationRef.
+          formGenerationRef.current += 1;
+          setCode('');
+          setCouponName('');
+          setCategory('');
+          setExpiryDate(null);
+          setBalance('');
+          setImageUri(null);
+          setImageNatSize(null);
+          setGiftUrl('');
+          setMatchedGeneralCard(null);
+          categoryTouchedRef.current = false;
+          // Deliberately doesn't touch consumedGmailMessageIdRef - route params
+          // stick around on this tab (see the ref's own comment above), so
+          // un-consuming it here would repopulate these just-cleared fields the
+          // next time this tab merely regains focus, not only on an actual
+          // re-tap of the draft. Same tradeoff the automatic abandon-cleanup
+          // above already makes: a genuinely-different draft still repopulates
+          // fine (its messageId differs), only *this* messageId can't be
+          // manually replayed twice - matching how it already couldn't be
+          // before this button existed.
+        },
+      },
+    ]);
+  }
+
   function handleQuickAddGmail() {
     setQuickAddOpen(false);
     router.push('/gmail-scan');
@@ -153,8 +216,8 @@ export default function AddCouponScreen() {
   // two Modals, and the second one can end up invisible on iOS (the same
   // hazard the Home screen's invite popup works around). Both alerts below are
   // fired through this so the sheet is fully gone first.
-  function alertAfterSheetClose(title: string, message: string) {
-    setTimeout(() => Alert.alert(title, message), 350);
+  function alertAfterSheetClose(title: string, message: string, buttons?: AlertButton[]) {
+    setTimeout(() => Alert.alert(title, message, buttons), 350);
   }
 
   // Reads the clipboard and extracts straight into the form - no intermediate
@@ -166,7 +229,7 @@ export default function AddCouponScreen() {
   // Runs entirely on-device - the clipboard text (which may contain a coupon
   // code) never goes to the server, same invariant as the Gmail draft flow.
   // Unlike that flow, store detection can fall back to the message's first
-  // line (guessStoreFromFirstLine) when no known general-gift-card brand is
+  // lines (guessStoreFromText) when no known general-gift-card brand is
   // found - there's no email "From" header here, but there's often a name in
   // plain sight.
   async function handlePasteAndAnalyze() {
@@ -219,6 +282,115 @@ export default function AddCouponScreen() {
         "That text had no clear \"coupon code\" label, so this is a best guess - please check it against the original before saving."
       );
     }
+  }
+
+  async function encodeForOcr(uri: string): Promise<string> {
+    const source = await ImageManipulator.manipulate(uri).renderAsync();
+    const ctx = ImageManipulator.manipulate(source);
+    if (source.width > OCR_MAX_WIDTH) ctx.resize({ width: OCR_MAX_WIDTH });
+    const ref = await ctx.renderAsync();
+    const out = await ref.saveAsync({ compress: 0.8, format: SaveFormat.JPEG, base64: true });
+    if (!out.base64) throw new Error('image encode produced no base64');
+    return out.base64;
+  }
+
+  // Runs OCR on a photographed coupon and extracts into the form through the
+  // same extractCouponFieldsFromText used by paste-and-analyze - identical
+  // review-before-save behavior, just a different text source. Mounts
+  // <OcrBridge /> for the duration of the scan (via `scanning`) and unmounts
+  // it as soon as this resolves, in either direction.
+  async function handleScanPhotoSource(pickedUri: string) {
+    setScanning(true);
+    const generation = formGenerationRef.current;
+    try {
+      const imageBase64 = await encodeForOcr(pickedUri);
+      const text = await recognizeText(imageBase64);
+      // The user cleared the form while this was running - their explicit
+      // action wins over work they've already walked away from.
+      if (formGenerationRef.current !== generation) return;
+      const fields = extractCouponFieldsFromText(text);
+      const match = findGiftCardInText(text);
+      const foundSomething =
+        fields.code !== null ||
+        fields.store !== null ||
+        fields.amount !== null ||
+        fields.expiration !== null ||
+        fields.giftUrl !== null ||
+        match !== null;
+
+      if (fields.code !== null) setCode(fields.code);
+      if (fields.store !== null) setCouponName(fields.store);
+      if (fields.amount !== null) setBalance(String(fields.amount));
+      if (fields.expiration !== null) setExpiryDate(new Date(fields.expiration));
+      if (fields.giftUrl !== null) setGiftUrl(fields.giftUrl);
+      if (match) {
+        setMatchedGeneralCard(match);
+        if (!categoryTouchedRef.current) setCategory('General');
+      }
+
+      // The photo may itself show (or include) the coupon's barcode/QR, so it
+      // pre-fills the same slot a manual pick would - the existing remove
+      // button covers the case where it isn't one. This is the user's crop at
+      // full resolution, not the downscaled copy OCR was handed.
+      setImageUri(pickedUri);
+      setImageNatSize(null);
+
+      if (!foundSomething) {
+        alertAfterSheetClose(
+          'Nothing found',
+          "Couldn't recognize a coupon code, amount or expiry date in that photo. Try a clearer photo, or fill the fields in yourself."
+        );
+      } else if (fields.codeConfidence === 'guess') {
+        alertAfterSheetClose(
+          'Check the code',
+          "That photo had no clear \"coupon code\" label, so this is a best guess - please check it against the original before saving."
+        );
+      }
+    } catch (err: any) {
+      alertAfterSheetClose(
+        'Scan failed',
+        err?.message ?? 'Could not read that photo. Please try again or fill the fields in yourself.'
+      );
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  function handleScanPhoto() {
+    // A second scan would set `scanning` false when the first finishes,
+    // unmounting the bridge out from under the one still running.
+    if (scanning) return;
+    setQuickAddOpen(false);
+    // Through alertAfterSheetClose, not a bare Alert: this is raised from
+    // inside the Quick Add sheet, and an Alert stacked on a Modal that is
+    // still animating closed can end up invisible on iOS.
+    alertAfterSheetClose('Scan Coupon Photo', 'Choose a source', [
+      {
+        text: 'Camera',
+        onPress: async () => {
+          const perm = await ImagePicker.requestCameraPermissionsAsync();
+          if (perm.status !== 'granted') {
+            Alert.alert('Permission needed', 'Please allow camera access in Settings.');
+            return;
+          }
+          const result = await ImagePicker.launchCameraAsync({ quality: 0.85 });
+          if (!result.canceled) setScanCropUri(result.assets[0].uri);
+        },
+      },
+      {
+        text: 'Photo Library',
+        onPress: async () => {
+          const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (perm.status !== 'granted') {
+            Alert.alert('Permission needed', 'Please allow photo library access in Settings.');
+            return;
+          }
+          const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.85 });
+          if (!result.canceled) setScanCropUri(result.assets[0].uri);
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   }
 
   const expiryString = expiryDate
@@ -318,19 +490,38 @@ export default function AddCouponScreen() {
         onCancel={() => setCropUri(null)}
       />
     )}
+    {/* Crop before OCR, not after: recognition accuracy tracks how much of
+        the frame the text actually occupies, and cropping also removes the
+        status bar / surroundings that were being mistaken for a store name. */}
+    {scanCropUri && (
+      <ImageCropModal
+        uri={scanCropUri}
+        onCrop={uri => { setScanCropUri(null); handleScanPhotoSource(uri); }}
+        onCancel={() => setScanCropUri(null)}
+      />
+    )}
+    {/* Mounted only while a scan is active, not at the app root like
+        WebRTCBridge - OCR isn't needed on standby, so this bounds how long
+        two hidden WebViews are ever alive at once to one scan's length. */}
+    {scanning && <OcrBridge />}
     <AuroraBackground>
       <ScreenHeader
         title="Add Coupon"
         subtitle="Stays on this device"
         actions={
-          <Button
-            variant="glass"
-            size="s"
-            icon={<Ionicons name="flash-outline" size={16} color={colors.coral400} />}
-            onPress={openQuickAdd}
-          >
-            Quick Add
-          </Button>
+          <>
+            <IconButton label="Clear fields" size="s" onPress={handleClearFields}>
+              <Ionicons name="refresh-outline" size={16} color={colors.textStrong} />
+            </IconButton>
+            <Button
+              variant="glass"
+              size="s"
+              icon={<Ionicons name="flash-outline" size={16} color={colors.coral400} />}
+              onPress={openQuickAdd}
+            >
+              Quick Add
+            </Button>
+          </>
         }
       />
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
@@ -339,6 +530,15 @@ export default function AddCouponScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <ScrollView contentContainerStyle={styles.inner} keyboardShouldPersistTaps="handled">
+
+          {scanning && (
+            <GlassPanel tint="brand" radius={radius.l} padding={spacing.s7} sheen={false} style={styles.scanningPanel}>
+              <View style={styles.scanningRow}>
+                <ActivityIndicator color={colors.coral500} />
+                <Text style={styles.scanningText}>Reading photo…</Text>
+              </View>
+            </GlassPanel>
+          )}
 
           <Input
             label="Coupon Name"
@@ -520,6 +720,16 @@ export default function AddCouponScreen() {
             >
               Paste Text
             </Button>
+            <Button
+              variant="glass"
+              size="l"
+              block
+              icon={<Ionicons name="camera-outline" size={18} color={colors.coral400} />}
+              onPress={handleScanPhoto}
+              disabled={scanning}
+            >
+              {scanning ? 'Reading photo…' : 'Scan Photo'}
+            </Button>
           </View>
         </Sheet>
 
@@ -557,6 +767,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   privacyPanel: { marginBottom: spacing.s10 },
+  scanningPanel: { marginBottom: spacing.s14 },
+  scanningRow: { flexDirection: 'row', gap: spacing.s6, alignItems: 'center' },
+  scanningText: { fontFamily: fontFamily.uiSemibold, fontSize: fontSize.caption, color: colors.textBody },
   privacyRow: { flexDirection: 'row', gap: spacing.s6, alignItems: 'flex-start' },
   privacyText: { flex: 1, fontFamily: fontFamily.ui, fontSize: fontSize.caption, color: colors.textBody, lineHeight: fontSize.caption * 1.4 },
   imagePickerWrap: {

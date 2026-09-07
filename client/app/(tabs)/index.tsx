@@ -30,6 +30,7 @@ import CategoryTile from '../../components/ui/CategoryTile';
 import Chip from '../../components/ui/Chip';
 import Sheet from '../../components/ui/Sheet';
 import OptionRow from '../../components/ui/OptionRow';
+import ToggleRow from '../../components/ui/ToggleRow';
 import SectionLabel from '../../components/ui/SectionLabel';
 import EmptyState from '../../components/ui/EmptyState';
 import Avatar from '../../components/ui/Avatar';
@@ -56,6 +57,7 @@ export default function HomeScreen() {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortOption | null>(null);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const [hideExpired, setHideExpired] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<CouponWithCode | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -96,6 +98,7 @@ export default function HomeScreen() {
 
       // Generate one expiry notification per day (7 down to 1) for each active coupon
       const soonMs = 7 * 24 * 60 * 60 * 1000;
+      const DAY_MS = 24 * 60 * 60 * 1000;
       const generated: NotificationItem[] = coupons
         .filter(c => c.expiration_date)
         .flatMap(c => {
@@ -110,6 +113,8 @@ export default function HomeScreen() {
               body: daysLeft === 1 ? 'Expires tomorrow!' : `Expires in ${daysLeft} days`,
               category: c.category,
               read: false,
+              // Fewer days left = more urgent = sorts as more recent.
+              ts: now.getTime() - daysLeft * DAY_MS,
             }];
           }
           return [];
@@ -202,6 +207,7 @@ export default function HomeScreen() {
         title: n.title,
         body: n.body,
         read: n.read,
+        ts: new Date(n.created_at).getTime(),
         // Non-invite notifications with a group become tap-to-navigate.
         ...(n.type !== 'group_invite' && n.group_id ? { navigateGroupId: n.group_id } : {}),
         ...(n.type === 'group_invite' && n.group_id
@@ -221,6 +227,9 @@ export default function HomeScreen() {
           title: 'Group invitation',
           body: `You've been invited to join "${inv.name}"`,
           read: false,
+          // No timestamp exists on a legacy invitation payload - pin to "now"
+          // so it keeps floating to the top as a pending actionable item.
+          ts: now.getTime(),
           actionType: 'group_invite' as const,
           actionGroupId: inv.group_id,
           actionGroupName: inv.name,
@@ -228,7 +237,7 @@ export default function HomeScreen() {
 
       setNotifications(prev => {
         const readIds = new Set(prev.filter(n => n.read).map(n => n.id));
-        return [
+        const merged = [
           // Invitations are always unread while still pending
           ...inviteNotifs,
           ...serverNotifs.map(n => ({
@@ -237,6 +246,7 @@ export default function HomeScreen() {
           })),
           ...generated.map(n => ({ ...n, read: readIds.has(n.id) })),
         ];
+        return merged.sort((a, b) => b.ts - a.ts);
       });
     } catch {
       Alert.alert('Error', 'Could not load coupons. Is the server running?');
@@ -274,7 +284,8 @@ export default function HomeScreen() {
 
   const filtered = coupons
     .filter(c => filter === 'All' || c.category === filter)
-    .filter(c => !query || c.store_name.toLowerCase().includes(query));
+    .filter(c => !query || c.store_name.toLowerCase().includes(query))
+    .filter(c => !hideExpired || c.status !== 'expired');
 
   const displayed = sortCoupons(filtered, sort);
 
@@ -288,6 +299,7 @@ export default function HomeScreen() {
   const sharedMatches = query
     ? sharedCoupons
         .filter(c => filter === 'All' || c.category === filter)
+        .filter(c => !hideExpired || c.status !== 'expired')
         .filter(c =>
           c.store_name.toLowerCase().includes(query) ||
           (c.shared_by?.username ?? '').toLowerCase().includes(query)
@@ -295,6 +307,8 @@ export default function HomeScreen() {
     : [];
 
   const activeSortLabel = SORT_OPTIONS.find(o => o.value === sort)?.label ?? null;
+  const filterChipActive = !!sort || hideExpired;
+  const filterChipLabel = activeSortLabel ?? (hideExpired ? 'Hide expired' : 'Filter');
   const unreadCount = notifications.filter(n => !n.read).length;
 
   async function handleAcceptInvite(groupId: string) {
@@ -440,64 +454,72 @@ export default function HomeScreen() {
           }
         />
 
-        {/* Search bar */}
-        <View style={styles.searchWrap}>
-          <SearchField
-            value={search}
-            onChangeText={setSearch}
-            onClear={() => setSearch('')}
-            autoCapitalize="none"
-            returnKeyType="search"
-          />
-        </View>
-
-        {/* Category tiles - horizontal scroll */}
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={CATEGORY_DEFS}
-          keyExtractor={cat => cat.filter}
-          style={styles.categoryScrollView}
-          contentContainerStyle={styles.categoryScroll}
-          renderItem={({ item: cat }) => (
-            <CategoryTile
-              label={cat.label}
-              category={cat.filter}
-              icon={cat.icon}
-              active={filter === cat.filter}
-              onPress={() => setFilter(cat.filter)}
-              style={styles.categoryTile}
-            />
-          )}
-        />
-
-        {/* Sort chip */}
-        <View style={styles.sortRow}>
-          <Chip
-            icon={<Ionicons name="funnel-outline" size={15} color={sort ? colors.coral400 : colors.textStrong} />}
-            active={!!sort}
-            onDismiss={() => setSort(null)}
-            onPress={openSortMenu}
-          >
-            {activeSortLabel ?? 'Sort'}
-          </Chip>
-        </View>
-
-        <SectionLabel count={displayed.length}>Wallet</SectionLabel>
-
-        {/* Coupon list */}
+        {/* Coupon list - search/categories/filter/label live in the list's own
+            header so scrolling the coupons moves them off-screen too, instead
+            of a fixed block permanently eating into the visible list area. */}
         <FlatList
           data={displayed}
           keyExtractor={c => c.coupon_id}
+          ListHeaderComponent={
+            <>
+              <View style={styles.searchWrap}>
+                <SearchField
+                  value={search}
+                  onChangeText={setSearch}
+                  onClear={() => setSearch('')}
+                  autoCapitalize="none"
+                  returnKeyType="search"
+                />
+              </View>
+
+              {/* Category tiles - horizontal scroll */}
+              <FlatList
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                data={CATEGORY_DEFS}
+                keyExtractor={cat => cat.filter}
+                style={styles.categoryScrollView}
+                contentContainerStyle={styles.categoryScroll}
+                renderItem={({ item: cat }) => (
+                  <CategoryTile
+                    label={cat.label}
+                    category={cat.filter}
+                    icon={cat.icon}
+                    active={filter === cat.filter}
+                    onPress={() => setFilter(cat.filter)}
+                    style={styles.categoryTile}
+                  />
+                )}
+              />
+
+              {/* Filter chip - reflects sort AND the hide-expired toggle, so
+                  dismissing it clears both rather than leaving a filter
+                  silently applied with no chip to show for it. */}
+              <View style={styles.sortRow}>
+                <Chip
+                  icon={<Ionicons name="funnel-outline" size={15} color={filterChipActive ? colors.coral400 : colors.textStrong} />}
+                  active={filterChipActive}
+                  onDismiss={() => { setSort(null); setHideExpired(false); }}
+                  onPress={openSortMenu}
+                >
+                  {filterChipLabel}
+                </Chip>
+              </View>
+
+              <SectionLabel count={displayed.length}>Wallet</SectionLabel>
+            </>
+          }
           renderItem={({ item }) => (
-            <CouponCard
-              store={item.store_name}
-              category={item.category}
-              balance={item.balance}
-              expires={item.expiration_date ? new Date(item.expiration_date).toLocaleDateString() : undefined}
-              status={item.status as 'active' | 'used' | 'expired'}
-              onPress={() => openDetail(item)}
-            />
+            <View style={styles.cardGutter}>
+              <CouponCard
+                store={item.store_name}
+                category={item.category}
+                balance={item.balance}
+                expires={item.expiration_date ? new Date(item.expiration_date).toLocaleDateString() : undefined}
+                status={item.status as 'active' | 'used' | 'expired'}
+                onPress={() => openDetail(item)}
+              />
+            </View>
           )}
           ItemSeparatorComponent={() => <View style={{ height: spacing.stackCard }} />}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.coral400} />}
@@ -505,11 +527,13 @@ export default function HomeScreen() {
             // Suppressed when the search found shared coupons - the footer below
             // is showing results, so "No coupons here" would contradict them.
             sharedMatches.length > 0 ? null : (
-              <EmptyState
-                icon="pricetags-outline"
-                title="No coupons here"
-                hint={search ? `Nothing matches "${search}"` : 'Add your first coupon to get started'}
-              />
+              <View style={styles.emptyWrap}>
+                <EmptyState
+                  icon="pricetags-outline"
+                  title="No coupons here"
+                  hint={search ? `Nothing matches "${search}"` : 'Add your first coupon to get started'}
+                />
+              </View>
             )
           }
           ListFooterComponent={
@@ -538,15 +562,20 @@ export default function HomeScreen() {
               </View>
             )
           }
-          contentContainerStyle={
-            displayed.length === 0 && sharedMatches.length === 0
-              ? styles.emptyContainer
-              : styles.listContainer
-          }
+          contentContainerStyle={styles.listContainer}
         />
 
-        {/* Sort menu */}
-        <Sheet title="Sort by" open={sortMenuOpen} onClose={closeSortMenu}>
+        {/* Filter sheet */}
+        <Sheet title="Filter" open={sortMenuOpen} onClose={closeSortMenu}>
+          <SectionLabel>Status</SectionLabel>
+          <ToggleRow
+            icon={<Ionicons name="eye-off-outline" size={20} color={hideExpired ? colors.coral400 : colors.textStrong} />}
+            label="Hide expired coupons"
+            value={hideExpired}
+            onValueChange={setHideExpired}
+            divider={false}
+          />
+          <SectionLabel>Sort by</SectionLabel>
           {SORT_OPTIONS.map((opt, i) => {
             const active = sort === opt.value;
             return (
@@ -703,12 +732,14 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 4,
   },
-  listContainer: { paddingHorizontal: 20, paddingBottom: 130 },
-  // Sits inside the list's own horizontal padding, so no extra inset here -
-  // only the breathing room that separates it from the owned results above.
+  // No horizontal padding here - the header sections (search/categories/sort)
+  // carry their own, and cardGutter/sharedCard add it per-row below, so an
+  // item's inset doesn't double up with its section's.
+  listContainer: { paddingBottom: 130, flexGrow: 1 },
+  cardGutter: { paddingHorizontal: spacing.gutterScreen },
   sharedSection: { marginTop: spacing.s10 },
-  sharedCard: { marginBottom: spacing.stackCard },
-  emptyContainer: { flex: 1, justifyContent: 'center' },
+  sharedCard: { marginBottom: spacing.stackCard, paddingHorizontal: spacing.gutterScreen },
+  emptyWrap: { flex: 1, justifyContent: 'center' },
   joinOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',

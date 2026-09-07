@@ -1,7 +1,7 @@
 # Couplet - Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-08-26 (Integration of three feature branches: live redemption notifications + atomic redeems + coupon-code redelivery on edit; Cognito email verification, forgot-password, and the Gmail coupon scanner; General gift-card category and the sort/filter sheet overlay fix.)
+**Last updated:** 2026-09-07 (Integration of three branches: on-device OCR coupon photo scan; home screen search/categories/sort moved into the coupon list's scrollable header, Add Coupon "Clear fields" button, Groups screen person search showing shared groups; notification date sorting, hide-expired filter, and locked-down actions on inactive coupons.)
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device - the server holds metadata only.
 
@@ -34,9 +34,12 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Category selector - 8 rounded-square cards with Ionicons line-art icons; unselected shows category-color border, selected fills with pastel color
 - [x] Native date picker via `@react-native-community/datetimepicker` - calendar dialog on Android, inline bottom-sheet on iOS (replaced custom 3-pill picker)
 - [x] Add Coupon form auto-resets on every screen focus (`useFocusEffect`) - no stale data when returning to the tab
+- [x] **"Clear fields" button** on Add Coupon header - confirms before wiping the form (no-op if already blank); doesn't dismiss the Gmail draft the form may have come from, same as leaving the screen without saving
 - [x] Coupon code stored locally in AsyncStorage (never sent to server)
 - [x] Barcode/QR image stored locally in AsyncStorage via expo-image-picker (camera or photo library)
+- [x] **On-device OCR coupon scan** - "Scan Photo" in the Add Coupon Quick Add sheet; Tesseract.js (WASM OCR, English + Hebrew) runs inside a hidden WebView (`client/components/OcrBridge.tsx`), a second bridge structurally mirroring `WebRTCBridge.tsx` but mounted only for the duration of a scan and sharing no state with it (`client/services/ocr.ts`/`ocrBridgeHtml.ts`). Recognized text feeds the existing `extractCouponFieldsFromText`; the photo also pre-fills the existing Barcode/QR Image field as-is (no decoding). Nothing photographed or recognized ever reaches the server. MediaPipe on-device LLM (Gemma 3 270M) was the original approach and was ruled out - its web runtime requires WebGPU, unavailable in Android WebView/iOS WKWebView.
 - [x] Coupon list on home screen with horizontal category scroll cards (replaced dropdown) - Ionicons icons, pastel active state
+- [x] **Search/categories/sort scroll with the coupon list** (moved into the list's `ListHeaderComponent`) instead of sitting in a fixed block above it - scrolling down carries them off-screen so coupons get the full viewport instead of a permanently-shrunk one
 - [x] Sort button on home screen - Balance High→Low, Balance Low→High, Expiry Date; active sort shown in coral with inline clear; applies across all categories
 - [x] Pull-to-refresh on coupon list
 - [x] Coupon detail modal - view code, image, balance, expiry, status
@@ -71,6 +74,7 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] **Group page redesign** (`app/group/[id].tsx`, WhatsApp-style) - header (group avatar + admin "Tap photo to edit"), `MEMBERS · n` label + horizontal members strip (admin-only "Add" chip, "You" ring, first names), prominent "Share a Coupon" button, "SHARED COUPONS (n)" header with filter button, and sender-attributed coupon cards (24px avatar + per-member accent-colored name; tag tile + brand/category/expiry; **Use coupon** reveals code via CouponDetail, **Revoke** for own coupons + admin trash on others'). Design handoff (spec + screenshots + reference) kept in `client/docs/design_handoff_group_page/`
 - [x] **Coupon filter sheet** - bottom sheet to filter the shared-coupon feed by member and/or category (categories derived from the group's coupons); filter button inverts to coral when active; Clear resets
 - [x] Group back button reliably returns to the Groups list (`router.replace('/(tabs)/connections')`) even when the screen was opened via a notification deep-link with no back stack
+- [x] **Person search on Groups screen** - search field above the group list (name/email/phone, same `/users/search` endpoint as the invite flow); while searching, the group list is replaced by matching people, each showing the groups they're already in with you as tappable chips (computed client-side from already-fetched group membership, no new server endpoint)
 
 ### Users / Profile
 - [x] Search users by email or username - `GET /users/search?q=` (used for adding group members)
@@ -178,6 +182,7 @@ client/
     NotificationPanel.tsx - slide-up notification panel (expiry alerts + group invite cards)
     rn.tsx                - Text/TextInput wrappers with font scaling locked (allowFontScaling=false)
     WebRTCBridge.tsx      - hidden 1x1 WebView hosting the P2P peer connections (root-mounted, crash-remounting)
+    OcrBridge.tsx         - hidden 1x1 WebView hosting Tesseract.js OCR (mounted only during a scan, not root-mounted)
   context/
     AuthContext.tsx       - token storage, user state, login/logout
   services/
@@ -185,6 +190,8 @@ client/
     cognito.ts            - Cognito signUp/signIn via amazon-cognito-identity-js
     webrtc.ts             - Stage-2 P2P bridge driver: session/callback map, injectJavaScript command channel
     webrtcBridgeHtml.ts   - inline WebView page holding the real RTCPeerConnections (ICE buffering, ack/timeout)
+    ocr.ts                - OCR bridge driver: request/response map, injectJavaScript command channel (own state, shares nothing with webrtc.ts)
+    ocrBridgeHtml.ts      - inline WebView page running Tesseract.js (loads WASM core + language data from CDN on first use)
   storage/
     couponStorage.ts      - AsyncStorage helpers for codes, images, and local avatar fallback
   utils/
