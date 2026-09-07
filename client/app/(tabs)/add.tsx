@@ -259,25 +259,6 @@ export default function AddCouponScreen() {
       const text = await recognizeText(imageBase64);
       const fields = extractCouponFieldsFromText(text);
       const match = findGiftCardInText(text);
-
-      // Dev-only: the characters Tesseract actually produced, next to what
-      // the parser made of them. Without this, a bad extraction can only be
-      // diagnosed backwards from the filled-in form, which conflates "OCR
-      // misread it" with "the regex didn't match it" - two different bugs.
-      // Prints the coupon code to the Metro console: local to the dev
-      // machine, never sent anywhere, same as every other log here.
-      if (__DEV__) {
-        console.log(`[ocr] raw text (${text.length} chars) >>>\n${text}\n<<< end raw text`);
-        console.log('[ocr] extracted:', JSON.stringify({
-          code: fields.code,
-          codeConfidence: fields.codeConfidence,
-          store: fields.store,
-          amount: fields.amount,
-          expiration: fields.expiration,
-          giftUrl: fields.giftUrl,
-          giftCardBrand: match?.canonicalName ?? null,
-        }, null, 2));
-      }
       const foundSomething =
         fields.code !== null ||
         fields.store !== null ||
