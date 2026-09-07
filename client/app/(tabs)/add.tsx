@@ -80,6 +80,12 @@ export default function AddCouponScreen() {
   // crops what gets sent to OCR, and its onCrop does something different.
   const [scanCropUri, setScanCropUri] = useState<string | null>(null);
   const categoryTouchedRef = useRef(false);
+  // Bumped whenever the user deliberately empties the form. A scan started
+  // before that point captures the previous value and checks it before
+  // writing its results in, so "Clear fields" during a scan stays cleared
+  // instead of being silently repopulated seconds later by work the user
+  // already abandoned. Same invalidation idea as useUserSearch's request id.
+  const formGenerationRef = useRef(0);
   // Route params on a tab screen persist across focuses (there's no unmount to reset
   // them) - without this, the fromGmail branch below would re-populate the same draft
   // every time this tab regains focus, even long after it was saved.
@@ -175,6 +181,8 @@ export default function AddCouponScreen() {
         text: 'Clear',
         style: 'destructive',
         onPress: () => {
+          // Invalidates any scan still in flight - see formGenerationRef.
+          formGenerationRef.current += 1;
           setCode('');
           setCouponName('');
           setCategory('');
@@ -293,9 +301,13 @@ export default function AddCouponScreen() {
   // it as soon as this resolves, in either direction.
   async function handleScanPhotoSource(pickedUri: string) {
     setScanning(true);
+    const generation = formGenerationRef.current;
     try {
       const imageBase64 = await encodeForOcr(pickedUri);
       const text = await recognizeText(imageBase64);
+      // The user cleared the form while this was running - their explicit
+      // action wins over work they've already walked away from.
+      if (formGenerationRef.current !== generation) return;
       const fields = extractCouponFieldsFromText(text);
       const match = findGiftCardInText(text);
       const foundSomething =
