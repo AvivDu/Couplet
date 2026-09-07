@@ -179,10 +179,75 @@ const CURRENCY_OR_MANGLED = String.raw`[₪$\p{L}]?`;
 // fails against the 'm' - so neither path matches.
 const LABELLED_AMOUNT = String.raw`\s*[:\s]\s*${CURRENCY_OR_MANGLED}\s*(\d+(?:[.,]\d+)?)\s*${CURRENCY_OR_MANGLED}\b`;
 
+// The shekel written out as an abbreviation rather than a symbol. Common on
+// Israeli coupons and, unlike ₪, OCR reads it reliably - it was simply never
+// matched, so those amounts were lost even on a clean scan. Accepts the
+// gershayim (״), an ASCII quote, or nothing between the two letters.
+//
+// The trailing lookahead is essential: "שח" is also the start of ordinary
+// words (שחור, שחזור, שחקנים), so without it "מידה 300 שחור" - size 300,
+// black - would come back as a 300-shekel balance.
+const SHEKEL_ABBREV = String.raw`ש\s*["״']?\s*ח(?!\p{L})`;
+
+// A bare amount whose currency symbol OCR turned into a single stray letter.
+// Recovered from a real scan that came back as "BUYME ALL7 W300": the W is the
+// shekel sign and the 7 is a misread ל.
+//
+// This CANNOT borrow LABELLED_AMOUNT's permissive `\p{L}` stand-in. There the
+// label already proves the number is money; here nothing does, so allowing any
+// letter would read the "7" straight out of "ALL7" in that very same line. So:
+// the stand-in is restricted to the characters ₪ actually degrades into (its
+// own shape - W, U, N, M), the number must be a standalone token with no
+// letter or digit hard against either end, and it needs at least two digits.
+//
+// The trailing lookahead is also what keeps "150ml" out: 'm' is in the set,
+// but the 'l' after it fails the boundary. Lookbehind is deliberately not used
+// anywhere here - Hermes support for it is not something this app relies on -
+// so the leading boundary is consumed by a non-capturing group instead, which
+// keeps the digits as group 1 in both patterns.
+//
+// Even so, a letter followed by digits is exactly the shape of a coupon code
+// ("W1234"), and a discount coupon with a code and no amount must not gain a
+// phantom balance. extractMangledShekelAmount applies that guard - it is why
+// these live apart from AMOUNT_PATTERNS instead of at the end of that list.
+const MANGLED_SHEKEL = String.raw`[₪$wWuUnNmM]`;
+const BARE_AMOUNT_DIGITS = String.raw`(\d{2,6}(?:[.,]\d{1,3})?)`;
+const LEADING_BOUNDARY = String.raw`(?:^|[^\p{L}\p{N}])`;
+const TRAILING_BOUNDARY = String.raw`(?![\p{L}\p{N}])`;
+
+// Both orders, because RTL reordering moves the symbol. Global so every
+// candidate is examined - the first one might be the code and get skipped.
+const MANGLED_SHEKEL_PATTERNS = [
+  new RegExp(
+    String.raw`${LEADING_BOUNDARY}${MANGLED_SHEKEL}\s?${BARE_AMOUNT_DIGITS}${TRAILING_BOUNDARY}`,
+    'gu'
+  ),
+  new RegExp(
+    String.raw`${LEADING_BOUNDARY}${BARE_AMOUNT_DIGITS}\s?${MANGLED_SHEKEL}${TRAILING_BOUNDARY}`,
+    'gu'
+  ),
+];
+
+// A code label ending right before a candidate, or - because OCR's RTL
+// reordering can put a Hebrew label after its own value ("BONUS50 :קוד קופון",
+// see the code patterns) - starting right after it. Same connectors the code
+// patterns accept ("code: X", "code is X"). Hebrew labels are matched without
+// \b on purpose: "קוד" glued onto a longer word (מיקוד) should still reject,
+// since over-rejecting a guess is the safe direction here.
+const CODE_LABEL_BEFORE = new RegExp(
+  String.raw`(?:\bcode|\bcoupon|\bpromo|\bvoucher|קוד|קופון|שובר)\s*(?:is|הוא)?\s*:?\s*$`,
+  'iu'
+);
+const CODE_LABEL_AFTER = new RegExp(
+  String.raw`^\s*:?\s*(?:code\b|coupon\b|promo\b|voucher\b|קוד|קופון|שובר)`,
+  'iu'
+);
+
 const AMOUNT_PATTERNS = [
   /₪\s*(\d+(?:[.,]\d+)?)/,
   /(\d+(?:[.,]\d+)?)\s*₪/,
   /(\d+(?:[.,]\d+)?)\s*שקל/,
+  new RegExp(String.raw`(\d+(?:[.,]\d+)?)\s*${SHEKEL_ABBREV}`, 'u'),
   /\$\s*(\d+(?:[.,]\d+)?)/,
   new RegExp(String.raw`(?:הסכום|סכום)(?:\s*(?:הוא|של))?${LABELLED_AMOUNT}`, 'u'),
   // The English counterpart of the Hebrew label above. Its absence meant a
@@ -192,10 +257,39 @@ const AMOUNT_PATTERNS = [
   new RegExp(String.raw`\b(?:balance|amount|value|worth)${LABELLED_AMOUNT}`, 'iu'),
 ];
 
-function extractAmount(text: string): number | null {
+// `code` is whatever extractCode already found, so the mangled-symbol fallback
+// can refuse to read the coupon code back as a balance.
+function extractAmount(text: string, code: string | null): number | null {
   for (const pattern of AMOUNT_PATTERNS) {
     const match = text.match(pattern);
     if (match) {
+      const value = parseFloat(match[1].replace(',', ''));
+      if (!isNaN(value)) return value;
+    }
+  }
+  // Last resort, so a real ₪/$/שקל/ש"ח or a label always wins over a guess
+  // at a mangled symbol.
+  return extractMangledShekelAmount(text, code);
+}
+
+function extractMangledShekelAmount(text: string, code: string | null): number | null {
+  for (const pattern of MANGLED_SHEKEL_PATTERNS) {
+    for (const match of text.matchAll(pattern)) {
+      // match[0] opens with the consumed boundary character unless the token
+      // started the text; trim it so `token` is exactly the letter+digits pair.
+      const lead = match[0].search(/[\p{L}\p{N}₪$]/u);
+      const start = match.index! + lead;
+      const token = match[0].slice(lead);
+      const end = start + token.length;
+
+      // It is the coupon code. "Code: W1234" extracts W1234 as the code, and
+      // W1234 is not also a 1,234-shekel balance.
+      if (code && token.toUpperCase() === code.toUpperCase()) continue;
+      // It sits where a code goes, even when extractCode passed on it:
+      // "Coupon N500" has no "code" label to match, and "your code is U77" is
+      // too short to be accepted as a code - neither is money.
+      if (CODE_LABEL_BEFORE.test(text.slice(0, start)) || CODE_LABEL_AFTER.test(text.slice(end))) continue;
+
       const value = parseFloat(match[1].replace(',', ''));
       if (!isNaN(value)) return value;
     }
@@ -384,7 +478,7 @@ export function extractCouponFieldsFromText(text: string): ExtractedCouponFields
     // whenever both would apply.
     store: findGiftCardInText(clean)?.canonicalName ?? guessStoreFromText(clean),
     giftUrl: extractGiftCardUrl(clean),
-    amount: extractAmount(clean),
+    amount: extractAmount(clean, codeResult?.code ?? null),
     expiration: extractExpiration(clean),
   };
 }
