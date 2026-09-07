@@ -236,6 +236,46 @@ export async function deleteNotification(userId: string, notificationId: string)
   }));
 }
 
+// Bulk "clear all" behind the notification panel's Clear-all button.
+// Deliberately NOT a blanket wipe of the partition - two kinds of row must
+// survive, so the button can never cost the user something irreplaceable:
+//
+//   - group_invite: the invite row IS the accept/decline affordance. Deleting
+//     it destroys the invitation itself, which is exactly why tapping an
+//     invite doesn't delete it either (see the routes / NotificationsContext).
+//   - any row still carrying coupon_code: that ciphertext is the ONLY copy of
+//     a coupon code for a recipient who was offline at share time or whose P2P
+//     transfer failed. Codes live nowhere else on the server, so dropping an
+//     unconsumed one loses the coupon permanently. Rows whose code the client
+//     already saved locally had it removed by clearNotificationCode, so
+//     ordinary history still clears.
+//
+// Reads the whole partition rather than the newest-50 page: the point of the
+// button is to leave nothing behind, and older rows are invisible to the client
+// yet still count against that page. Same Promise.all-of-single-writes shape as
+// markAllNotificationsRead.
+//
+// Returns the counts so the caller can tell the user what was kept.
+export async function deleteAllNotifications(
+  userId: string
+): Promise<{ deleted: number; kept: number }> {
+  const all = await queryUserPartition(userId);
+  // coupon_code is still ciphertext here (queryUserPartition doesn't decrypt),
+  // so this only tests presence - no plaintext code is ever materialised.
+  const deletable = all.filter(n => n.type !== 'group_invite' && !n.coupon_code);
+
+  await Promise.all(
+    deletable.map(n =>
+      ddb.send(new DeleteCommand({
+        TableName: NOTIFICATIONS_TABLE,
+        Key: { user_id: n.user_id, notification_id: n.notification_id },
+      }))
+    )
+  );
+
+  return { deleted: deletable.length, kept: all.length - deletable.length };
+}
+
 // Filters server-side for unread rows across the whole partition, not just a
 // page: marking only the newest 50 would leave older unread rows behind and
 // the badge stuck above zero. Ordering is irrelevant here, so no index.

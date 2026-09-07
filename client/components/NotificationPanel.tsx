@@ -33,7 +33,13 @@ interface Props {
   onDeclineInvite: (groupId: string) => Promise<void>;
   onDismissNotification: (id: string) => void;
   onPressItem: (item: NotificationItem) => void;
+  onClearAll: () => void;
 }
+
+// A pending invite is an action, not a message: clearing the panel must leave
+// it behind (the server refuses to delete it too), so it never counts towards
+// whether there is anything to clear.
+const isClearable = (n: NotificationItem) => n.actionType !== 'group_invite';
 
 function DeleteAction() {
   return (
@@ -88,7 +94,9 @@ function NotifCard({ item, onAccept, onDecline, onDismiss, onPress }: {
   );
 }
 
-export default function NotificationPanel({ visible, notifications, onClose, onAcceptInvite, onDeclineInvite, onDismissNotification, onPressItem }: Props) {
+export default function NotificationPanel({ visible, notifications, onClose, onAcceptInvite, onDeclineInvite, onDismissNotification, onPressItem, onClearAll }: Props) {
+  const clearableCount = notifications.filter(isClearable).length;
+
   return (
     <Modal
       visible={visible}
@@ -100,9 +108,16 @@ export default function NotificationPanel({ visible, notifications, onClose, onA
         <ScreenHeader
           title="Notifications"
           actions={
-            <IconButton label="Close" variant="bare" size="l" onPress={onClose}>
-              <Ionicons name="close" size={22} color={colors.textStrong} />
-            </IconButton>
+            <>
+              {clearableCount > 0 && (
+                <IconButton label="Clear all notifications" variant="bare" size="l" onPress={onClearAll}>
+                  <Ionicons name="trash-outline" size={20} color={colors.stateDanger} />
+                </IconButton>
+              )}
+              <IconButton label="Close" variant="bare" size="l" onPress={onClose}>
+                <Ionicons name="close" size={22} color={colors.textStrong} />
+              </IconButton>
+            </>
           }
         />
 

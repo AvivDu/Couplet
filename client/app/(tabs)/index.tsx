@@ -14,7 +14,7 @@ import {
 import { Text } from '../../components/rn';
 import { Ionicons } from '@expo/vector-icons';
 import { CATEGORY_DEFS, SORT_OPTIONS, sortCoupons, type SortOption } from '../../constants/categories';
-import { getCoupons, getSharedCoupons, updateCoupon, redeemOwnCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, clearNotificationCode, type CouponMeta, type SharedCouponMeta, type RedeemAction } from '../../services/api';
+import { getCoupons, getSharedCoupons, updateCoupon, redeemOwnCoupon, deleteCoupon, getInvitations, acceptInvitation, declineInvitation, getNotifications, markNotificationsRead, deleteNotification, clearAllNotifications, clearNotificationCode, type CouponMeta, type SharedCouponMeta, type RedeemAction } from '../../services/api';
 import { getCouponCode, saveCouponCode, deleteCouponCode, deleteCouponImage } from '../../storage/couponStorage';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationsContext';
@@ -62,6 +62,13 @@ export default function HomeScreen() {
   const [selected, setSelected] = useState<CouponWithCode | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notifPanelOpen, setNotifPanelOpen] = useState(false);
+  // Expiry reminders are derived from the coupon list on every load(), so they
+  // have no server row to delete - dismissing one only drops it from state and
+  // the next load() rebuilds it. Remembering the ids keeps a dismissal (and a
+  // Clear all) from being undone on the next refresh. Session-scoped on
+  // purpose, matching how read-state is carried across loads; the id embeds
+  // daysLeft, so tomorrow's reminder is a new id and still comes through.
+  const dismissedGeneratedIds = useRef<Set<string>>(new Set());
   const [joinedGroupName, setJoinedGroupName] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [aboutVisible, setAboutVisible] = useState(false);
@@ -244,7 +251,9 @@ export default function HomeScreen() {
             ...n,
             read: n.actionType === 'group_invite' ? false : (n.read || readIds.has(n.id)),
           })),
-          ...generated.map(n => ({ ...n, read: readIds.has(n.id) })),
+          ...generated
+            .filter(n => !dismissedGeneratedIds.current.has(n.id))
+            .map(n => ({ ...n, read: readIds.has(n.id) })),
         ];
         return merged.sort((a, b) => b.ts - a.ts);
       });
@@ -339,7 +348,53 @@ export default function HomeScreen() {
     setNotifications(prev => prev.filter(n => n.id !== id));
     if (id.startsWith('server-')) {
       deleteNotification(id.slice('server-'.length)).catch(() => {});
+    } else if (id.startsWith('expiry-')) {
+      dismissedGeneratedIds.current.add(id);
     }
+  }
+
+  // Clear all: removes every notification except pending group invites, which
+  // are the accept/decline affordance itself (the server refuses to delete
+  // them too). Destructive and irreversible, so it confirms first and names
+  // what will survive rather than quietly keeping rows back.
+  function handleClearAll() {
+    const clearable = notifications.filter(n => n.actionType !== 'group_invite');
+    if (clearable.length === 0) return;
+    const keptInvites = notifications.length - clearable.length;
+    const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+    Alert.alert(
+      'Clear all notifications?',
+      keptInvites > 0
+        ? `This removes ${plural(clearable.length, 'notification')} and can't be undone. ${plural(keptInvites, 'pending group invitation')} will be kept so you can still accept or decline.`
+        : `This removes ${plural(clearable.length, 'notification')} and can't be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear all',
+          style: 'destructive',
+          onPress: async () => {
+            // Optimistic for instant feedback, then reload so the panel shows
+            // exactly what the server kept - it also holds rows older than the
+            // newest-50 the client ever saw, and keeps back any row still
+            // carrying an undelivered coupon code.
+            const suppressed = clearable.filter(n => n.id.startsWith('expiry-')).map(n => n.id);
+            for (const id of suppressed) dismissedGeneratedIds.current.add(id);
+            setNotifications(prev => prev.filter(n => n.actionType === 'group_invite'));
+            try {
+              await clearAllNotifications();
+            } catch (err: any) {
+              // Nothing was cleared, so un-suppress the client-generated
+              // reminders too - load() below then restores the whole panel
+              // rather than leaving it half-emptied.
+              for (const id of suppressed) dismissedGeneratedIds.current.delete(id);
+              Alert.alert('Error', err?.response?.data?.error ?? 'Could not clear notifications.');
+            }
+            load();
+          },
+        },
+      ]
+    );
   }
 
   // Tapping a (non-invite) notification deletes it and jumps to its group.
@@ -600,6 +655,7 @@ export default function HomeScreen() {
           onDeclineInvite={handleDeclineInvite}
           onDismissNotification={handleDismissNotification}
           onPressItem={handlePressNotification}
+          onClearAll={handleClearAll}
         />
 
         {/* Joined group confirmation */}
