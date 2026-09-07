@@ -358,6 +358,10 @@ export interface ServerNotification {
 export const getNotifications = () => api.get<ServerNotification[]>('/notifications');
 export const markNotificationsRead = () => api.patch('/notifications/read-all');
 export const deleteNotification = (notificationId: string) => api.delete(`/notifications/${notificationId}`);
+// Clear-all. The server keeps pending group invites and any row still holding
+// an undelivered coupon code, and reports both counts.
+export const clearAllNotifications = () =>
+  api.delete<{ deleted: number; kept: number }>('/notifications');
 // Clears a consumed fallback code (offline delivery or P2P rescue) once saved locally.
 export const clearNotificationCode = (notificationId: string) => api.delete(`/notifications/${notificationId}/code`);
 
