@@ -162,27 +162,34 @@ function extractCode(text: string): CodeExtractionResult | null {
   return null;
 }
 
-// OCR renders ₪ as a Latin 'm' with some regularity - observed on both a
-// photographed screen and a clean screenshot ("Balance: 150m"). Tolerated
-// only directly after an explicit amount label: a bare "150m" anywhere else
-// is far likelier to be a size or a distance than a price. The trailing \b
-// keeps "150ml" out.
-const MANGLED_CURRENCY = String.raw`[₪$mM]?`;
+// A currency symbol, or a single character standing in for one OCR mangled.
+// The same ₪ in the same coupon has come back as 'm', as 'W', and correctly,
+// across three runs - so the tolerance is "one stray character" rather than a
+// list of the specific letters seen so far, which would just keep growing.
+//
+// Deliberately allowed on EITHER side of the number: which side the symbol
+// lands on flips with RTL reordering, so position is not something to rely on.
+// Scoped to labelled amounts only - a bare "150W" elsewhere in a message is
+// likelier watts than shekels - and limited to a single character, so
+// "Amount: about 150" still will not match through the word.
+const CURRENCY_OR_MANGLED = String.raw`[₪$\p{L}]?`;
+
+// The trailing \b is what keeps "150ml" out: the optional character takes the
+// 'm', then the boundary fails against the 'l', and the empty alternative
+// fails against the 'm' - so neither path matches.
+const LABELLED_AMOUNT = String.raw`\s*[:\s]\s*${CURRENCY_OR_MANGLED}\s*(\d+(?:[.,]\d+)?)\s*${CURRENCY_OR_MANGLED}\b`;
 
 const AMOUNT_PATTERNS = [
   /₪\s*(\d+(?:[.,]\d+)?)/,
   /(\d+(?:[.,]\d+)?)\s*₪/,
   /(\d+(?:[.,]\d+)?)\s*שקל/,
   /\$\s*(\d+(?:[.,]\d+)?)/,
-  /(?:הסכום|סכום)(?:\s*(?:הוא|של))?\s*[:\s]*₪?\s*(\d+(?:[.,]\d+)?)/,
+  new RegExp(String.raw`(?:הסכום|סכום)(?:\s*(?:הוא|של))?${LABELLED_AMOUNT}`, 'u'),
   // The English counterpart of the Hebrew label above. Its absence meant a
   // plain "Balance: 150" matched nothing at all - the amount could only be
   // found through a currency symbol, which is exactly the character OCR is
   // least reliable at.
-  new RegExp(
-    String.raw`\b(?:balance|amount|value|worth)\s*[:\s]\s*[₪$]?\s*(\d+(?:[.,]\d+)?)\s*${MANGLED_CURRENCY}\b`,
-    'i'
-  ),
+  new RegExp(String.raw`\b(?:balance|amount|value|worth)${LABELLED_AMOUNT}`, 'iu'),
 ];
 
 function extractAmount(text: string): number | null {
