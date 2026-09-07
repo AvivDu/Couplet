@@ -10,8 +10,13 @@ import { findGiftCardInText, GENERAL_GIFT_CARDS } from '../constants/generalGift
 // copy, not a literal shared module - keep the two in sync by hand if the regexes
 // change. `extractStore`'s From-header parsing and domain-fallback guess do not
 // port over - pasted text has no email header - store detection here reuses the
-// existing findGiftCardInText brand lookup plus a first-line guess instead (see
-// extractCouponFieldsFromText).
+// existing findGiftCardInText brand lookup plus a leading-lines guess instead
+// (see extractCouponFieldsFromText).
+//
+// That guess also feeds the OCR photo-scan path, whose input is far noisier
+// than pasted text - a screenshot leads with the phone's status bar, a photo
+// with whatever else was in frame - which is why guessStoreFromText scans
+// several lines and rejects hard rather than taking line one on faith.
 
 // Known gap, not yet fixed: doesn't bridge a possessive word between the label and
 // "is"/"הוא" ("הקוד שלך הוא: X" - "your code is: X" - the common real phrasing).
@@ -36,6 +41,30 @@ const HIGH_CONFIDENCE_CODE_PATTERNS = [
   new RegExp(String.raw`reward\s*code${CONNECTOR}${CODE}`, 'i'),
   new RegExp(String.raw`(?:use|enter|apply|with)\s*code${CONNECTOR}${CODE}`, 'i'),
 ];
+
+// OCR of a Hebrew line emits it in VISUAL order and wraps any embedded Latin
+// run in bidi control marks, so "קוד קופון: BONUS50" comes back as
+// "‎BONUS50‏ :קוד קופון" - the code sitting before its own label.
+// (Verified on a real Gmail coupon screenshot: the code was recognized
+// perfectly, only its position moved.) The marks are stripped first, then
+// each Hebrew label gets a mirrored pattern so that order still matches.
+//
+// Only the Hebrew labels need this. Latin-script lines are not reordered,
+// and amounts/dates survive anyway because their patterns key off a symbol
+// or the digits themselves rather than a preceding word.
+const HEBREW_CODE_LABELS = String.raw`(?:קוד\s*קופון|קוד\s*הנחה|קוד\s*מימוש|קוד\s*הטבה)`;
+const RTL_VISUAL_CODE_PATTERN = new RegExp(String.raw`${CODE}[:\s]+${HEBREW_CODE_LABELS}`, 'g');
+
+// LRM/RLM, the embedding/override set, the isolates, and the Arabic letter
+// mark. Invisible, carry no meaning for extraction, and break any pattern
+// that expects a space or colon where one of them landed. Written as escapes
+// on purpose: these characters are invisible in an editor, so a literal class
+// here would be silently destroyable by any copy-paste or reformat.
+const BIDI_MARKS = /[\u200E\u200F\u202A-\u202E\u2066-\u2069\u061C]/g;
+
+function stripBidiMarks(text: string): string {
+  return text.replace(BIDI_MARKS, '');
+}
 
 // Bare "code" with no qualifying word in front of it - much likelier to be ordinary
 // prose ("your code expires soon", "zip code: 12345") than the labeled patterns
@@ -100,7 +129,13 @@ function firstPlausibleMatch(text: string, pattern: RegExp, opts: { guardHebrewP
     if (opts.guardEnglishQualifier && ENGLISH_NON_COUPON_QUALIFIERS.includes(precedingWord(text, match.index!))) continue;
     const code = match[1]?.trim();
     if (!code || !isPlausibleCode(code)) continue;
-    return code;
+    // Uppercased only after the plausibility check above, never before -
+    // that check rejects all-lowercase tokens as ordinary prose, and
+    // uppercasing first would make every one of them look like a real code.
+    // OCR reads printed codes with inconsistent case ("Save25" for SAVE25),
+    // and coupon codes are conventionally uppercase, so this normalizes
+    // rather than guesses.
+    return code.toUpperCase();
   }
   return null;
 }
@@ -115,6 +150,11 @@ function extractCode(text: string): CodeExtractionResult | null {
     const code = firstPlausibleMatch(text, new RegExp(pattern.source, pattern.flags + 'g'));
     if (code) return { code, confidence: 'label' };
   }
+  // Just as trustworthy as the tier above - it IS an explicit label match,
+  // only with the label sitting on the far side of the code because OCR
+  // emitted an RTL line in visual order.
+  const rtlVisual = firstPlausibleMatch(text, RTL_VISUAL_CODE_PATTERN);
+  if (rtlVisual) return { code: rtlVisual, confidence: 'label' };
   const hebrewGuess = firstPlausibleMatch(text, HEBREW_BARE_CODE_PATTERN, { guardHebrewPrefix: true });
   if (hebrewGuess) return { code: hebrewGuess, confidence: 'guess' };
   const englishGuess = firstPlausibleMatch(text, ENGLISH_BARE_CODE_PATTERN, { guardEnglishQualifier: true });
@@ -122,12 +162,34 @@ function extractCode(text: string): CodeExtractionResult | null {
   return null;
 }
 
+// A currency symbol, or a single character standing in for one OCR mangled.
+// The same ₪ in the same coupon has come back as 'm', as 'W', and correctly,
+// across three runs - so the tolerance is "one stray character" rather than a
+// list of the specific letters seen so far, which would just keep growing.
+//
+// Deliberately allowed on EITHER side of the number: which side the symbol
+// lands on flips with RTL reordering, so position is not something to rely on.
+// Scoped to labelled amounts only - a bare "150W" elsewhere in a message is
+// likelier watts than shekels - and limited to a single character, so
+// "Amount: about 150" still will not match through the word.
+const CURRENCY_OR_MANGLED = String.raw`[₪$\p{L}]?`;
+
+// The trailing \b is what keeps "150ml" out: the optional character takes the
+// 'm', then the boundary fails against the 'l', and the empty alternative
+// fails against the 'm' - so neither path matches.
+const LABELLED_AMOUNT = String.raw`\s*[:\s]\s*${CURRENCY_OR_MANGLED}\s*(\d+(?:[.,]\d+)?)\s*${CURRENCY_OR_MANGLED}\b`;
+
 const AMOUNT_PATTERNS = [
   /₪\s*(\d+(?:[.,]\d+)?)/,
   /(\d+(?:[.,]\d+)?)\s*₪/,
   /(\d+(?:[.,]\d+)?)\s*שקל/,
   /\$\s*(\d+(?:[.,]\d+)?)/,
-  /(?:הסכום|סכום)(?:\s*(?:הוא|של))?\s*[:\s]*₪?\s*(\d+(?:[.,]\d+)?)/,
+  new RegExp(String.raw`(?:הסכום|סכום)(?:\s*(?:הוא|של))?${LABELLED_AMOUNT}`, 'u'),
+  // The English counterpart of the Hebrew label above. Its absence meant a
+  // plain "Balance: 150" matched nothing at all - the amount could only be
+  // found through a currency symbol, which is exactly the character OCR is
+  // least reliable at.
+  new RegExp(String.raw`\b(?:balance|amount|value|worth)${LABELLED_AMOUNT}`, 'iu'),
 ];
 
 function extractAmount(text: string): number | null {
@@ -209,6 +271,37 @@ function extractGiftCardUrl(text: string): string | null {
 
 const STORE_LINE_MAX_LENGTH = 30;
 
+// A store name is a name, not a sentence. Four words still covers
+// "Super Pharm Tel Aviv" while rejecting "Thanks for shopping with us!".
+const STORE_MAX_WORDS = 4;
+
+// Pasted text puts the store on line 1. OCR does not: a screenshot begins
+// with the phone's status bar, and a photo begins with whatever else was in
+// frame - so look a few lines down instead of trusting the first absolutely.
+const STORE_SEARCH_LINES = 6;
+
+// A clock is the tell for a status-bar line ("3 46 In, 10:41").
+const CLOCK_PATTERN = /\d{1,2}:\d{2}/;
+
+// Words naming the *kind* of message rather than the merchant. An email
+// subject or app header ("Coupon", "קופון") sits above the store name in a
+// screenshot and would otherwise be picked in its place. Matched whole, not
+// as a substring, so a real merchant like "Coupon King" still survives.
+const GENERIC_HEADER_WORDS = [
+  'coupon', 'coupons', 'voucher', 'vouchers', 'gift card', 'giftcard', 'gift',
+  'promo', 'promotion', 'discount', 'offer', 'deal', 'reward', 'inbox',
+  'קופון', 'שובר', 'הטבה', 'מתנה', 'הנחה',
+];
+
+// OCR noise is mostly digits, punctuation and stray symbols ("bi 0",
+// "ul ® ¢ =3"); a real store name is overwhelmingly letters. That ratio is
+// what separates them, since both are short and neither looks like a code.
+function isMostlyLetters(line: string): boolean {
+  const letters = (line.match(/\p{L}/gu) ?? []).length;
+  const dense = line.replace(/\s/g, '').length;
+  return dense > 0 && letters / dense >= 0.7;
+}
+
 // Non-global copies for a plain boolean .test() below - HEBREW_BARE_CODE_PATTERN
 // and ENGLISH_BARE_CODE_PATTERN carry the 'g' flag for matchAll() in extractCode,
 // and .test() on a shared global-flagged regex is stateful (it advances
@@ -229,7 +322,11 @@ function looksLikeNonStoreLine(line: string): boolean {
     EXPIRATION_LABEL_PATTERNS.some(p => p.test(line)) ||
     line.includes('%') ||
     /^https?:\/\//i.test(line) ||
-    !/\p{L}/u.test(line)
+    !/\p{L}/u.test(line) ||
+    CLOCK_PATTERN.test(line) ||
+    !isMostlyLetters(line) ||
+    line.split(/\s+/).length > STORE_MAX_WORDS ||
+    GENERIC_HEADER_WORDS.includes(line.toLowerCase().replace(/[^\p{L}\s]/gu, '').trim())
   );
 }
 
@@ -237,14 +334,22 @@ function looksLikeNonStoreLine(line: string): boolean {
 // single-retailer coupon for "Fox" or "Nike") - findGiftCardInText only knows
 // the fixed whitelist, so a specific retailer's name is otherwise dropped
 // entirely even when it's sitting in plain sight as the message's first line.
-// Deliberately just the first line, not a real classifier - like every other
-// field here, this is best-effort and the user reviews it before saving, so a
-// wrong guess (e.g. a marketing line that slips past looksLikeNonStoreLine) is
-// an edit, not a broken save.
-function guessStoreFromFirstLine(text: string): string | null {
-  const line = text.split(/\r?\n/).map(l => l.trim()).find(l => l.length > 0);
-  if (!line || line.length > STORE_LINE_MAX_LENGTH) return null;
-  return looksLikeNonStoreLine(line) ? null : line;
+// Not a real classifier - like every other field here this is best-effort and
+// the user reviews it before saving, so a wrong guess is an edit, not a
+// broken save.
+//
+// Returns the first line that could plausibly be a merchant name, or null.
+// Null is deliberately preferred over a weak guess: an empty field is
+// obvious and gets typed in, whereas "3 46 In, 10:41" sitting in the name
+// field can be saved without the user ever noticing it was wrong.
+function guessStoreFromText(text: string): string | null {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+  for (const line of lines.slice(0, STORE_SEARCH_LINES)) {
+    if (line.length > STORE_LINE_MAX_LENGTH) continue;
+    if (looksLikeNonStoreLine(line)) continue;
+    return line;
+  }
+  return null;
 }
 
 export interface ExtractedCouponFields {
@@ -265,7 +370,11 @@ export interface ExtractedCouponFields {
 // Best-effort only - same as the Gmail draft flow, the user always reviews/edits
 // the fields before saving.
 export function extractCouponFieldsFromText(text: string): ExtractedCouponFields {
-  const codeResult = extractCode(text);
+  // Stripped once here rather than inside each extractor: the marks are
+  // invisible, carry no meaning, and land in arbitrary places in OCR output -
+  // any pattern expecting a space or colon breaks when one turns up there.
+  const clean = stripBidiMarks(text);
+  const codeResult = extractCode(clean);
   return {
     code: codeResult?.code ?? null,
     codeConfidence: codeResult?.confidence ?? null,
@@ -273,9 +382,9 @@ export function extractCouponFieldsFromText(text: string): ExtractedCouponFields
     // (and drives the "General" category / where-to-use link in add.tsx), so
     // it is strictly higher-confidence than a guessed line and should win
     // whenever both would apply.
-    store: findGiftCardInText(text)?.canonicalName ?? guessStoreFromFirstLine(text),
-    giftUrl: extractGiftCardUrl(text),
-    amount: extractAmount(text),
-    expiration: extractExpiration(text),
+    store: findGiftCardInText(clean)?.canonicalName ?? guessStoreFromText(clean),
+    giftUrl: extractGiftCardUrl(clean),
+    amount: extractAmount(clean),
+    expiration: extractExpiration(clean),
   };
 }

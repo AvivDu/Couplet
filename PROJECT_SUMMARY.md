@@ -1,7 +1,7 @@
 # Couplet - Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-08-26 (Integration of three feature branches: live redemption notifications + atomic redeems + coupon-code redelivery on edit; Cognito email verification, forgot-password, and the Gmail coupon scanner; General gift-card category and the sort/filter sheet overlay fix.)
+**Last updated:** 2026-09-05 (On-device OCR coupon photo scan, `feature/coupon-detection-on-device`.)
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device - the server holds metadata only.
 
@@ -36,6 +36,7 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Add Coupon form auto-resets on every screen focus (`useFocusEffect`) - no stale data when returning to the tab
 - [x] Coupon code stored locally in AsyncStorage (never sent to server)
 - [x] Barcode/QR image stored locally in AsyncStorage via expo-image-picker (camera or photo library)
+- [x] **On-device OCR coupon scan** - "Scan Photo" in the Add Coupon Quick Add sheet; Tesseract.js (WASM OCR, English + Hebrew) runs inside a hidden WebView (`client/components/OcrBridge.tsx`), a second bridge structurally mirroring `WebRTCBridge.tsx` but mounted only for the duration of a scan and sharing no state with it (`client/services/ocr.ts`/`ocrBridgeHtml.ts`). Recognized text feeds the existing `extractCouponFieldsFromText`; the photo also pre-fills the existing Barcode/QR Image field as-is (no decoding). Nothing photographed or recognized ever reaches the server. MediaPipe on-device LLM (Gemma 3 270M) was the original approach and was ruled out - its web runtime requires WebGPU, unavailable in Android WebView/iOS WKWebView.
 - [x] Coupon list on home screen with horizontal category scroll cards (replaced dropdown) - Ionicons icons, pastel active state
 - [x] Sort button on home screen - Balance High→Low, Balance Low→High, Expiry Date; active sort shown in coral with inline clear; applies across all categories
 - [x] Pull-to-refresh on coupon list
@@ -178,6 +179,7 @@ client/
     NotificationPanel.tsx - slide-up notification panel (expiry alerts + group invite cards)
     rn.tsx                - Text/TextInput wrappers with font scaling locked (allowFontScaling=false)
     WebRTCBridge.tsx      - hidden 1x1 WebView hosting the P2P peer connections (root-mounted, crash-remounting)
+    OcrBridge.tsx         - hidden 1x1 WebView hosting Tesseract.js OCR (mounted only during a scan, not root-mounted)
   context/
     AuthContext.tsx       - token storage, user state, login/logout
   services/
@@ -185,6 +187,8 @@ client/
     cognito.ts            - Cognito signUp/signIn via amazon-cognito-identity-js
     webrtc.ts             - Stage-2 P2P bridge driver: session/callback map, injectJavaScript command channel
     webrtcBridgeHtml.ts   - inline WebView page holding the real RTCPeerConnections (ICE buffering, ack/timeout)
+    ocr.ts                - OCR bridge driver: request/response map, injectJavaScript command channel (own state, shares nothing with webrtc.ts)
+    ocrBridgeHtml.ts      - inline WebView page running Tesseract.js (loads WASM core + language data from CDN on first use)
   storage/
     couponStorage.ts      - AsyncStorage helpers for codes, images, and local avatar fallback
   utils/
