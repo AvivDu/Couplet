@@ -1,8 +1,93 @@
 # Couplet
 
-A mobile coupon wallet app. Users store, manage, and share coupons - coupon codes, QR codes, and barcodes are stored only on the user's device. The server manages metadata, groups, and authentication but never handles sensitive coupon data.
+**All your coupons. In one place.**
+
+A mobile coupon wallet. Coupons arrive scattered across email, SMS and chat apps and get forgotten; Couplet collects them in one place, keeps track of what's left on each one, and lets you share them with family and friends.
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/01-home.png" width="185" alt="My Coupons screen"></td>
+    <td align="center"><img src="docs/screenshots/02-add-coupon.png" width="185" alt="Add Coupon screen"></td>
+    <td align="center"><img src="docs/screenshots/03-groups.png" width="185" alt="Groups screen"></td>
+    <td align="center"><img src="docs/screenshots/04-welcome.png" width="185" alt="Welcome screen"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Your wallet</b><br>search, categories, remaining balances</sub></td>
+    <td align="center"><sub><b>Add a coupon</b><br>"stays on this device" - and it means it</sub></td>
+    <td align="center"><sub><b>Groups</b><br>share with family and friends</sub></td>
+    <td align="center"><sub><b>Welcome</b></sub></td>
+  </tr>
+</table>
+
+---
+
+## The idea the architecture is built around
+
+A coupon code is a bearer token: whoever holds it can redeem it. So Couplet treats codes the way you'd treat cash rather than the way you'd treat data.
+
+**Coupon codes, QR codes and barcode images live on the device.** The server holds metadata only - which coupons exist, who owns them, what they're worth, which groups they're shared with. It has no column for a code.
+
+**When you share a coupon, the code goes straight from your phone to theirs.** The two devices open an encrypted WebRTC data channel and the code (and the barcode image, if there is one) travels across it directly. The server's only role is relaying the connection handshake - the SDP offer/answer and ICE candidates - which it passes through opaquely without inspecting.
+
+**If the recipient is offline, the code is held encrypted.** It's stored AES-256-GCM-encrypted on their notification row with a 72-hour TTL, and deleted the moment their device picks it up. Barcode images get no such fallback at all - an image of a barcode *is* the code in visual form, so it is peer-to-peer or nothing.
+
+The same reasoning drives the rest of the app: the coupon photo scanner runs its OCR model **on the phone**, because a photo of a coupon is a coupon.
+
+---
+
+## Features
+
+### Your wallet
+- Add coupons with store, code, category, expiration and balance; edit or delete them any time.
+- **Partial redemption** - spend part of a gift card and keep the remainder. Balances are decremented atomically server-side, so two people redeeming the same shared coupon at once can never overdraw it.
+- Status tracking (`active` / `expired` / `used`), with expiry reminders.
+- Search, category filter and sort (balance, expiry). Searching also reaches coupons other people have shared with you.
+- Gift-card links (e.g. BuyMe) open in an in-app browser.
+- **Where to use** - nearby branches of a coupon's stores, sorted by distance.
+
+### Four ways to add a coupon
+- **Type it in** manually.
+- **Paste the text** of a coupon SMS or email - a parser pulls out the store, code, amount and expiration for you to confirm. Hebrew and English.
+- **Scan a photo** - pick or shoot a photo of a coupon and an OCR model reads it **on the device**, filling in the same fields. Nothing photographed or recognized ever leaves the phone.
+- **Scan your Gmail** - connect a Gmail account and Couplet searches it for coupon emails, extracts a draft coupon from each, and lets you review the source email before saving. See [Gmail scanner setup](docs/gmail-setup.md).
+
+### Sharing with people you trust
+- Create groups and invite people by username, email or phone - or find the ones already using Couplet straight from your phone contacts. Invitees accept or decline from their notifications.
+- Share a coupon to a group and every member can use it - the code reaches each of them device-to-device.
+- Everyone sees the balance change as it's spent, live.
+- Edit a shared coupon's code later and the correction is redelivered silently to everyone who has it.
+- Revoke a share, or leave a group, at any time.
+
+### Staying in the loop
+- Live in-app notifications over a WebSocket while the app is open; OS notifications when it isn't, with a catch-up pass on resume so nothing is missed.
+- Tapping a notification takes you straight to the group it's about.
+- One-tap **Clear all** that deliberately keeps what you can't get back: pending invitations (the notification *is* the accept/decline) and any coupon code not yet collected.
+
+### Accounts
+- Sign up with email or phone, verified by an emailed code, on AWS Cognito.
+- Passwords are proven via SRP - the password itself is never transmitted.
+- Editable profile with username, phone and photo, visible to your group members.
+
+---
+
+## Architecture
+
+Hybrid by design: a conventional client-server app for identity, metadata and coordination, plus a true peer-to-peer path for the one thing the server must never hold.
+
+```
+   Device A  ──── SDP / ICE ────►  Server  ──── SDP / ICE ────►  Device B
+  (sharer)                     (signaling only)                (recipient)
+      │                                                             ▲
+      └──────── encrypted WebRTC data channel: code + image ────────┘
+                     (never passes through the server)
+```
+
+Two pieces of the client are worth calling out, because both solve the same constraint - the app has to run in **plain Expo Go**, with no custom native build:
+
+- **WebRTC in a hidden WebView.** `react-native-webrtc` requires a custom dev client, so instead the `RTCPeerConnection`s run inside a 1×1 hidden WebView mounted at the app root, driven from React Native by injected JavaScript and message passing. Images are chunked over the data channel in 16 KB frames with backpressure, and the recipient only acknowledges a transfer once the code and image are both safely stored.
+- **OCR in a second hidden WebView.** Tesseract.js (a WASM build of an LSTM recognition engine) runs the same way, English and Hebrew, mounted only for the duration of a scan and torn down straight after. It's an independent module - the two bridges share no state and can't reach each other.
 
 ---
 
@@ -10,12 +95,15 @@ A mobile coupon wallet app. Users store, manage, and share coupons - coupon code
 
 | Layer | Technology |
 |---|---|
-| Mobile client | React Native (Expo) |
+| Mobile client | React Native 0.86 / Expo SDK 57 - runs in Expo Go, no custom native build |
 | Backend | Node.js + Express, deployed on AWS Lambda via `serverless-http` |
-| API Gateway | AWS API Gateway HTTP API (REST) + WebSocket API (real-time) |
+| API Gateway | AWS API Gateway HTTP API (REST) + WebSocket API (live notifications, WebRTC signaling) |
 | Database | AWS DynamoDB |
-| Auth | AWS Cognito |
-| Notifications | Live over the API Gateway **WebSocket API** while the app is open + **local OS notifications** (`expo-notifications`); remote push when closed (AWS SNS) is planned (needs a dev build) |
+| Auth | AWS Cognito (SRP login, email verification, JWTs on every request) |
+| P2P transfer | Browser WebRTC `RTCDataChannel` inside a hidden `react-native-webview` |
+| On-device OCR | Tesseract.js (WASM, English + Hebrew) in a second hidden WebView |
+| Notifications | Live over the WebSocket API while open; local OS notifications (`expo-notifications`) when backgrounded |
+| Email scanning | Google OAuth 2.0 + Gmail API (`gmail.readonly`) |
 | Store locator | Google Places API ("Where to use") |
 
 ---
@@ -25,10 +113,22 @@ A mobile coupon wallet app. Users store, manage, and share coupons - coupon code
 ```
 Couplet/
 ├── client/                                      # React Native (Expo) mobile app
+│   ├── app/                                     # Screens (expo-router)
+│   ├── components/                              # UI components + the hidden WebRTC / OCR bridges
+│   ├── services/                                # API client, WebRTC, OCR, Cognito, Gmail
+│   ├── storage/                                 # On-device storage (codes, images, drafts)
+│   └── utils/                                   # Coupon text extraction, formatting
 ├── server/                                      # Node.js + Express backend (runs on AWS Lambda)
+│   └── src/
+│       ├── routes/                              # REST endpoints
+│       ├── repositories/                        # DynamoDB access
+│       ├── services/                            # Shared business logic (e.g. redemption)
+│       ├── lib/                                 # Crypto, Gmail, OAuth helpers
+│       └── ws/                                  # WebSocket handler (notifications + signaling relay)
+├── docs/gmail-setup.md                          # Gmail scanner setup guide
+├── .github/workflows/ci.yml                     # Typecheck on client + server, every PR
 ├── Specification & Design Document - Couplet.pdf
-├── CLAUDE.md                                    # Architecture, data model, feature spec (for contributors)
-└── PROJECT_SUMMARY.md                           # Progress log and feature status
+└── CLAUDE.md                                    # Architecture, data model, feature spec (for contributors)
 ```
 
 ---
@@ -50,12 +150,13 @@ Couplet/
    cp .env.example .env
    ```
    Fill in the following values in `client/.env`:
+
    | Variable | Description |
    |---|---|
    | `EXPO_PUBLIC_API_URL` | Base URL of the deployed backend (HTTP API) |
    | `EXPO_PUBLIC_COGNITO_USER_POOL_ID` | AWS Cognito User Pool ID |
    | `EXPO_PUBLIC_COGNITO_CLIENT_ID` | AWS Cognito App Client ID |
-   | `EXPO_PUBLIC_WS_URL` | WebSocket API URL for live notifications + coupon relay (optional - app falls back to poll-on-focus if unset) |
+   | `EXPO_PUBLIC_WS_URL` | WebSocket API URL - live notifications and WebRTC signaling (optional; without it the app falls back to poll-on-focus and P2P sharing is unavailable) |
 
 3. Start the development server:
    ```bash
@@ -67,7 +168,17 @@ Couplet/
 
 ### Server
 
-The production server runs on **AWS Lambda** - no instance to manage. After code changes, build and upload a new deployment package via the AWS Lambda console (see `PROJECT_SUMMARY.md` for the exact steps).
+The production server runs on **AWS Lambda** - no instance to manage. After code changes:
+
+```bash
+cd server && npm run build
+```
+
+then package `dist/` and `node_modules/` into a zip and upload it in the Lambda Console → Code → Upload from → .zip file. On PowerShell:
+
+```powershell
+Compress-Archive -Path dist, node_modules -DestinationPath lambda.zip -Force
+```
 
 **For local development:**
 
@@ -82,22 +193,24 @@ The production server runs on **AWS Lambda** - no instance to manage. After code
    cp .env.example .env
    ```
    Fill in the following values in `server/.env`:
+
    | Variable | Description |
    |---|---|
    | `AWS_REGION` | AWS region (e.g. `us-east-1`) |
    | `COGNITO_USER_POOL_ID` | AWS Cognito User Pool ID |
    | `COGNITO_CLIENT_ID` | AWS Cognito App Client ID |
-   | `AWS_ACCESS_KEY_ID` | AWS credentials |
-   | `AWS_SECRET_ACCESS_KEY` | AWS credentials |
-   | `AWS_SESSION_TOKEN` | AWS session token (Learner Lab) |
+   | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` | AWS credentials - local development only; on Lambda the execution role supplies these |
    | `DYNAMODB_USERS_TABLE` | DynamoDB table name for users |
    | `DYNAMODB_COUPONS_TABLE` | DynamoDB table name for coupons |
    | `DYNAMODB_GROUPS_TABLE` | DynamoDB table name for groups |
    | `DYNAMODB_NOTIFICATIONS_TABLE` | DynamoDB table name for notifications |
    | `DYNAMODB_CONNECTIONS_TABLE` | DynamoDB table for WebSocket connections (PK `connection_id`, GSI `user_id-index`) |
    | `WS_API_ID` + `WS_STAGE` | WebSocket API ID + stage (used to build the push endpoint); or set `WS_API_ENDPOINT` directly |
+   | `NOTIFICATION_CODE_KEY` | Base64 32-byte key encrypting coupon codes held for offline recipients (`openssl rand -base64 32`); must match the deployed Lambda's value |
    | `PORT` | Local server port (default: `3000`) |
-   | `GOOGLE_PLACES_API_KEY` | Google Places API key (for store locator) |
+   | `GOOGLE_PLACES_API_KEY` | Google Places API key (for the store locator) |
+
+   The Gmail scanner needs four more variables - see [Gmail scanner setup](docs/gmail-setup.md).
 
 3. Run the server:
    ```bash
@@ -108,67 +221,19 @@ The production server runs on **AWS Lambda** - no instance to manage. After code
 
 ---
 
-## Gmail Coupon Scanner (Phase 1 - MVP)
+## Scan your inbox
 
-Lets a user connect their Gmail account and scan their inbox for emails that might contain a coupon. Shows a plain list (sender, subject, date) - it does **not** read the coupon code itself or send notifications; those are later phases.
+Couplet can connect to a Gmail account and find the coupons already sitting in it: it searches with a keyword query (never downloading a whole mailbox), pulls out a draft coupon - code, store, amount, expiration - from each match, and lets you read the original email before deciding to save it. Extracted fields are returned to your device and never written to the database.
 
-**Two coexisting ways to connect**, both ending at the same backend logic (token exchange, encrypted storage, scanning):
-- **Browser bridge (works in plain Expo Go)** - tapping "Connect Gmail" opens the phone's normal browser to Google's login page. Google redirects back to a plain `https://` page on our own backend (not into the app - Expo Go can't catch a custom-scheme redirect), which finishes the connection server-side and shows a "you can close this tab" page. You switch back to the app manually; it picks up the completed connection on its own.
-- **Native (needs a Dev Client build)** - the original PKCE flow with a custom `cuplet://` redirect straight back into the app. Only usable from a Dev Client build, not Expo Go - kept for whenever the team does pick that up.
+Setup instructions, OAuth configuration and API reference: **[docs/gmail-setup.md](docs/gmail-setup.md)**.
 
-Google binds a refresh token to whichever OAuth client requested it, so each stored connection records which of the two it came from (`oauth_client: 'native' | 'web'`) and scans always refresh with the matching credentials.
+---
 
-### Checklist to get this running (do these in order) - browser-bridge / Expo Go path
+## Continuous Integration
 
-1. **Google Cloud Console** - confirm the exact deployed API Gateway URL first (AWS Console → API Gateway → your API → Invoke URL), then create a **new, second** OAuth client: APIs & Services → Credentials → Create Credentials → OAuth client ID → **Web application** type (the existing "Desktop app" client can't register a plain `https://` redirect URI - only Web application clients can). Add `<invoke-url>/gmail/callback` as an Authorized redirect URI. Note the new client ID + secret.
-2. **AWS Console** - create one DynamoDB table: `Couplet-GmailConnections`, partition key `user_id` (String). (Full field list under Schema below - DynamoDB is schemaless beyond the key, so nothing else needs defining up front.)
-3. **Generate an encryption key** - run `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` and save the output. (This one key both encrypts stored refresh tokens and signs the short-lived proof used by the browser-bridge redirect - no second key needed.)
-4. **Fill in `server/.env`** (copy from `server/.env.example` if you haven't) and, when deploying, the same values as Lambda environment variables (same pattern as `GOOGLE_PLACES_API_KEY`): `GOOGLE_WEB_CLIENT_ID`, `GOOGLE_WEB_CLIENT_SECRET` (from step 1), `GOOGLE_WEB_REDIRECT_URI` (the URL from step 1), `GMAIL_TOKEN_ENCRYPTION_KEY` (from step 3), `DYNAMODB_GMAIL_CONNECTIONS_TABLE=Couplet-GmailConnections`.
-5. **Build + redeploy the Lambda** - `cd server && npm run build`, then (PowerShell) `Compress-Archive -Path dist, node_modules -DestinationPath lambda.zip -Force`, then Lambda Console → Code → Upload from → .zip file. This part **must** be redeployed for real - `/gmail/callback` is reached directly by Google over the public internet, so this flow can't be tested against a local `npm run dev` server.
-6. **Test**: reload the app in Expo Go → drawer → "Scan Gmail for Coupons" → Connect Gmail → finish Google's consent screen in the browser that opens → switch back to the app (either the browser's own back button or the app-switcher both work) → the button should show "Connected: `<email>`" → Scan now.
+Every pull request and every push to `main` runs a typecheck across both the client and server packages ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
-<details>
-<summary>Optional: the native Dev Client path instead</summary>
-
-1. Google Cloud Console - APIs & Services → Credentials → your (Desktop app) OAuth client → Authorized redirect URIs → add `cuplet://oauth2redirect`.
-2. Fill in `server/.env` / Lambda env vars: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
-3. Fill in `client/.env`: `EXPO_PUBLIC_GOOGLE_CLIENT_ID` (same client ID, no secret - safe to embed on the device).
-4. One-time cloud build:
-   ```bash
-   cd client
-   npm install -g eas-cli        # skip if already installed
-   eas login                     # free Expo account - sign up if you don't have one
-   eas build --profile development --platform android
-   ```
-   Takes ~10–15 min in the cloud, no Android Studio needed. When it finishes, scan the QR code it prints (or open the link on your phone) to install the `.apk`. From then on, run `npx expo start --dev-client` and open the app from that installed build instead of Expo Go - everything else in the app works from it exactly the same as before.
-5. Test from the dev-client build → drawer → "Scan Gmail for Coupons" → Connect Gmail → Scan now.
-</details>
-
-### Reference: env vars and schema
-
-| Variable | Where | Used by |
-|---|---|---|
-| `GOOGLE_WEB_CLIENT_ID` / `GOOGLE_WEB_CLIENT_SECRET` / `GOOGLE_WEB_REDIRECT_URI` | server only | Browser-bridge (Expo Go) flow |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | server + client (`EXPO_PUBLIC_GOOGLE_CLIENT_ID`) | Native (Dev Client) flow only |
-| `GMAIL_TOKEN_ENCRYPTION_KEY` | server only | Both - encrypts stored refresh tokens (app-level AES-256-GCM, not AWS KMS - Learner Lab's fixed `LabRole` can't create KMS keys) and signs the browser-bridge's state token |
-| `DYNAMODB_GMAIL_CONNECTIONS_TABLE` | server only | Both |
-
-**Table schema** - `Couplet-GmailConnections`, PK `user_id` (String). Fields: `gmail_email`, `refresh_token_encrypted`, `oauth_client` (`'native'` or `'web'` - which OAuth client issued the stored refresh token, since Google won't let you refresh it with the other one's credentials), `last_scan`, `created_at`, `candidates` (list of `{message_id, from, subject, date, created_at}` - kept on the same row since one user's coupon-filtered inbox is small; each scan merges in new ones keyed by `message_id` so nothing duplicates).
-
-### New files
-
-**Backend:**
-- `server/src/lib/tokenCrypto.ts` - AES-256-GCM encrypt/decrypt for refresh tokens.
-- `server/src/lib/googleOAuth.ts` - exchanges auth codes for tokens and refreshes access tokens for either OAuth client; builds the browser-bridge's Google consent URL.
-- `server/src/lib/oauthState.ts` - signs/verifies the short-lived token proving a Google redirect belongs to a specific logged-in user (browser-bridge flow only).
-- `server/src/lib/oauthResultPage.ts` - the plain HTML "connected" / "cancelled" / "expired" pages shown in the browser after the redirect.
-- `server/src/lib/gmail.ts` - Gmail API wrapper: builds the search query, lists candidate message IDs, fetches From/Subject/Date only.
-- `server/src/repositories/gmailConnections.ts` - DynamoDB access for the one table.
-- `server/src/routes/gmail.ts` - `GET /gmail/callback` (public), `POST /gmail/connect/start`, `GET /gmail/status`, `POST /gmail/connect`, `POST /gmail/scan`, `GET /gmail/candidates`.
-
-**Client:**
-- `client/services/gmail.ts` - triggers either connect flow and calls the endpoints above.
-- `client/app/gmail-scan.tsx` - the Connect/Scan screen and candidate list, reachable from the settings drawer ("Scan Gmail for Coupons").
+---
 
 ## Project Specification
 
