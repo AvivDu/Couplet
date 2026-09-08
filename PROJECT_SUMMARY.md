@@ -1,7 +1,7 @@
 # Couplet - Project Summary
 
 **Team:** Aviv Duzy, Roni Kenigsberg, Doron Shen-Tzur
-**Last updated:** 2026-09-07 (Integration of three branches: on-device OCR coupon photo scan; home screen search/categories/sort moved into the coupon list's scrollable header, Add Coupon "Clear fields" button, Groups screen person search showing shared groups; notification date sorting, hide-expired filter, and locked-down actions on inactive coupons.)
+**Last updated:** 2026-09-08 (README rewritten as the project's public front page - features, architecture, screenshots - with the Gmail setup runbook moved to `docs/gmail-setup.md`. Preceded by: Clear-all notifications; OCR parser hardening for mangled currency symbols, label noise and month-first dates; the Android Expo Go startup fix; and the integration of three branches - on-device OCR coupon photo scan, home screen search/categories/sort moved into the coupon list's scrollable header, Add Coupon "Clear fields" button, Groups screen person search showing shared groups, notification date sorting, hide-expired filter, and locked-down actions on inactive coupons.)
 
 A mobile coupon wallet app. Users store, manage, and share coupons with friends and family. Coupon codes/QR live only on the device - the server holds metadata only.
 
@@ -11,7 +11,9 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 
 | Doc | Purpose |
 |---|---|
+| `README.md` | Public overview - what the app does, the security model, architecture, how to run |
 | `CLAUDE.md` | Architecture, feature spec, DB schema, user flows |
+| `docs/gmail-setup.md` | Gmail scanner setup: OAuth clients, env vars, table schema, API routes |
 
 ---
 
@@ -27,6 +29,7 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Logout clears token and redirects to auth flow
 - [x] Password strength validation (8+ chars, uppercase, lowercase, number, symbol) with real-time match indicator
 - [x] **Cross-device profile image sync** - on app startup, `AuthContext` background-fetches `GET /auth/me` so profile photos set on another device appear without re-login (stale-while-revalidate: cached avatar shown immediately, server value applied silently)
+- [x] **Forgot password** - "Forgot password?" on the login screen → `client/app/(auth)/forgot-password.tsx` → Cognito emails a reset code → code + new password submitted client-direct (`cognitoForgotPassword` / `cognitoConfirmPassword`, `client/services/cognito.ts`). No server involvement, same as the rest of the Cognito flows
 - [x] **Email verification at signup** - Cognito confirm-signup flow (client-direct, `amazon-cognito-identity-js`); account stays `UNCONFIRMED` until the emailed code is entered on the register screen; logging in on an unconfirmed account auto-resends the code and recovers into the same confirm step instead of dead-ending (`client/app/(auth)/login.tsx`, `register.tsx`, `client/components/ConfirmCodeStep.tsx`)
 
 ### Coupon Management (Client)
@@ -68,7 +71,7 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] Revoke a coupon from a group (admin or coupon owner) - confirmation alert
 - [x] Leave group (non-admin members) - confirmation alert, removes shared coupons
 - [x] **Group invitation system** - admin invites by email/username → user added to `pending_user_ids`; invited user receives notification card with Accept/Decline buttons; Accept moves user to `user_id_list`; admin can cancel pending invites; pending members shown at 50% opacity with Pending badge in GroupDetail
-- [x] **Notification bell** - header bell icon on My Coupons with unread badge; slide-up panel shows expiry alerts (within 7 days) and group invite cards; swipe left/right to dismiss; `GET /invitations` polled on each load
+- [x] **Notification bell** - header bell icon on My Coupons with unread badge; slide-up panel merges three sources (server notification rows, pending group invites, client-generated expiry alerts within 7 days) into one list sorted newest-first; swipe left/right to dismiss; live over WebSocket while the app is open, with a catch-up poll on resume. **Clear all** (`DELETE /notifications`) empties the panel but deliberately keeps pending invites (the row *is* the accept/decline affordance) and any row still holding an undelivered coupon code (the server's only copy for an offline recipient); it returns `{deleted, kept}` so the UI can say what survived
 - [x] **Rename group** - admin-only; inline modal with current name pre-filled; `PUT /groups/:id/name`; updates local state on success; 403 for non-admins
 - [x] **Delete group** - admin-only; centered confirmation modal with permanent-action warning; `DELETE /groups/:id`; navigates back to groups list on success; 403 for non-admins
 - [x] **Group page redesign** (`app/group/[id].tsx`, WhatsApp-style) - header (group avatar + admin "Tap photo to edit"), `MEMBERS · n` label + horizontal members strip (admin-only "Add" chip, "You" ring, first names), prominent "Share a Coupon" button, "SHARED COUPONS (n)" header with filter button, and sender-attributed coupon cards (24px avatar + per-member accent-colored name; tag tile + brand/category/expiry; **Use coupon** reveals code via CouponDetail, **Revoke** for own coupons + admin trash on others'). Design handoff (spec + screenshots + reference) kept in `client/docs/design_handoff_group_page/`
@@ -77,7 +80,8 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 - [x] **Person search on Groups screen** - search field above the group list (name/email/phone, same `/users/search` endpoint as the invite flow); while searching, the group list is replaced by matching people, each showing the groups they're already in with you as tappable chips (computed client-side from already-fetched group membership, no new server endpoint)
 
 ### Users / Profile
-- [x] Search users by email or username - `GET /users/search?q=` (used for adding group members)
+- [x] Search users by email, username or phone number - `GET /users/search?q=` (used for adding group members and for the Groups screen person search)
+- [x] **Contact matching** - `POST /users/match-contacts` bulk-looks-up the phone numbers in the user's address book and returns the ones already on Couplet, so inviting someone doesn't require knowing their username
 - [x] Editable profile (Edit Profile screen) - change username + phone number via `PATCH /auth/me` (phone uniqueness enforced, 409 on conflict)
 - [x] **Server-side profile photo** - pick from camera/library, resized to 256×256 + JPEG-compressed client-side (`expo-image-manipulator`), uploaded as base64 data-URL via `PUT /auth/me/photo` (≤~400 KB) and stored on the User as `profile_image`; `GET /auth/me` returns it so it persists across devices/reinstalls (local AsyncStorage kept as offline fallback)
 - [x] **Group member avatar sync** - group endpoints expose each member's `profile_image` as `image`; the group page renders real photos in the members strip, coupon sender rows, and members sheet (falls back to initials when unset)
@@ -110,9 +114,9 @@ A mobile coupon wallet app. Users store, manage, and share coupons with friends 
 ### Infrastructure
 - [x] Node.js + Express server
 - [x] **AWS DynamoDB** via `@aws-sdk/lib-dynamodb` Document Client (Users, Coupons, Groups tables)
-- [x] **AWS Cognito** for auth (User Pool: `us-east-1_gVgsfA5EG`, PreSignUp Lambda for auto-confirm)
+- [x] **AWS Cognito** for auth (User Pool ID in `server/.env` / Lambda env vars, format `us-east-1_XXXXXXXXX`). Sign-up requires **email verification** - the account stays `UNCONFIRMED` and unusable until the emailed code is entered
 - [x] **AWS Lambda** - server runs serverless via `serverless-http` wrapping Express. No EC2, no PM2, no Elastic IP. IAM role (`LabRole`) assigned directly to Lambda for AWS auth.
-- [x] **AWS API Gateway HTTP API** (`couplet-api`) - permanent public URL `https://ij27gn1sg9.execute-api.us-east-1.amazonaws.com`, routes `ANY /{proxy+}` to Lambda. Auto-deploy enabled.
+- [x] **AWS API Gateway HTTP API** (`couplet-api`) - permanent public URL `https://<your-api-id>.execute-api.<region>.amazonaws.com`, routes `ANY /{proxy+}` to Lambda. Auto-deploy enabled.
 - [x] CORS enabled on server
 - [x] `.env.example` files for both client and server
 - [x] TypeScript on both client and server
@@ -171,6 +175,7 @@ client/
     group/
       [id].tsx            - Group page (redesigned): header, members strip, Share button, filter sheet, sender-attributed coupon cards
     edit-profile.tsx      - Edit Profile: username + phone + profile photo (resize/upload via PUT /auth/me/photo)
+    gmail-scan.tsx        - Gmail scanner: Connect / Scan now, candidate list as tappable draft-coupon cards
   components/
     CSymbol.tsx           - C icon from logo-c.png asset (size prop)
     CoupletLogo.tsx       - wordmark: CSymbol + "OUPLET" text, size/tagline props
@@ -192,10 +197,16 @@ client/
     webrtcBridgeHtml.ts   - inline WebView page holding the real RTCPeerConnections (ICE buffering, ack/timeout)
     ocr.ts                - OCR bridge driver: request/response map, injectJavaScript command channel (own state, shares nothing with webrtc.ts)
     ocrBridgeHtml.ts      - inline WebView page running Tesseract.js (loads WASM core + language data from CDN on first use)
+    couponSharing.ts      - deliverCouponCode: the one P2P-kickoff path, shared by the original share and by code-update redelivery; encode/inspect helpers for shareable coupons
+    gmail.ts              - triggers either connect flow and calls the Gmail endpoints
+  hooks/
+    useUserSearch.ts      - debounced people search with a rising request counter (identity, not string equality) so a stale response can't overwrite a fresh one
   storage/
     couponStorage.ts      - AsyncStorage helpers for codes, images, and local avatar fallback
+    gmailDraftStorage.ts  - per-message draft coupons + permanently-dismissed flags
   utils/
     format.ts             - money formatting: formatBalance + live input masking (formatAmountDisplay / parseAmountInput)
+    couponTextExtraction.ts - the shared field parser: store/code/amount/expiration from pasted text or OCR output, Hebrew + English, bidi-aware
 
 server/src/
   app.ts                  - Express app setup + route registration (shared by local + Lambda)
@@ -206,18 +217,24 @@ server/src/
     cognito.ts            - Cognito JWT verifier setup
     websocket.ts          - API Gateway Management client; pushToUser / code-stripping notify helpers
     codeCrypto.ts         - AES-256-GCM encrypt/decrypt for at-rest coupon codes (NOTIFICATION_CODE_KEY)
+    tokenCrypto.ts        - AES-256-GCM encrypt/decrypt for stored Gmail refresh tokens (GMAIL_TOKEN_ENCRYPTION_KEY)
+    googleOAuth.ts        - auth-code exchange + access-token refresh for either OAuth client; builds the consent URL
+    oauthState.ts         - signs/verifies the short-lived token proving a Google redirect belongs to a specific logged-in user
+    oauthResultPage.ts    - the plain HTML connected/cancelled/expired pages shown in the browser after the redirect
+    gmail.ts              - Gmail API wrapper: keyword search query, candidate listing, message bodies, extractCouponFields
   middleware/
     auth.ts               - Cognito JWT verification via aws-jwt-verify
   repositories/           - per-entity DynamoDB data access (split from the old db.ts)
     users.ts              - users incl. phone_number + profile_image (setUserProfileImage)
-    coupons.ts · groups.ts · notifications.ts · connections.ts
+    coupons.ts · groups.ts · notifications.ts · connections.ts · gmailConnections.ts
   routes/
     auth.ts               - POST /auth/sync, GET /auth/me, PATCH /auth/me (profile), PUT /auth/me/photo (profile image)
-    coupons.ts            - CRUD for coupon metadata + POST /:id/redeem (owner) + GET /:id/groups (owner-only, which groups it's shared to) (auth-protected)
+    coupons.ts            - CRUD for coupon metadata + POST /:id/redeem (owner) + GET /:id/groups (owner-only, which groups it's shared to) + GET /shared-with-me (metadata of coupons others shared into your groups; declared before any /:id route so the literal path isn't captured as an id) (auth-protected)
     groups.ts             - CRUD for groups + members + coupon sharing + invitations + POST /:id/coupons/:couponId/redeem (any member) + PUT /groups/:id/photo (auth-protected)
     invitations.ts        - GET /invitations (pending invites for current user)
-    notifications.ts      - GET /notifications, mark-read, delete
-    users.ts              - GET /users/search
+    notifications.ts      - GET /notifications, PATCH /read-all, DELETE /notifications (clear all, keeps invites + undelivered codes), DELETE /:id, DELETE /:id/code
+    users.ts              - GET /users/search (email/username/phone) + POST /users/match-contacts
+    gmail.ts              - GET /gmail/callback (public) + connect/start, status, connect, scan, candidates, candidates/:id/extract, candidates/:id/body
   ws/
     handler.ts            - WebSocket $connect / $disconnect / $default (JWT auth, connection store, WebRTC signaling relay)
   services/
@@ -258,34 +275,41 @@ server/src/
 
 ---
 
-## Still To Do
+## Known Limitations & Design Decisions
 
-### Core Features
+The boundaries of the project, stated deliberately. Each item below is a decision we made and can defend, not something we discovered late.
 
-- [x] **True P2P coupon transfer (Stage 2)** - done: WS is signaling-only, code travels via `RTCDataChannel`. Still TODO: relay the coupon **image** over the same channel; a TURN server (currently STUN-only, so P2P can fail behind symmetric/carrier-grade NAT - mitigated by the encrypted rescue-code fallback, not solved).
-- [x] **Rescue-code lookup scans only recent notifications** - fixed, and the underlying cause turned out to be worse than described. See "Notification ordering" below: the 50-row window wasn't even chronological, so `rescueCode` was searching an arbitrary subset. It now searches the recipient's full history.
-- [ ] **P2P transfer - untested scenarios.** Verified on real devices: same-WiFi P2P (full ICE→data-channel→ack, ack sent only after `saveCouponCode` persists - confirmed via log ordering), gift-card-link coupons now reach recipients (`giftcard_url` added to `GET /groups/:id`'s coupon mapping), the "Share anyway?" warning for coupons with no code/URL, and the offline/failed-P2P encrypted rescue fallback (confirmed via DynamoDB: correct ciphertext length, exact 72h TTL, decrypts correctly on read, row cleared on consumption). Also verified: `useRefreshOnNotification` (live screen refresh on notification, no tap needed) works for share and revoke. Still to verify:
-  - **Cross-network P2P** - devices on different networks (e.g. one on cellular). All testing so far succeeded via local mDNS host candidates on the same WiFi; cross-network depends on STUN server-reflexive candidates, which is unconfirmed. If it fails, the encrypted rescue path already covers it - known NAT limitation, not a bug.
-  - **Multiple simultaneous online recipients** - 3+ group members online at once, meaning the sharer's WebView opens multiple concurrent `RTCPeerConnection`s. Plausible but unproven.
-  - **Which path produces a given rescue-code row** - confirmed the fallback works, but not yet distinguished "recipient detected offline immediately" from "the 25s RN-side watchdog timed out a stalled negotiation." Confirm via a non-empty `[share] online recipients: [...]` log followed by a `[p2p] session failed` line.
-- [ ] **Expiration notifications** - Server should check expiration dates and fire push notifications before coupons expire via **AWS SNS** (Phase 3).
-- [ ] **Coupon code type selector** - When adding a coupon, let users specify: text code / barcode / QR code, so the detail screen can render it appropriately.
-- [ ] **Group admin transfer** - Allow admin to hand off the admin role to another member. Currently admin is fixed at creation.
+### P2P transfer
+
+**No TURN server - STUN only.** A direct peer connection can fail behind symmetric or carrier-grade NAT. Mitigated rather than solved: the recipient still receives the code through the encrypted fallback, and the sharer can trigger the rescue path explicitly. Adding TURN is a hosting-cost decision, not an architectural one - none of the signaling or negotiation code would change.
+
+**Verified on real devices:** same-WiFi transfer end to end (ICE → data channel → ack, with the ack sent only after the code and image are persisted, confirmed by log ordering); gift-card-link coupons reaching recipients; the "Share anyway?" warning for coupons carrying neither code nor URL; and the encrypted fallback, confirmed directly in DynamoDB - correct ciphertext length, exact 72h TTL, decrypts on read, row cleared on consumption.
+
+**Not yet verified:** cross-network transfer with one device on cellular, which relies on STUN server-reflexive candidates rather than the local mDNS candidates every test so far has used; and three or more simultaneous online recipients, meaning several concurrent peer connections inside one WebView. Both degrade to the encrypted fallback if they fail, so the failure mode is a slower delivery, not a lost coupon.
+
+### Server
+
+**Rate limiting is not applied in application code**, and the reasoning matters more than the gap. `express-rate-limit` holds its counters in memory, and on Lambda every execution environment has its own - so middleware would give materially weaker protection than its configuration implies. The right layer for this is API Gateway throttling or a shared counter store, which is deployment configuration rather than application code.
+
+**Input validation is not centralised.** Some routes check values ad hoc instead of through a schema layer (`zod` or `express-validator` being the natural choices). This is value-shape checking; authorization is separately enforced on every route.
+
 ### UI / UX
 
-- [ ] **Group coupon count accuracy** - `coupon_id_list.length` may include revoked or deleted coupons. Ensure the count shown on GroupCard reflects only active shared coupons.
+**Group coupon count** is derived from `coupon_id_list.length`, which can still include revoked or deleted coupons, so the number on a GroupCard may run ahead of the coupons actually listed beneath it.
 
-### Auth
+### Not implemented
 
-- [ ] **Forgot password** - "Forgot password?" link on login screen → user enters email → Cognito sends reset code → user enters code + new password. Uses `forgotPassword()` + `confirmPassword()` from `amazon-cognito-identity-js`.
-- [ ] **Change password** - Option in settings/profile for logged-in users to change their password. Uses `changePassword()` with old + new password (no email code needed).
+Scoped out knowingly, listed so the edge of the project is explicit:
 
-### Security & Polish
-- [ ] **Rate limiting** - Add `express-rate-limit` to auth endpoints to prevent brute-force.
-- [ ] **Input validation on server** - Some routes lack validation (balance should be ≥ 0, status should be enum-checked). Add `zod` or `express-validator`.
-- [x] **Production deploy** - Server running on Lambda via API Gateway at `https://ij27gn1sg9.execute-api.us-east-1.amazonaws.com`, client `EXPO_PUBLIC_API_URL` set.
+- **Change password for a signed-in user** - `changePassword()` from `amazon-cognito-identity-js`. The recovery case is covered by forgot-password, which is implemented.
+- **Group admin transfer** - the admin is fixed at group creation.
+- **Coupon code type selector** - letting the user declare text / barcode / QR so the detail screen renders each appropriately.
+- **Server-driven expiry push** - expiry alerts are generated client-side today; doing it from the server needs SNS and a development build (Tier 3).
+- **An LLM pass over coupon text.** The obvious accuracy win, and the one we deliberately did not take: sending coupon text to a model would put a code on the wire, which is precisely what the architecture forbids. The viable version redacts the code locally before the call and re-inserts it client-side - a design problem rather than an integration one.
 
-### Gmail Coupon Scanner (Phase 1 - MVP)
+---
+
+## Gmail Coupon Scanner - Implementation Notes
 - [x] `POST /gmail/scan` - refreshes the access token, runs `users.messages.list` with a keyword `q` filter (Hebrew + English coupon/voucher/promo/discount terms, `newer_than:30d` on first run then `after:<last_scan>`), fetches From/Subject/Date only for matches, upserts keyed by `user_id + message_id` so re-scans don't duplicate
 - [x] `GET /gmail/candidates` - returns the stored list
 - [x] Client: "Scan Gmail for Coupons" in the settings drawer → `client/app/gmail-scan.tsx` (Connect Gmail / Scan now; list now shows only candidates with a detected, not-yet-owned coupon code, as tappable draft cards - see auto-draft bullet below)
@@ -296,10 +320,11 @@ server/src/
 - [x] **Auto-draft coupons from scanned emails** - `POST /gmail/scan` now also fetches the full message body per new candidate (`getMessageBody`, `format=full` - no new OAuth scope needed, `gmail.readonly` already covers it) and runs regex-based `extractCouponFields` (`server/src/lib/gmail.ts`) to best-effort pull `{code, store, amount, expiration}`. These draft fields are **transient only** - returned in the scan response but never written to `GmailConnection.candidates` in DynamoDB (the code-never-touches-the-server invariant applies here too). `POST /gmail/candidates/:messageId/extract` backfills drafts on demand for candidates without a fresh extraction (old candidates, post-reinstall), restricted to message IDs already in the caller's stored candidates. Client caches drafts + a permanent dismissed-set locally (`client/storage/gmailDraftStorage.ts`); `gmail-scan.tsx` shows a candidate as a tappable draft-coupon card only when a code was found *and* it doesn't match an already-saved local coupon code (`getLocalCouponCodes`, compares against `couponStorage.ts` codes - the only place a "duplicate" check can happen, since codes never sync to the server). Tapping confirms, then opens `/(tabs)/add` pre-filled via `fromGmail`/`messageId`/`code`/`store`/`category`/`expiration`/`amount` route params (`useLocalSearchParams`); the Add Coupon screen's focus-reset effect now only blanks the form when arriving *without* those params. Regex extraction is best-effort (Hebrew + English labeled patterns for code/amount/expiration, store guessed from the `From` header) - the user always reviews/edits before saving.
 - [x] **Extraction robustness fixes** - `CODE_LABEL_PATTERNS` now accepts quoted codes (`code: "SAVE20"`) and natural phrasing (`the code is: X`) via a shared `CONNECTOR`/`QUOTE` fragment, and rejects a captured token that's pure lowercase letters (the bare `\bcode` fallback previously matched ordinary prose like "code below" → `below`; real codes carry a digit or an uppercase letter). `AMOUNT_PATTERNS` also recognizes the Hebrew "amount" label (`הסכום`/`סכום`), not just a number adjacent to `₪`/`$`/`שקל`.
 - [x] **Email preview before creating** - tapping a candidate opens `GmailEmailPreview.tsx` (full-screen modal) instead of a blind confirm alert: shows sender/subject/date, the extracted fields, and the actual email body, fetched on demand via `GET /gmail/candidates/:messageId/body` (capped at 4000 chars, never persisted, same ownership check as `/extract`) - lets the user verify it's really a coupon before creating one. Candidates with no detected code are now shown too (a muted "No code found" card, manual-entry copy) instead of silently hidden - previously indistinguishable from "nothing found." "Not now" no longer permanently dismisses a candidate; permanent removal is a separate delete button on the row.
-- [ ] Phase 2 (future): swap/augment the regex extraction with an LLM-based pass for higher accuracy across varied retailer formats - deferred for now (cost/latency/new dependency), regex chosen as the MVP approach.
-- [ ] Phase 3: push notifications for new candidates found
+- Possible next steps: an LLM-assisted extraction pass for higher accuracy across varied retailer formats (see "Not implemented" above for why this isn't trivial here), and push notifications when a scan finds new candidates.
 
-### Future / Optional
+---
+
+## Future / Optional
 
 - [ ] **Location-based suggestions** - Notify users of coupons they own when they enter a store that accepts them.
 - [ ] **Digital wallet integration** - Export to Apple Wallet / Google Wallet.
